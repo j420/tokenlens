@@ -5,9 +5,10 @@ import {
   calculateCost,
   type Provider,
   type ToolType,
-  type CreateEventInput,
 } from "@prune/shared";
 import { logger } from "../lib/logger.js";
+import { publishTokenUpdate } from "../stream/publisher.js";
+import { enqueueWasteDetection } from "../waste/queue.js";
 
 interface CaptureEventParams {
   sessionId: string;
@@ -24,6 +25,7 @@ interface CaptureEventParams {
   filesReferenced?: string[];
   contextSizeBefore?: number;
   contextSizeAfter?: number;
+  compactionTriggered?: boolean;
 }
 
 /**
@@ -48,6 +50,7 @@ export async function captureEvent(params: CaptureEventParams): Promise<void> {
       filesReferenced = [],
       contextSizeBefore = 0,
       contextSizeAfter = 0,
+      compactionTriggered = false,
     } = params;
 
     // Calculate cost
@@ -59,15 +62,23 @@ export async function captureEvent(params: CaptureEventParams): Promise<void> {
       tokensCached
     );
 
-    // Get cumulative session cost
+    // Get cumulative session cost and tokens
     const sessionResult = await db
-      .select({ totalCost: sessions.total_cost_usd })
+      .select({
+        totalCost: sessions.total_cost_usd,
+        totalTokensIn: sessions.total_tokens_in,
+        totalTokensOut: sessions.total_tokens_out,
+      })
       .from(sessions)
       .where(eq(sessions.id, sessionId))
       .limit(1);
 
     const previousCost = sessionResult[0]?.totalCost ?? 0;
+    const previousTokensIn = sessionResult[0]?.totalTokensIn ?? 0;
+    const previousTokensOut = sessionResult[0]?.totalTokensOut ?? 0;
     const cumulativeSessionCostUsd = previousCost + estimatedCostUsd;
+    const cumulativeSessionTokens =
+      previousTokensIn + previousTokensOut + tokensIn + tokensOut;
 
     // Insert the event
     const eventId = uuidv4();
@@ -88,7 +99,7 @@ export async function captureEvent(params: CaptureEventParams): Promise<void> {
       cumulative_session_cost_usd: cumulativeSessionCostUsd,
       tool_calls: toolCalls,
       files_referenced: filesReferenced,
-      compaction_triggered: false,
+      compaction_triggered: compactionTriggered,
       context_size_before: contextSizeBefore,
       context_size_after: contextSizeAfter,
       waste_flags: [],
@@ -120,6 +131,45 @@ export async function captureEvent(params: CaptureEventParams): Promise<void> {
       },
       "Event captured"
     );
+
+    // Publish token update to WebSocket stream (fire and forget)
+    try {
+      publishTokenUpdate({
+        eventId,
+        sessionId,
+        cumulativeSessionCostUsd,
+        cumulativeSessionTokens,
+        turnCost: estimatedCostUsd,
+        turnTokens: tokensIn + tokensOut,
+        roiScore: null, // ROI classification comes later
+        model,
+        provider,
+      });
+    } catch (err) {
+      logger.error({ err, eventId }, "Failed to publish token update");
+    }
+
+    // Enqueue waste detection job (fire and forget)
+    try {
+      await enqueueWasteDetection({
+        eventId,
+        sessionId,
+        userId,
+        teamId,
+        provider,
+        model,
+        tokensIn,
+        tokensOut,
+        estimatedCostUsd,
+        toolCalls,
+        filesReferenced,
+        compactionTriggered,
+        contextSizeBefore,
+        contextSizeAfter,
+      });
+    } catch (err) {
+      logger.error({ err, eventId }, "Failed to enqueue waste detection");
+    }
   } catch (err) {
     // CRITICAL: Never throw from event capture
     // The proxy must continue to work even if event capture fails

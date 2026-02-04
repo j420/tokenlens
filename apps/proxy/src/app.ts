@@ -6,6 +6,7 @@ import { logger, createRequestLogger } from "./lib/logger.js";
 import { authMiddleware, type AuthContext } from "./middleware/auth.js";
 import { anthropicRouter } from "./providers/anthropic.js";
 import { openaiRouter } from "./providers/openai.js";
+import { streamRouter } from "./stream/websocket.js";
 
 // Define the Variables type for context
 type Variables = {
@@ -36,6 +37,10 @@ app.get("/api/v1/health", (c) => {
     version: "0.1.0",
   });
 });
+
+// WebSocket stream endpoint - no auth for now (auth via session ID)
+// In production, you'd want to authenticate the WebSocket connection
+app.route("/api/v1/stream", streamRouter);
 
 // API routes requiring authentication
 const api = new Hono<{ Variables: Variables }>();

@@ -176,6 +176,58 @@ export const events = pgTable(
   ]
 );
 
+// Waste pattern enum
+export const wastePatternEnum = pgEnum("waste_pattern", [
+  "circular_loop",
+  "redundant_reads",
+  "compaction_storm",
+  "zero_acceptance",
+  "mcp_bloat",
+  "cost_anomaly",
+]);
+
+// Alert severity enum
+export const alertSeverityEnum = pgEnum("alert_severity", ["warning", "info"]);
+
+// Alerts table - stores waste detection alerts
+export const alerts = pgTable(
+  "alerts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    session_id: uuid("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    team_id: uuid("team_id").references(() => teams.id),
+    event_id: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+    pattern: wastePatternEnum("pattern").notNull(),
+    severity: alertSeverityEnum("severity").notNull(),
+    tokens_wasted: integer("tokens_wasted").notNull(),
+    cost_wasted_usd: real("cost_wasted_usd").notNull(),
+    file_involved: text("file_involved"),
+    occurrences: integer("occurrences").notNull().default(1),
+    message_title: text("message_title").notNull(),
+    message_body: text("message_body").notNull(),
+    suggestions: jsonb("suggestions")
+      .$type<Array<{ label: string; action: string; detail: string }>>()
+      .notNull()
+      .default([]),
+    cooldown_seconds: integer("cooldown_seconds").notNull().default(300),
+    dismissed_at: timestamp("dismissed_at", { withTimezone: true }),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("alerts_session_id_idx").on(table.session_id),
+    index("alerts_user_id_idx").on(table.user_id),
+    index("alerts_pattern_idx").on(table.pattern),
+    index("alerts_created_at_idx").on(table.created_at),
+  ]
+);
+
 // Type exports for use in application code
 export type Team = typeof teams.$inferSelect;
 export type NewTeam = typeof teams.$inferInsert;
@@ -191,3 +243,6 @@ export type NewSession = typeof sessions.$inferInsert;
 
 export type Event = typeof events.$inferSelect;
 export type NewEvent = typeof events.$inferInsert;
+
+export type Alert = typeof alerts.$inferSelect;
+export type NewAlert = typeof alerts.$inferInsert;
