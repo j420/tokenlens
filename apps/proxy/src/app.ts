@@ -7,6 +7,7 @@ import { authMiddleware, type AuthContext } from "./middleware/auth.js";
 import { anthropicRouter } from "./providers/anthropic.js";
 import { openaiRouter } from "./providers/openai.js";
 import { streamRouter } from "./stream/websocket.js";
+import { dashboardRouter } from "./api/dashboard.js";
 
 // Define the Variables type for context
 type Variables = {
@@ -54,6 +55,12 @@ api.route("/openai", openaiRouter);
 
 // Mount API under /api/v1/proxy
 app.route("/api/v1/proxy", api);
+
+// Dashboard API (requires auth)
+const dashboardApi = new Hono<{ Variables: Variables }>();
+dashboardApi.use("*", authMiddleware);
+dashboardApi.route("/", dashboardRouter);
+app.route("/api/v1/dashboard", dashboardApi);
 
 // 404 handler
 app.notFound((c) => {
