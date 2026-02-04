@@ -9,6 +9,7 @@ import { openaiRouter } from "./providers/openai.js";
 import { streamRouter } from "./stream/websocket.js";
 import { dashboardRouter } from "./api/dashboard.js";
 import { analyzeRouter } from "./api/analyze.js";
+import { teamRouter } from "./api/team.js";
 
 // Define the Variables type for context
 type Variables = {
@@ -68,6 +69,12 @@ const analyzeApi = new Hono<{ Variables: Variables }>();
 analyzeApi.use("*", authMiddleware);
 analyzeApi.route("/", analyzeRouter);
 app.route("/api/v1/analyze", analyzeApi);
+
+// Team management API (requires auth)
+const teamApi = new Hono<{ Variables: Variables }>();
+teamApi.use("*", authMiddleware);
+teamApi.route("/", teamRouter);
+app.route("/api/v1/team", teamApi);
 
 // 404 handler
 app.notFound((c) => {
