@@ -102,9 +102,12 @@ export default function DashboardLayout({
             >
               Docs
             </a>
-            <button className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200">
-              Settings ⚙️
-            </button>
+            <Link
+              href="/dashboard/settings"
+              className="rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            >
+              ⚙️
+            </Link>
           </div>
         </div>
       </header>

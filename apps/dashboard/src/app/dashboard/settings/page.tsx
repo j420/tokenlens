@@ -1,0 +1,485 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
+
+interface ConnectedTool {
+  id: string;
+  name: string;
+  envVar: string;
+  connected: boolean;
+  lastSeen: string | null;
+}
+
+interface AlertPreferences {
+  pruneSuggestions: boolean;
+  confidenceThreshold: number;
+  burnAlerts: boolean;
+  burnCooldownMinutes: number;
+  compactionNotices: boolean;
+  greenToAmberThreshold: number;
+  amberToRedThreshold: number;
+}
+
+interface AutoTrimRule {
+  id: string;
+  repo: string;
+  description: string;
+}
+
+interface Settings {
+  tools: ConnectedTool[];
+  apiKey: {
+    prefix: string;
+    fullKey: string;
+  };
+  alertPreferences: AlertPreferences;
+  autoTrimRules: AutoTrimRule[];
+  plan: {
+    tier: "free" | "pro" | "team";
+    name: string;
+  };
+}
+
+// Mock settings data
+const MOCK_SETTINGS: Settings = {
+  tools: [
+    {
+      id: "claude-code",
+      name: "Claude Code",
+      envVar: "ANTHROPIC_BASE_URL",
+      connected: true,
+      lastSeen: new Date(Date.now() - 2 * 60 * 1000).toISOString(), // 2 minutes ago
+    },
+    {
+      id: "codex",
+      name: "Codex CLI",
+      envVar: "OPENAI_BASE_URL",
+      connected: true,
+      lastSeen: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
+    },
+    {
+      id: "cursor",
+      name: "Cursor",
+      envVar: "ANTHROPIC_BASE_URL",
+      connected: false,
+      lastSeen: null,
+    },
+  ],
+  apiKey: {
+    prefix: "prune_sk_abc123xyz",
+    fullKey: "prune_sk_abc123xyz789def456ghi012jkl345mno",
+  },
+  alertPreferences: {
+    pruneSuggestions: true,
+    confidenceThreshold: 75,
+    burnAlerts: true,
+    burnCooldownMinutes: 5,
+    compactionNotices: true,
+    greenToAmberThreshold: 2,
+    amberToRedThreshold: 5,
+  },
+  autoTrimRules: [
+    {
+      id: "rule-1",
+      repo: "my-app",
+      description: "CSS questions → only include /styles/ + component file",
+    },
+    {
+      id: "rule-2",
+      repo: "api-server",
+      description: "test questions → only include test file + source",
+    },
+  ],
+  plan: {
+    tier: "free",
+    name: "Free",
+  },
+};
+
+function Toggle({
+  enabled,
+  onChange,
+  label,
+}: {
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={() => onChange(!enabled)}
+      className="flex items-center gap-2"
+      type="button"
+    >
+      <div
+        className={cn(
+          "relative h-6 w-11 rounded-full transition-colors",
+          enabled ? "bg-prune-green" : "bg-gray-300"
+        )}
+      >
+        <div
+          className={cn(
+            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+            enabled ? "translate-x-5" : "translate-x-0.5"
+          )}
+        />
+      </div>
+      <span className="text-sm text-gray-700">{label}</span>
+    </button>
+  );
+}
+
+function formatRelativeTime(isoString: string): string {
+  const now = new Date();
+  const date = new Date(isoString);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (60 * 1000));
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000));
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
+
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins} minute${diffMins !== 1 ? "s" : ""} ago`;
+  if (diffHours < 24) return `${diffHours} hour${diffHours !== 1 ? "s" : ""} ago`;
+  return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
+}
+
+export default function SettingsPage() {
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [apiKeyCopied, setApiKeyCopied] = useState(false);
+  const [showFullApiKey, setShowFullApiKey] = useState(false);
+
+  useEffect(() => {
+    // In production, fetch from /api/dashboard/settings
+    // For now, use mock data
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch("/api/dashboard/settings");
+        if (response.ok) {
+          const data = await response.json();
+          setSettings(data);
+        } else {
+          setSettings(MOCK_SETTINGS);
+        }
+      } catch {
+        setSettings(MOCK_SETTINGS);
+      }
+      setLoading(false);
+    };
+
+    fetchSettings();
+  }, []);
+
+  const handleCopyApiKey = async () => {
+    if (!settings) return;
+    await navigator.clipboard.writeText(settings.apiKey.fullKey);
+    setApiKeyCopied(true);
+    setTimeout(() => setApiKeyCopied(false), 2000);
+  };
+
+  const handleRegenerateApiKey = async () => {
+    if (!confirm("Are you sure? This will invalidate your current API key.")) return;
+    // In production, call API to regenerate key
+    alert("API key regeneration not implemented in demo");
+  };
+
+  const handleDeleteRule = (ruleId: string) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      autoTrimRules: settings.autoTrimRules.filter((r) => r.id !== ruleId),
+    });
+  };
+
+  const handlePreferenceChange = <K extends keyof AlertPreferences>(
+    key: K,
+    value: AlertPreferences[K]
+  ) => {
+    if (!settings) return;
+    setSettings({
+      ...settings,
+      alertPreferences: {
+        ...settings.alertPreferences,
+        [key]: value,
+      },
+    });
+  };
+
+  if (loading || !settings) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-prune-green" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8">
+      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+
+      {/* Connected Tools */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Connected Tools</h2>
+        <div className="space-y-4">
+          {settings.tools.map((tool) => (
+            <div
+              key={tool.id}
+              className="flex items-start justify-between border-b border-gray-100 pb-4 last:border-0 last:pb-0"
+            >
+              <div className="flex items-start gap-3">
+                <span className="mt-0.5 text-xl">
+                  {tool.connected ? "✅" : "❌"}
+                </span>
+                <div>
+                  <p className="font-medium text-gray-900">{tool.name}</p>
+                  <p className="text-sm text-gray-500">
+                    {tool.connected ? (
+                      <>
+                        <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+                          {tool.envVar}
+                        </code>{" "}
+                        configured
+                      </>
+                    ) : (
+                      "Not connected"
+                    )}
+                  </p>
+                  {tool.connected && tool.lastSeen && (
+                    <p className="text-sm text-gray-400">
+                      Last seen: {formatRelativeTime(tool.lastSeen)}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {!tool.connected && (
+                <button className="text-sm font-medium text-prune-green hover:underline">
+                  [Setup instructions]
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* API Key */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">API Key</h2>
+        <div className="flex items-center gap-4">
+          <code className="flex-1 rounded bg-gray-100 px-3 py-2 font-mono text-sm">
+            {showFullApiKey ? settings.apiKey.fullKey : `${settings.apiKey.prefix}...`}
+          </code>
+          <button
+            onClick={() => setShowFullApiKey(!showFullApiKey)}
+            className="text-sm text-gray-500 hover:text-gray-700"
+          >
+            {showFullApiKey ? "Hide" : "Show"}
+          </button>
+          <button
+            onClick={handleCopyApiKey}
+            className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          >
+            {apiKeyCopied ? "Copied!" : "Copy"}
+          </button>
+          <button
+            onClick={handleRegenerateApiKey}
+            className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+          >
+            Regenerate
+          </button>
+        </div>
+      </section>
+
+      {/* Alert Preferences */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Alert Preferences</h2>
+        <div className="space-y-6">
+          {/* Prune suggestions */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-gray-700">Prune suggestions</p>
+              <p className="text-sm text-gray-500">
+                Get suggestions for context trimming
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <Toggle
+                enabled={settings.alertPreferences.pruneSuggestions}
+                onChange={(v) => handlePreferenceChange("pruneSuggestions", v)}
+                label={settings.alertPreferences.pruneSuggestions ? "On" : "Off"}
+              />
+              {settings.alertPreferences.pruneSuggestions && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Confidence:</span>
+                  <input
+                    type="number"
+                    min={50}
+                    max={100}
+                    value={settings.alertPreferences.confidenceThreshold}
+                    onChange={(e) =>
+                      handlePreferenceChange(
+                        "confidenceThreshold",
+                        parseInt(e.target.value, 10)
+                      )
+                    }
+                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+                  />
+                  <span className="text-sm text-gray-500">%</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Burn alerts */}
+          <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+            <div>
+              <p className="font-medium text-gray-700">Burn alerts</p>
+              <p className="text-sm text-gray-500">
+                Get notified when waste patterns are detected
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <Toggle
+                enabled={settings.alertPreferences.burnAlerts}
+                onChange={(v) => handlePreferenceChange("burnAlerts", v)}
+                label={settings.alertPreferences.burnAlerts ? "On" : "Off"}
+              />
+              {settings.alertPreferences.burnAlerts && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">Cooldown:</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={60}
+                    value={settings.alertPreferences.burnCooldownMinutes}
+                    onChange={(e) =>
+                      handlePreferenceChange(
+                        "burnCooldownMinutes",
+                        parseInt(e.target.value, 10)
+                      )
+                    }
+                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+                  />
+                  <span className="text-sm text-gray-500">min</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Compaction notices */}
+          <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+            <div>
+              <p className="font-medium text-gray-700">Compaction notices</p>
+              <p className="text-sm text-gray-500">
+                Get notified when context is compacted
+              </p>
+            </div>
+            <Toggle
+              enabled={settings.alertPreferences.compactionNotices}
+              onChange={(v) => handlePreferenceChange("compactionNotices", v)}
+              label={settings.alertPreferences.compactionNotices ? "On" : "Off"}
+            />
+          </div>
+
+          {/* Cost meter thresholds */}
+          <div className="border-t border-gray-100 pt-4">
+            <p className="mb-3 font-medium text-gray-700">Cost meter color thresholds</p>
+            <div className="flex flex-wrap gap-6">
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-3 w-3 rounded bg-prune-green" />
+                <span className="text-sm text-gray-500">→</span>
+                <span className="inline-block h-3 w-3 rounded bg-amber-500" />
+                <span className="text-sm text-gray-500">at $</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={settings.alertPreferences.greenToAmberThreshold}
+                  onChange={(e) =>
+                    handlePreferenceChange(
+                      "greenToAmberThreshold",
+                      parseFloat(e.target.value)
+                    )
+                  }
+                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="inline-block h-3 w-3 rounded bg-amber-500" />
+                <span className="text-sm text-gray-500">→</span>
+                <span className="inline-block h-3 w-3 rounded bg-prune-red" />
+                <span className="text-sm text-gray-500">at $</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.5}
+                  value={settings.alertPreferences.amberToRedThreshold}
+                  onChange={(e) =>
+                    handlePreferenceChange(
+                      "amberToRedThreshold",
+                      parseFloat(e.target.value)
+                    )
+                  }
+                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Auto-Trim Rules */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Auto-Trim Rules</h2>
+        {settings.autoTrimRules.length > 0 ? (
+          <div className="space-y-3">
+            {settings.autoTrimRules.map((rule) => (
+              <div
+                key={rule.id}
+                className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+              >
+                <div>
+                  <span className="font-medium text-gray-900">{rule.repo}:</span>{" "}
+                  <span className="text-gray-600">{rule.description}</span>
+                </div>
+                <button
+                  onClick={() => handleDeleteRule(rule.id)}
+                  className="text-sm text-red-600 hover:text-red-800"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-gray-500">No auto-trim rules configured</p>
+        )}
+        <button className="mt-4 text-sm font-medium text-prune-green hover:underline">
+          [+ Add rule manually]
+        </button>
+      </section>
+
+      {/* Plan */}
+      <section className="rounded-lg border border-gray-200 bg-white p-6">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">Plan</h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-gray-700">
+              Current: <span className="font-semibold">{settings.plan.name}</span>
+            </p>
+          </div>
+          {settings.plan.tier === "free" && (
+            <button className="rounded-lg bg-prune-green px-4 py-2 font-medium text-white hover:bg-emerald-600">
+              Upgrade to Pro — $9/month
+            </button>
+          )}
+          {settings.plan.tier === "pro" && (
+            <button className="rounded-lg bg-gray-800 px-4 py-2 font-medium text-white hover:bg-gray-700">
+              Upgrade to Team — $29/seat/month
+            </button>
+          )}
+        </div>
+      </section>
+    </div>
+  );
+}

@@ -88,6 +88,17 @@ const MOCK_SESSION_DETAIL = {
       status: "clean",
       note: "Developer rephrased after Prune alert",
     },
+    {
+      number: 7,
+      time: new Date(Date.now() - 1.3 * 60 * 60 * 1000).toISOString(),
+      prompt: "Continue — and remember JWT expiry is 15 minutes",
+      tokensIn: 5200,
+      tokensOut: 3800,
+      cost: 0.35,
+      roi: 0.88,
+      status: "clean",
+      note: "Developer re-stated lost context from compaction notice",
+    },
   ],
   compactions: [
     {
