@@ -1,0 +1,28 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "devCommand": "npm run dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "headers": [
+    {
+      "source": "/api/v1/proxy/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, x-api-key, x-prune-api-key, anthropic-version, anthropic-beta, openai-organization" }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/v1/proxy/anthropic/:path*",
+      "destination": "/api/v1/proxy/anthropic/:path*"
+    },
+    {
+      "source": "/api/v1/proxy/openai/:path*",
+      "destination": "/api/v1/proxy/openai/:path*"
+    }
+  ]
+}
