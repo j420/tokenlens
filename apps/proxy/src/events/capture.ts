@@ -26,6 +26,11 @@ interface CaptureEventParams {
   contextSizeBefore?: number;
   contextSizeAfter?: number;
   compactionTriggered?: boolean;
+  // ROI classification fields
+  turnNumber?: number;
+  responseContent?: string;
+  filesWritten?: string[];
+  testsPassed?: boolean | null;
 }
 
 /**
@@ -51,6 +56,10 @@ export async function captureEvent(params: CaptureEventParams): Promise<void> {
       contextSizeBefore = 0,
       contextSizeAfter = 0,
       compactionTriggered = false,
+      turnNumber = 0,
+      responseContent,
+      filesWritten = [],
+      testsPassed = null,
     } = params;
 
     // Calculate cost
@@ -166,6 +175,11 @@ export async function captureEvent(params: CaptureEventParams): Promise<void> {
         compactionTriggered,
         contextSizeBefore,
         contextSizeAfter,
+        // ROI classification fields
+        turnNumber,
+        responseContent,
+        filesWritten,
+        testsPassed,
       });
     } catch (err) {
       logger.error({ err, eventId }, "Failed to enqueue waste detection");

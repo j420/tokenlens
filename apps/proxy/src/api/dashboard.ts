@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Logger } from "pino";
-import { db, events, sessions, alerts } from "@prune/db";
+import { db, events, sessions, alerts, compactionEvents } from "@prune/db";
 import { eq, and, gte, sql, desc, count, sum, avg } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
 import type { AuthContext } from "../middleware/auth.js";
@@ -331,5 +331,86 @@ dashboardRouter.get("/session/:id", async (c) => {
   } catch (err) {
     reqLogger.error({ err }, "Failed to fetch session detail");
     return c.json({ error: "Failed to fetch session" }, 500);
+  }
+});
+
+/**
+ * GET /api/v1/dashboard/session/:id/compaction-diff
+ * Returns compaction events and lost references for a session
+ */
+dashboardRouter.get("/session/:id/compaction-diff", async (c) => {
+  const auth = c.get("auth");
+  const sessionId = c.req.param("id");
+  const reqLogger = c.get("logger") ?? logger;
+
+  try {
+    // Verify session belongs to user
+    const sessionResult = await db
+      .select({ id: sessions.id })
+      .from(sessions)
+      .where(
+        and(eq(sessions.id, sessionId), eq(sessions.user_id, auth.userId))
+      )
+      .limit(1);
+
+    if (sessionResult.length === 0) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    // Get compaction events for this session
+    const compactionDiffs = await db
+      .select()
+      .from(compactionEvents)
+      .where(eq(compactionEvents.session_id, sessionId))
+      .orderBy(desc(compactionEvents.created_at));
+
+    // Format response
+    const diffs = compactionDiffs.map((ce) => ({
+      id: ce.id,
+      turnNumber: ce.turn_number,
+      tokensBefore: ce.tokens_before,
+      tokensAfter: ce.tokens_after,
+      tokensRemoved: ce.tokens_removed,
+      overheadCostUsd: ce.overhead_cost_usd,
+      lostReferences: ce.lost_references,
+      summary: ce.summary,
+      createdAt: ce.created_at,
+    }));
+
+    // Calculate aggregate stats
+    const totalTokensRemoved = compactionDiffs.reduce(
+      (sum, ce) => sum + ce.tokens_removed,
+      0
+    );
+    const totalOverheadCost = compactionDiffs.reduce(
+      (sum, ce) => sum + ce.overhead_cost_usd,
+      0
+    );
+    const totalLostReferences = compactionDiffs.reduce(
+      (sum, ce) => sum + (ce.lost_references?.length ?? 0),
+      0
+    );
+
+    // Group lost references by category
+    const lostByCategory: Record<string, number> = {};
+    for (const ce of compactionDiffs) {
+      for (const ref of ce.lost_references ?? []) {
+        const category = ref.category || "unknown";
+        lostByCategory[category] = (lostByCategory[category] ?? 0) + 1;
+      }
+    }
+
+    return c.json({
+      sessionId,
+      compactionCount: compactionDiffs.length,
+      totalTokensRemoved,
+      totalOverheadCostUsd: totalOverheadCost,
+      totalLostReferences,
+      lostByCategory,
+      diffs,
+    });
+  } catch (err) {
+    reqLogger.error({ err }, "Failed to fetch compaction diff");
+    return c.json({ error: "Failed to fetch compaction data" }, 500);
   }
 });

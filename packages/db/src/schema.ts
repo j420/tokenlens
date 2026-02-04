@@ -114,6 +114,11 @@ export const sessions = pgTable(
     total_cost_usd: real("total_cost_usd").notNull().default(0),
     event_count: integer("event_count").notNull().default(0),
     description: text("description"), // Natural language task description
+    // ROI tracking
+    cumulative_roi_score: real("cumulative_roi_score").notNull().default(1),
+    total_productive_tokens: integer("total_productive_tokens").notNull().default(0),
+    total_recursive_tokens: integer("total_recursive_tokens").notNull().default(0),
+    consecutive_low_roi_turns: integer("consecutive_low_roi_turns").notNull().default(0),
   },
   (table) => [
     index("sessions_user_id_idx").on(table.user_id),
@@ -228,6 +233,46 @@ export const alerts = pgTable(
   ]
 );
 
+// Compaction events table - stores compaction analysis results
+export const compactionEvents = pgTable(
+  "compaction_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    session_id: uuid("session_id")
+      .notNull()
+      .references(() => sessions.id, { onDelete: "cascade" }),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    event_id: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+    turn_number: integer("turn_number").notNull(),
+    tokens_before: integer("tokens_before").notNull(),
+    tokens_after: integer("tokens_after").notNull(),
+    tokens_removed: integer("tokens_removed").notNull(),
+    overhead_cost_usd: real("overhead_cost_usd").notNull(),
+    lost_references: jsonb("lost_references")
+      .$type<
+        Array<{
+          item: string;
+          original_turn: number;
+          category: string;
+          rawValue: string;
+        }>
+      >()
+      .notNull()
+      .default([]),
+    summary: text("summary").notNull(),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("compaction_events_session_id_idx").on(table.session_id),
+    index("compaction_events_user_id_idx").on(table.user_id),
+    index("compaction_events_created_at_idx").on(table.created_at),
+  ]
+);
+
 // Auto-trim rules table - per-repo context pruning rules
 export const autoTrimRules = pgTable(
   "auto_trim_rules",
@@ -276,3 +321,6 @@ export type NewAlert = typeof alerts.$inferInsert;
 
 export type AutoTrimRule = typeof autoTrimRules.$inferSelect;
 export type NewAutoTrimRule = typeof autoTrimRules.$inferInsert;
+
+export type CompactionEvent = typeof compactionEvents.$inferSelect;
+export type NewCompactionEvent = typeof compactionEvents.$inferInsert;

@@ -1,12 +1,48 @@
 import { v4 as uuidv4 } from "uuid";
-import { db, events, alerts, sessions } from "@prune/db";
+import { db, events, alerts, sessions, compactionEvents } from "@prune/db";
 import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { logger } from "../lib/logger.js";
-import { publishBurnAlert } from "../stream/publisher.js";
+import { publishBurnAlert, publishCompactionEvent, publishTokenUpdate } from "../stream/publisher.js";
 import type { WasteDetectionJobData } from "./queue.js";
+import {
+  classifyTurnROI,
+  updateSessionROI,
+  getModelRoutingSuggestion,
+  createEmptySessionROI,
+  getSessionBuffer,
+  createMessageSummary,
+  detectCompaction,
+  analyzeCompaction,
+  type TurnData,
+  type SessionROI,
+} from "@prune/intelligence";
 
 // Cooldown tracking (in-memory for now, would use Redis in production)
 const alertCooldowns = new Map<string, number>();
+
+// Session ROI tracking (in-memory, would use Redis in production)
+const sessionROIState = new Map<string, SessionROI>();
+
+// Turn history for ROI classification (in-memory, would use Redis in production)
+const sessionTurnHistory = new Map<string, TurnData[]>();
+
+function getSessionROI(sessionId: string): SessionROI {
+  let state = sessionROIState.get(sessionId);
+  if (!state) {
+    state = createEmptySessionROI();
+    sessionROIState.set(sessionId, state);
+  }
+  return state;
+}
+
+function getTurnHistory(sessionId: string): TurnData[] {
+  let history = sessionTurnHistory.get(sessionId);
+  if (!history) {
+    history = [];
+    sessionTurnHistory.set(sessionId, history);
+  }
+  return history;
+}
 
 function getCooldownKey(sessionId: string, pattern: string): string {
   return `${sessionId}:${pattern}`;
@@ -28,6 +64,10 @@ function setCooldown(sessionId: string, pattern: string): void {
  * Run all waste detection patterns for an event
  */
 export async function runWasteDetection(data: WasteDetectionJobData): Promise<void> {
+  // First, run ROI classification and compaction detection
+  const roiResult = await runROIClassification(data);
+  await runCompactionAudit(data);
+
   // Run all detectors in parallel
   await Promise.all([
     detectCircularLoop(data),
@@ -36,7 +76,276 @@ export async function runWasteDetection(data: WasteDetectionJobData): Promise<vo
     detectZeroAcceptance(data),
     detectMcpBloat(data),
     detectCostAnomaly(data),
+    detectLowROI(data, roiResult),
   ]);
+}
+
+/**
+ * Run ROI classification for the turn
+ * Updates session ROI state and event classification
+ */
+async function runROIClassification(data: WasteDetectionJobData): Promise<{
+  roiScore: number;
+  classification: "productive" | "recursive" | "unknown";
+  consecutiveLowRoiTurns: number;
+} | null> {
+  try {
+    // Build turn data
+    const turnData: TurnData = {
+      turnNumber: data.turnNumber,
+      responseContent: data.responseContent ?? "",
+      filesWritten: data.filesWritten ?? [],
+      filesRead: data.filesReferenced,
+      testsPassed: data.testsPassed ?? null,
+      errorsPresent: [], // Would be extracted from response content
+      tokensIn: data.tokensIn,
+      tokensOut: data.tokensOut,
+      timestamp: new Date(),
+    };
+
+    // Get previous turns for this session
+    const previousTurns = getTurnHistory(data.sessionId);
+
+    // Classify this turn's ROI
+    const turnAnalysis = classifyTurnROI(turnData, previousTurns);
+
+    // Update session ROI state
+    const sessionROI = getSessionROI(data.sessionId);
+    const newSessionROI = updateSessionROI(sessionROI, turnAnalysis, turnData);
+    sessionROIState.set(data.sessionId, newSessionROI);
+
+    // Add turn to history (keep last 20 turns)
+    previousTurns.push(turnData);
+    if (previousTurns.length > 20) {
+      previousTurns.shift();
+    }
+
+    // Update the event with ROI classification
+    await db
+      .update(events)
+      .set({
+        roi_score: turnAnalysis.roiScore,
+        classification: turnAnalysis.classification,
+      })
+      .where(eq(events.id, data.eventId));
+
+    // Update session cumulative ROI
+    await db
+      .update(sessions)
+      .set({
+        cumulative_roi_score: newSessionROI.cumulativeRoiScore,
+        total_productive_tokens: newSessionROI.totalProductiveTokens,
+        total_recursive_tokens: newSessionROI.totalRecursiveTokens,
+        consecutive_low_roi_turns: newSessionROI.consecutiveLowRoiTurns,
+      })
+      .where(eq(sessions.id, data.sessionId));
+
+    // Re-publish token update with ROI score
+    const sessionResult = await db
+      .select({
+        totalCost: sessions.total_cost_usd,
+        totalTokensIn: sessions.total_tokens_in,
+        totalTokensOut: sessions.total_tokens_out,
+      })
+      .from(sessions)
+      .where(eq(sessions.id, data.sessionId))
+      .limit(1);
+
+    const totalCost = sessionResult[0]?.totalCost ?? 0;
+    const totalTokens =
+      (sessionResult[0]?.totalTokensIn ?? 0) +
+      (sessionResult[0]?.totalTokensOut ?? 0);
+
+    publishTokenUpdate({
+      eventId: data.eventId,
+      sessionId: data.sessionId,
+      cumulativeSessionCostUsd: totalCost,
+      cumulativeSessionTokens: totalTokens,
+      turnCost: data.estimatedCostUsd,
+      turnTokens: data.tokensIn + data.tokensOut,
+      roiScore: turnAnalysis.roiScore,
+      model: data.model,
+      provider: data.provider,
+    });
+
+    logger.info(
+      {
+        eventId: data.eventId,
+        sessionId: data.sessionId,
+        roiScore: turnAnalysis.roiScore,
+        classification: turnAnalysis.classification,
+        productiveSignals: turnAnalysis.signals.productive.length,
+        recursiveSignals: turnAnalysis.signals.recursive.length,
+      },
+      "ROI classification completed"
+    );
+
+    return {
+      roiScore: turnAnalysis.roiScore,
+      classification: turnAnalysis.classification,
+      consecutiveLowRoiTurns: newSessionROI.consecutiveLowRoiTurns,
+    };
+  } catch (err) {
+    logger.error({ err, eventId: data.eventId }, "ROI classification failed");
+    return null;
+  }
+}
+
+/**
+ * Run compaction audit if compaction was detected
+ */
+async function runCompactionAudit(data: WasteDetectionJobData): Promise<void> {
+  if (!data.compactionTriggered) {
+    return;
+  }
+
+  try {
+    // Check if this is actually a significant compaction
+    const isCompaction = detectCompaction(data.contextSizeBefore, data.contextSizeAfter);
+    if (!isCompaction) {
+      return;
+    }
+
+    // Get the message buffer for this session
+    const buffer = getSessionBuffer(data.sessionId);
+
+    // Add current message to buffer (would normally have more content)
+    const summary = createMessageSummary(
+      data.responseContent ?? "",
+      data.turnNumber,
+      "assistant"
+    );
+    buffer.addMessage(summary);
+
+    // Analyze the compaction (estimate cost from model pricing, default $3 per 1M)
+    const compactionDiff = analyzeCompaction(
+      buffer,
+      data.responseContent ?? "", // post-compaction content
+      data.turnNumber,
+      3 // cost per million tokens
+    );
+
+    // Store compaction event in database
+    await db.insert(compactionEvents).values({
+      id: uuidv4(),
+      session_id: data.sessionId,
+      user_id: data.userId,
+      event_id: data.eventId,
+      turn_number: compactionDiff.turnNumber,
+      tokens_before: compactionDiff.tokensBefore,
+      tokens_after: compactionDiff.tokensAfter,
+      tokens_removed: compactionDiff.tokensRemoved,
+      overhead_cost_usd: compactionDiff.overheadCostUsd,
+      lost_references: compactionDiff.lostReferences.map((ref) => ({
+        item: ref.item,
+        original_turn: ref.original_turn,
+        category: ref.category,
+        rawValue: ref.rawValue,
+      })),
+      summary: compactionDiff.summary,
+    });
+
+    // Publish compaction event to WebSocket
+    publishCompactionEvent({
+      sessionId: data.sessionId,
+      turnNumber: compactionDiff.turnNumber,
+      tokensBefore: compactionDiff.tokensBefore,
+      tokensAfter: compactionDiff.tokensAfter,
+      tokensRemoved: compactionDiff.tokensRemoved,
+      overheadCostUsd: compactionDiff.overheadCostUsd,
+      lostReferences: compactionDiff.lostReferences.map((ref) => ({
+        item: ref.item,
+        original_turn: ref.original_turn,
+        category: ref.category,
+      })),
+      summary: compactionDiff.summary,
+    });
+
+    logger.info(
+      {
+        sessionId: data.sessionId,
+        turnNumber: compactionDiff.turnNumber,
+        tokensRemoved: compactionDiff.tokensRemoved,
+        lostReferenceCount: compactionDiff.lostReferences.length,
+      },
+      "Compaction audit completed"
+    );
+  } catch (err) {
+    logger.error({ err, eventId: data.eventId }, "Compaction audit failed");
+  }
+}
+
+/**
+ * Pattern 7: Low ROI Detection
+ * Trigger: ROI < 30% for 3+ consecutive turns
+ */
+async function detectLowROI(
+  data: WasteDetectionJobData,
+  roiResult: { roiScore: number; classification: string; consecutiveLowRoiTurns: number } | null
+): Promise<void> {
+  if (!roiResult || roiResult.consecutiveLowRoiTurns < 3) {
+    return;
+  }
+
+  const COOLDOWN_SECONDS = 300;
+  const PATTERN = "low_roi";
+
+  if (isOnCooldown(data.sessionId, PATTERN, COOLDOWN_SECONDS)) {
+    return;
+  }
+
+  try {
+    // Get model routing suggestion
+    const routingSuggestion = getModelRoutingSuggestion(
+      data.model,
+      roiResult.consecutiveLowRoiTurns
+    );
+
+    // Calculate wasted tokens from recent low ROI turns
+    const sessionROI = getSessionROI(data.sessionId);
+    const tokensWasted = sessionROI.totalRecursiveTokens;
+    const costWasted = tokensWasted * 0.000003; // Rough estimate
+
+    const suggestions: Array<{ label: string; action: string; detail: string }> = [];
+
+    if (routingSuggestion?.suggestedModel) {
+      suggestions.push({
+        label: `Switch to ${routingSuggestion.suggestedModel.split("-").pop()}`,
+        action: "model_suggestion",
+        detail: routingSuggestion.message,
+      });
+    }
+
+    suggestions.push(
+      {
+        label: "Compact",
+        action: "command_suggestion",
+        detail: "Type /compact to clear context",
+      },
+      { label: "Dismiss", action: "dismiss", detail: "" }
+    );
+
+    await createAlert({
+      sessionId: data.sessionId,
+      userId: data.userId,
+      teamId: data.teamId,
+      eventId: data.eventId,
+      pattern: PATTERN,
+      severity: "warning",
+      tokensWasted,
+      costWastedUsd: costWasted,
+      fileInvolved: null,
+      occurrences: roiResult.consecutiveLowRoiTurns,
+      messageTitle: "Low productivity detected",
+      messageBody: `ROI has been below 30% for ${roiResult.consecutiveLowRoiTurns} consecutive turns. ${Math.round(roiResult.roiScore * 100)}% of tokens produced actionable output.${routingSuggestion?.suggestedModel ? ` Consider switching to ${routingSuggestion.suggestedModel} for ${routingSuggestion.savingsPercent}% cost savings.` : ""}`,
+      suggestions,
+      cooldownSeconds: COOLDOWN_SECONDS,
+    });
+
+    setCooldown(data.sessionId, PATTERN);
+  } catch (err) {
+    logger.error({ err, pattern: PATTERN }, "Low ROI detection failed");
+  }
 }
 
 /**

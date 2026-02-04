@@ -39,6 +39,11 @@ export interface WasteDetectionJobData {
   compactionTriggered: boolean;
   contextSizeBefore: number;
   contextSizeAfter: number;
+  // ROI classification data
+  turnNumber: number;
+  responseContent?: string;
+  filesWritten?: string[];
+  testsPassed?: boolean | null;
 }
 
 // Worker to process waste detection jobs
