@@ -5,6 +5,10 @@ import { logger } from "../lib/logger.js";
 import type { AuthContext } from "../middleware/auth.js";
 import { captureEvent, getOrCreateSession } from "../events/capture.js";
 import { detectTool } from "../lib/tool-detection.js";
+import { preflightAnalysis, getPruneSuggestion } from "../middleware/preflight.js";
+import { publishPruneSuggestion, type PruneSuggestionEvent } from "../stream/publisher.js";
+import { checkBudget, updateBudgetUsage } from "../budget/enforcer.js";
+import { calculateCost } from "@prune/shared";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com";
 
@@ -13,8 +17,18 @@ export const anthropicRouter = new Hono<{
     auth: AuthContext;
     correlationId: string;
     logger: Logger;
+    pruneSuggestion?: PruneSuggestionEvent;
+    preflightAnalysis?: {
+      totalTokens: number;
+      relevantTokens: number;
+      noiseTokens: number;
+      processingTimeMs: number;
+    };
   };
 }>();
+
+// Apply pre-flight analysis middleware to POST requests (the messages endpoint)
+anthropicRouter.post("/*", preflightAnalysis({ enabled: true, timeoutMs: 50 }));
 
 // Handle all Anthropic API routes
 anthropicRouter.all("/*", async (c) => {
@@ -58,6 +72,60 @@ anthropicRouter.all("/*", async (c) => {
     });
   } catch {
     sessionId = crypto.randomUUID();
+  }
+
+  // Check for prune suggestion from pre-flight analysis and publish if present
+  const pruneSuggestion = getPruneSuggestion(c);
+  if (pruneSuggestion) {
+    reqLogger.info(
+      { sessionId, estimatedSavings: pruneSuggestion.estimated_savings_usd },
+      "Publishing prune suggestion"
+    );
+    publishPruneSuggestion(sessionId, pruneSuggestion);
+  }
+
+  // Estimate cost for budget check (rough estimate based on input tokens)
+  const estimatedInputTokens = requestBody ? Math.ceil(requestBody.length / 4) : 0;
+  const estimatedCost = calculateCost("anthropic", model, estimatedInputTokens, 1000, 0);
+  const projectName = (parsedBody?.["task_metadata"] as { repo?: string })?.repo ?? null;
+
+  // Check budget before forwarding
+  const budgetResult = await checkBudget({
+    userId: auth.userId,
+    teamId: auth.teamId,
+    model,
+    projectName,
+    sessionId,
+    estimatedCostUsd: estimatedCost,
+  });
+
+  // If blocked, return 429 with budget error
+  if (budgetResult.blocked && budgetResult.error) {
+    reqLogger.info(
+      { userId: auth.userId, teamId: auth.teamId, error: budgetResult.error.type },
+      "Request blocked due to budget limit"
+    );
+    return c.json(
+      {
+        error: budgetResult.error.type,
+        message: budgetResult.error.message,
+        budget: budgetResult.error.budget,
+        spent: budgetResult.error.spent,
+      },
+      429
+    );
+  }
+
+  // If model was downgraded, update the request body
+  let actualModel = model;
+  if (budgetResult.downgraded && budgetResult.newModel && parsedBody) {
+    actualModel = budgetResult.newModel;
+    parsedBody["model"] = actualModel;
+    requestBody = JSON.stringify(parsedBody);
+    reqLogger.info(
+      { originalModel: model, newModel: actualModel },
+      "Model downgraded due to budget threshold"
+    );
   }
 
   // Forward headers, replacing the API key with the real one
@@ -137,17 +205,25 @@ anthropicRouter.all("/*", async (c) => {
             if (done) {
               // Capture the event after streaming completes
               const latencyMs = Date.now() - startTime;
+              const actualCost = calculateCost("anthropic", actualModel, tokensIn, tokensOut, tokensCached);
               captureEvent({
                 sessionId,
                 userId: auth.userId,
                 teamId: auth.teamId,
                 provider: "anthropic",
                 tool,
-                model,
+                model: actualModel,
                 tokensIn,
                 tokensOut,
                 tokensCached,
                 latencyMs,
+              });
+              // Update budget usage
+              updateBudgetUsage({
+                userId: auth.userId,
+                teamId: auth.teamId,
+                costUsd: actualCost,
+                tokenCount: tokensIn + tokensOut,
               });
               break;
             }
@@ -226,6 +302,9 @@ anthropicRouter.all("/*", async (c) => {
       // Not JSON or no usage field
     }
 
+    // Calculate actual cost
+    const actualCost = calculateCost("anthropic", actualModel, tokensIn, tokensOut, tokensCached);
+
     // Capture the event (fire and forget - never blocks response)
     captureEvent({
       sessionId,
@@ -233,11 +312,19 @@ anthropicRouter.all("/*", async (c) => {
       teamId: auth.teamId,
       provider: "anthropic",
       tool,
-      model,
+      model: actualModel,
       tokensIn,
       tokensOut,
       tokensCached,
       latencyMs,
+    });
+
+    // Update budget usage
+    updateBudgetUsage({
+      userId: auth.userId,
+      teamId: auth.teamId,
+      costUsd: actualCost,
+      tokenCount: tokensIn + tokensOut,
     });
 
     reqLogger.info(

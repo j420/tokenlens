@@ -6,6 +6,11 @@ import { logger, createRequestLogger } from "./lib/logger.js";
 import { authMiddleware, type AuthContext } from "./middleware/auth.js";
 import { anthropicRouter } from "./providers/anthropic.js";
 import { openaiRouter } from "./providers/openai.js";
+import { streamRouter } from "./stream/websocket.js";
+import { dashboardRouter } from "./api/dashboard.js";
+import { analyzeRouter } from "./api/analyze.js";
+import { teamRouter } from "./api/team.js";
+import { predictRouter } from "./api/predict.js";
 
 // Define the Variables type for context
 type Variables = {
@@ -37,6 +42,10 @@ app.get("/api/v1/health", (c) => {
   });
 });
 
+// WebSocket stream endpoint - no auth for now (auth via session ID)
+// In production, you'd want to authenticate the WebSocket connection
+app.route("/api/v1/stream", streamRouter);
+
 // API routes requiring authentication
 const api = new Hono<{ Variables: Variables }>();
 
@@ -49,6 +58,30 @@ api.route("/openai", openaiRouter);
 
 // Mount API under /api/v1/proxy
 app.route("/api/v1/proxy", api);
+
+// Dashboard API (requires auth)
+const dashboardApi = new Hono<{ Variables: Variables }>();
+dashboardApi.use("*", authMiddleware);
+dashboardApi.route("/", dashboardRouter);
+app.route("/api/v1/dashboard", dashboardApi);
+
+// Context analysis API (requires auth)
+const analyzeApi = new Hono<{ Variables: Variables }>();
+analyzeApi.use("*", authMiddleware);
+analyzeApi.route("/", analyzeRouter);
+app.route("/api/v1/analyze", analyzeApi);
+
+// Team management API (requires auth)
+const teamApi = new Hono<{ Variables: Variables }>();
+teamApi.use("*", authMiddleware);
+teamApi.route("/", teamRouter);
+app.route("/api/v1/team", teamApi);
+
+// Prediction API (requires auth)
+const predictApi = new Hono<{ Variables: Variables }>();
+predictApi.use("*", authMiddleware);
+predictApi.route("/", predictRouter);
+app.route("/api/v1/predict", predictApi);
 
 // 404 handler
 app.notFound((c) => {

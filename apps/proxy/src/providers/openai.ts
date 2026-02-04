@@ -5,6 +5,8 @@ import { logger } from "../lib/logger.js";
 import type { AuthContext } from "../middleware/auth.js";
 import { captureEvent, getOrCreateSession } from "../events/capture.js";
 import { detectTool } from "../lib/tool-detection.js";
+import { preflightAnalysis, getPruneSuggestion } from "../middleware/preflight.js";
+import { publishPruneSuggestion, type PruneSuggestionEvent } from "../stream/publisher.js";
 
 const OPENAI_API_URL = "https://api.openai.com";
 
@@ -13,8 +15,18 @@ export const openaiRouter = new Hono<{
     auth: AuthContext;
     correlationId: string;
     logger: Logger;
+    pruneSuggestion?: PruneSuggestionEvent;
+    preflightAnalysis?: {
+      totalTokens: number;
+      relevantTokens: number;
+      noiseTokens: number;
+      processingTimeMs: number;
+    };
   };
 }>();
+
+// Apply pre-flight analysis middleware to POST requests (the chat completions endpoint)
+openaiRouter.post("/*", preflightAnalysis({ enabled: true, timeoutMs: 50 }));
 
 // Handle all OpenAI API routes
 openaiRouter.all("/*", async (c) => {
@@ -58,6 +70,16 @@ openaiRouter.all("/*", async (c) => {
     });
   } catch {
     sessionId = crypto.randomUUID();
+  }
+
+  // Check for prune suggestion from pre-flight analysis and publish if present
+  const pruneSuggestion = getPruneSuggestion(c);
+  if (pruneSuggestion) {
+    reqLogger.info(
+      { sessionId, estimatedSavings: pruneSuggestion.estimated_savings_usd },
+      "Publishing prune suggestion"
+    );
+    publishPruneSuggestion(sessionId, pruneSuggestion);
   }
 
   // Forward headers, replacing the API key with the real one
