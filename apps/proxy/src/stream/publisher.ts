@@ -216,3 +216,10 @@ export function publishCompactionEvent(params: {
 
   streamPublisher.publish(params.sessionId, event);
 }
+
+/**
+ * Publish a prune suggestion event when context could be optimized
+ */
+export function publishPruneSuggestion(sessionId: string, suggestion: PruneSuggestionEvent): void {
+  streamPublisher.publish(sessionId, suggestion);
+}

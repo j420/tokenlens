@@ -8,6 +8,7 @@ import { anthropicRouter } from "./providers/anthropic.js";
 import { openaiRouter } from "./providers/openai.js";
 import { streamRouter } from "./stream/websocket.js";
 import { dashboardRouter } from "./api/dashboard.js";
+import { analyzeRouter } from "./api/analyze.js";
 
 // Define the Variables type for context
 type Variables = {
@@ -61,6 +62,12 @@ const dashboardApi = new Hono<{ Variables: Variables }>();
 dashboardApi.use("*", authMiddleware);
 dashboardApi.route("/", dashboardRouter);
 app.route("/api/v1/dashboard", dashboardApi);
+
+// Context analysis API (requires auth)
+const analyzeApi = new Hono<{ Variables: Variables }>();
+analyzeApi.use("*", authMiddleware);
+analyzeApi.route("/", analyzeRouter);
+app.route("/api/v1/analyze", analyzeApi);
 
 // 404 handler
 app.notFound((c) => {

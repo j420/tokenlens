@@ -228,6 +228,33 @@ export const alerts = pgTable(
   ]
 );
 
+// Auto-trim rules table - per-repo context pruning rules
+export const autoTrimRules = pgTable(
+  "auto_trim_rules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    repo_identifier: text("repo_identifier").notNull(), // e.g., "my-app" or "github.com/user/repo"
+    question_pattern: text("question_pattern"), // e.g., "CSS questions", "test files"
+    included_paths: jsonb("included_paths").$type<string[]>().notNull().default([]), // globs like "src/**/*.ts"
+    excluded_paths: jsonb("excluded_paths").$type<string[]>().notNull().default([]), // globs like "**/*.test.ts"
+    max_context_tokens: integer("max_context_tokens"), // optional cap on context size
+    enabled: boolean("enabled").notNull().default(true),
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("auto_trim_rules_user_id_idx").on(table.user_id),
+    index("auto_trim_rules_repo_idx").on(table.repo_identifier),
+  ]
+);
+
 // Type exports for use in application code
 export type Team = typeof teams.$inferSelect;
 export type NewTeam = typeof teams.$inferInsert;
@@ -246,3 +273,6 @@ export type NewEvent = typeof events.$inferInsert;
 
 export type Alert = typeof alerts.$inferSelect;
 export type NewAlert = typeof alerts.$inferInsert;
+
+export type AutoTrimRule = typeof autoTrimRules.$inferSelect;
+export type NewAutoTrimRule = typeof autoTrimRules.$inferInsert;
