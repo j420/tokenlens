@@ -4,9 +4,23 @@ import { v4 as uuidv4 } from "uuid";
 import {
   quickAnalyze,
   generatePruneSuggestion,
+  predictCost,
+  hasEnoughDataForPrediction,
   type PruneSuggestion,
+  type PredictionResult,
+  type TaskType,
 } from "@prune/intelligence";
 import type { AuthContext } from "./auth.js";
+
+// Cost prediction info attached to context
+export interface CostPredictionInfo {
+  predictedCostUsd: number;
+  confidenceIntervalLow: number;
+  confidenceIntervalHigh: number;
+  confidence: number;
+  formatted: string;
+  hasEnoughData: boolean;
+}
 
 // Base variables type for pre-flight analysis
 // The auth field is optional here since we add it after auth middleware runs
@@ -15,6 +29,7 @@ type PreflightVariables = {
   logger: Logger;
   auth?: AuthContext;
   pruneSuggestion?: PruneSuggestion;
+  costPrediction?: CostPredictionInfo;
   preflightAnalysis?: {
     totalTokens: number;
     relevantTokens: number;
@@ -30,6 +45,8 @@ interface PreflightOptions {
   timeoutMs?: number;
   /** Minimum context size to trigger analysis (default: 2000 tokens) */
   minContextTokens?: number;
+  /** Enable cost prediction (default: true) */
+  enableCostPrediction?: boolean;
 }
 
 /**
@@ -42,7 +59,7 @@ interface PreflightOptions {
  * This middleware is designed to add <50ms latency to requests.
  */
 export function preflightAnalysis(options: PreflightOptions = {}) {
-  const { enabled = true, timeoutMs = 50 } = options;
+  const { enabled = true, timeoutMs = 50, enableCostPrediction = true } = options;
 
   return async (c: Context<{ Variables: PreflightVariables }>, next: Next) => {
     if (!enabled) {
@@ -56,9 +73,21 @@ export function preflightAnalysis(options: PreflightOptions = {}) {
     // This works for both Anthropic and OpenAI formats
     let prompt = "";
     let context = "";
+    let model = "unknown";
+    let sessionDepth = 1;
 
     try {
       const body = await c.req.json();
+
+      // Extract model from request
+      if (body.model) {
+        model = body.model;
+      }
+
+      // Estimate session depth from message count
+      if (body.messages && Array.isArray(body.messages)) {
+        sessionDepth = Math.ceil(body.messages.length / 2);
+      }
 
       // Anthropic format: messages array
       if (body.messages && Array.isArray(body.messages)) {
@@ -161,6 +190,48 @@ export function preflightAnalysis(options: PreflightOptions = {}) {
             "Pre-flight analysis complete, no pruning suggested"
           );
         }
+
+        // Generate cost prediction if enabled
+        if (enableCostPrediction && analysis) {
+          try {
+            const taskType = inferTaskType(prompt);
+            const prediction = predictCost({
+              taskType,
+              model,
+              estimatedContextTokens: analysis.totalTokens,
+              repoIdentifier: null, // Would be extracted from task_metadata in real impl
+              sessionDepth,
+              hourOfDay: new Date().getHours(),
+            });
+
+            // Only attach prediction if we have enough confidence
+            if (prediction.confidence >= 0.3 || !hasEnoughDataForPrediction()) {
+              const formatted = hasEnoughDataForPrediction()
+                ? `$${prediction.predictedCostUsd.toFixed(2)} \u00B1 $${(prediction.confidenceIntervalHigh - prediction.predictedCostUsd).toFixed(2)}`
+                : prediction.reason;
+
+              c.set("costPrediction", {
+                predictedCostUsd: prediction.predictedCostUsd,
+                confidenceIntervalLow: prediction.confidenceIntervalLow,
+                confidenceIntervalHigh: prediction.confidenceIntervalHigh,
+                confidence: prediction.confidence,
+                formatted,
+                hasEnoughData: hasEnoughDataForPrediction(),
+              });
+
+              reqLogger.debug(
+                {
+                  requestId,
+                  predictedCost: prediction.predictedCostUsd,
+                  confidence: prediction.confidence,
+                },
+                "Cost prediction generated"
+              );
+            }
+          } catch (predErr) {
+            reqLogger.debug({ err: predErr }, "Cost prediction failed");
+          }
+        }
       }
     } catch (err) {
       // Don't block the request on analysis errors
@@ -171,8 +242,54 @@ export function preflightAnalysis(options: PreflightOptions = {}) {
   };
 }
 
-// Export the prune suggestion type for use in providers
-export type { PruneSuggestion };
+/**
+ * Infer task type from prompt text.
+ */
+function inferTaskType(prompt: string): TaskType {
+  const lower = prompt.toLowerCase();
+
+  if (
+    lower.includes("refactor") ||
+    lower.includes("restructure") ||
+    lower.includes("reorganize") ||
+    lower.includes("clean up")
+  ) {
+    return "refactor";
+  }
+
+  if (
+    lower.includes("debug") ||
+    lower.includes("fix") ||
+    lower.includes("bug") ||
+    lower.includes("error") ||
+    lower.includes("issue")
+  ) {
+    return "debug";
+  }
+
+  if (
+    lower.includes("test") ||
+    lower.includes("spec") ||
+    lower.includes("coverage")
+  ) {
+    return "test";
+  }
+
+  if (
+    lower.includes("add") ||
+    lower.includes("implement") ||
+    lower.includes("create") ||
+    lower.includes("build") ||
+    lower.includes("feature")
+  ) {
+    return "feature";
+  }
+
+  return "unknown";
+}
+
+// Export types for use in providers
+export type { PruneSuggestion, PredictionResult };
 
 /**
  * Get prune suggestion from context (if available)
@@ -191,4 +308,13 @@ export function getPreflightAnalysis<T extends { preflightAnalysis?: PreflightVa
   c: Context<{ Variables: T }>
 ): PreflightVariables["preflightAnalysis"] | undefined {
   return c.get("preflightAnalysis") as PreflightVariables["preflightAnalysis"] | undefined;
+}
+
+/**
+ * Get cost prediction from context (if available)
+ */
+export function getCostPrediction<T extends { costPrediction?: CostPredictionInfo }>(
+  c: Context<{ Variables: T }>
+): CostPredictionInfo | undefined {
+  return c.get("costPrediction") as CostPredictionInfo | undefined;
 }

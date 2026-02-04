@@ -55,3 +55,19 @@ export {
   type LostReference,
   type CompactionDiff,
 } from "./compaction-auditor.js";
+
+// Cost Predictor
+export {
+  MIN_EVENTS_FOR_PREDICTION,
+  setModelWeights,
+  getModelWeights,
+  hasEnoughDataForPrediction,
+  predictCost,
+  trainModel,
+  formatPrediction,
+  type TaskType,
+  type PredictionInput,
+  type PredictionResult,
+  type ModelWeights,
+  type TrainingDataPoint,
+} from "./cost-predictor.js";

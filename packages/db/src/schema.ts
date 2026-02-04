@@ -476,6 +476,65 @@ export const autoTrimRules = pgTable(
   ]
 );
 
+// Cost prediction model weights table
+export const predictionModels = pgTable(
+  "prediction_models",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    team_id: uuid("team_id").references(() => teams.id, { onDelete: "cascade" }),
+    // Null team_id means global model
+    weights: jsonb("weights").notNull(), // ModelWeights from cost-predictor
+    event_count: integer("event_count").notNull(),
+    mean_absolute_error: real("mean_absolute_error").notNull(),
+    r2_score: real("r2_score").notNull(),
+    trained_at: timestamp("trained_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    is_active: boolean("is_active").notNull().default(true),
+  },
+  (table) => [
+    index("prediction_models_team_id_idx").on(table.team_id),
+    index("prediction_models_is_active_idx").on(table.is_active),
+  ]
+);
+
+// Individual predictions for tracking accuracy
+export const predictions = pgTable(
+  "predictions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    user_id: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    session_id: uuid("session_id").references(() => sessions.id, { onDelete: "cascade" }),
+    event_id: uuid("event_id").references(() => events.id, { onDelete: "cascade" }),
+    // Prediction inputs
+    task_type: taskTypeEnum("task_type").notNull(),
+    model: text("model").notNull(),
+    estimated_context_tokens: integer("estimated_context_tokens").notNull(),
+    repo_identifier: text("repo_identifier"),
+    session_depth: integer("session_depth").notNull(),
+    hour_of_day: integer("hour_of_day").notNull(),
+    // Prediction outputs
+    predicted_cost_usd: real("predicted_cost_usd").notNull(),
+    confidence_interval_low: real("confidence_interval_low").notNull(),
+    confidence_interval_high: real("confidence_interval_high").notNull(),
+    confidence: real("confidence").notNull(),
+    // Actual result (filled in after request completes)
+    actual_cost_usd: real("actual_cost_usd"),
+    prediction_error: real("prediction_error"), // actual - predicted
+    // Metadata
+    created_at: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("predictions_user_id_idx").on(table.user_id),
+    index("predictions_session_id_idx").on(table.session_id),
+    index("predictions_created_at_idx").on(table.created_at),
+  ]
+);
+
 // Type exports for use in application code
 export type Team = typeof teams.$inferSelect;
 export type NewTeam = typeof teams.$inferInsert;
@@ -518,3 +577,9 @@ export type NewBudgetUsage = typeof budgetUsage.$inferInsert;
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
+
+export type PredictionModel = typeof predictionModels.$inferSelect;
+export type NewPredictionModel = typeof predictionModels.$inferInsert;
+
+export type Prediction = typeof predictions.$inferSelect;
+export type NewPrediction = typeof predictions.$inferInsert;

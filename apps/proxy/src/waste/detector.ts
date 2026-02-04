@@ -336,8 +336,8 @@ async function detectLowROI(
       costWastedUsd: costWasted,
       fileInvolved: null,
       occurrences: roiResult.consecutiveLowRoiTurns,
-      messageTitle: "Low productivity detected",
-      messageBody: `ROI has been below 30% for ${roiResult.consecutiveLowRoiTurns} consecutive turns. ${Math.round(roiResult.roiScore * 100)}% of tokens produced actionable output.${routingSuggestion?.suggestedModel ? ` Consider switching to ${routingSuggestion.suggestedModel} for ${routingSuggestion.savingsPercent}% cost savings.` : ""}`,
+      messageTitle: "Consider a different approach",
+      messageBody: `The last ${roiResult.consecutiveLowRoiTurns} turns haven't produced much usable output. This sometimes happens when the task is unclear or the model is exploring different solutions.${routingSuggestion?.suggestedModel ? ` Switching to ${routingSuggestion.suggestedModel} could save ${routingSuggestion.savingsPercent}% while iterating.` : ""}`,
       suggestions,
       cooldownSeconds: COOLDOWN_SECONDS,
     });
@@ -546,9 +546,12 @@ async function detectCompactionStorm(data: WasteDetectionJobData): Promise<void>
         costWastedUsd: costWasted,
         fileInvolved: null,
         occurrences: compactionEvents.length,
-        messageTitle: "Compaction storm",
-        messageBody: `Context has compacted ${compactionEvents.length} times in the last ${TIME_WINDOW_MINUTES} minutes. Each compaction costs ~30K tokens in overhead. Total waste: ~${(tokensWasted / 1000).toFixed(0)}K tokens ($${costWasted.toFixed(2)}) just on compaction summaries.`,
-        suggestions: [{ label: "Dismiss", action: "dismiss", detail: "" }],
+        messageTitle: "Frequent context resets",
+        messageBody: `Context has been summarized ${compactionEvents.length} times in the last ${TIME_WINDOW_MINUTES} minutes, adding ~${(tokensWasted / 1000).toFixed(0)}K tokens ($${costWasted.toFixed(2)}) in overhead. This session may be too long for the context window. Starting a fresh session with a clear task description will likely be more effective.`,
+        suggestions: [
+          { label: "Start fresh session", action: "command_suggestion", detail: "End this session and start a new one with a focused goal" },
+          { label: "Dismiss", action: "dismiss", detail: "" },
+        ],
         cooldownSeconds: COOLDOWN_SECONDS,
       });
 
@@ -614,13 +617,13 @@ async function detectZeroAcceptance(data: WasteDetectionJobData): Promise<void> 
         costWastedUsd: costWasted,
         fileInvolved: null,
         occurrences: recentEvents.length,
-        messageTitle: "Low productivity",
-        messageBody: `${(totalTokens / 1000).toFixed(0)}K tokens spent in the last ${minutesElapsed || TIME_WINDOW_MINUTES} minutes ($${costWasted.toFixed(2)}). 0 code changes accepted. The model may be stuck.`,
+        messageTitle: "No accepted changes",
+        messageBody: `${(totalTokens / 1000).toFixed(0)}K tokens used in the last ${minutesElapsed || TIME_WINDOW_MINUTES} minutes ($${costWasted.toFixed(2)}) without any code changes being accepted. Consider breaking the task into smaller pieces or providing a specific example of what you want.`,
         suggestions: [
           {
-            label: "Switch to Flash",
+            label: "Try a faster model",
             action: "model_suggestion",
-            detail: "Switch to a faster model for iteration",
+            detail: "A faster, cheaper model can help with exploratory iteration",
           },
           { label: "Dismiss", action: "dismiss", detail: "" },
         ],

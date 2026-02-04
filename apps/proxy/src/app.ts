@@ -10,6 +10,7 @@ import { streamRouter } from "./stream/websocket.js";
 import { dashboardRouter } from "./api/dashboard.js";
 import { analyzeRouter } from "./api/analyze.js";
 import { teamRouter } from "./api/team.js";
+import { predictRouter } from "./api/predict.js";
 
 // Define the Variables type for context
 type Variables = {
@@ -75,6 +76,12 @@ const teamApi = new Hono<{ Variables: Variables }>();
 teamApi.use("*", authMiddleware);
 teamApi.route("/", teamRouter);
 app.route("/api/v1/team", teamApi);
+
+// Prediction API (requires auth)
+const predictApi = new Hono<{ Variables: Variables }>();
+predictApi.use("*", authMiddleware);
+predictApi.route("/", predictRouter);
+app.route("/api/v1/predict", predictApi);
 
 // 404 handler
 app.notFound((c) => {

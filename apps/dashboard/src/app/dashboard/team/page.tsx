@@ -33,6 +33,15 @@ interface BudgetRule {
   currentUsage: number;
 }
 
+interface PredictionAccuracy {
+  week: string;
+  totalPredictions: number;
+  avgPredictedCost: number;
+  avgActualCost: number;
+  meanAbsoluteError: number;
+  accuracyPercent: number;
+}
+
 interface TeamDashboardData {
   team: {
     id: string;
@@ -48,6 +57,7 @@ interface TeamDashboardData {
   developers: DeveloperStats[];
   projects: ProjectStats[];
   budgetRules: BudgetRule[];
+  predictionAccuracy?: PredictionAccuracy[];
 }
 
 // Mock data for demo
@@ -158,6 +168,32 @@ const MOCK_DATA: TeamDashboardData = {
       limitUsd: 1000,
       action: "downgrade",
       currentUsage: 0.8,
+    },
+  ],
+  predictionAccuracy: [
+    {
+      week: "Jan 20-26",
+      totalPredictions: 245,
+      avgPredictedCost: 0.42,
+      avgActualCost: 0.48,
+      meanAbsoluteError: 0.12,
+      accuracyPercent: 75,
+    },
+    {
+      week: "Jan 27-Feb 2",
+      totalPredictions: 312,
+      avgPredictedCost: 0.38,
+      avgActualCost: 0.41,
+      meanAbsoluteError: 0.09,
+      accuracyPercent: 82,
+    },
+    {
+      week: "Feb 3-9",
+      totalPredictions: 289,
+      avgPredictedCost: 0.45,
+      avgActualCost: 0.47,
+      meanAbsoluteError: 0.08,
+      accuracyPercent: 85,
     },
   ],
 };
@@ -352,7 +388,7 @@ export default function TeamDashboardPage() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
         <StatCard
           title="Team ROI"
           value={`${Math.round(data.teamRoi * 100)}%`}
@@ -371,10 +407,86 @@ export default function TeamDashboardPage() {
         />
       </div>
 
+      {/* Prediction Accuracy */}
+      {data.predictionAccuracy && data.predictionAccuracy.length > 0 && (
+        <div>
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">Predicted vs Actual</h3>
+          <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <p className="mb-4 text-sm text-gray-600">
+              Comparing cost predictions to actual costs over recent weeks. Higher accuracy means better budget planning.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead>
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Week
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Predictions
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Avg Predicted
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Avg Actual
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      MAE
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                      Accuracy
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {data.predictionAccuracy.map((week, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">
+                        {week.week}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                        {week.totalPredictions}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                        {formatCurrency(week.avgPredictedCost)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                        {formatCurrency(week.avgActualCost)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                        {formatCurrency(week.meanAbsoluteError)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right">
+                        <span
+                          className={cn(
+                            "font-medium",
+                            week.accuracyPercent >= 80
+                              ? "text-prune-green"
+                              : week.accuracyPercent >= 60
+                              ? "text-amber-600"
+                              : "text-prune-red"
+                          )}
+                        >
+                          {week.accuracyPercent}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-4 text-xs text-gray-500">
+              MAE = Mean Absolute Error (average difference between predicted and actual cost per request)
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* By Developer table */}
       <div>
         <h3 className="mb-4 text-lg font-semibold text-gray-900">By Developer</h3>
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -429,7 +541,7 @@ export default function TeamDashboardPage() {
       {/* By Project table */}
       <div>
         <h3 className="mb-4 text-lg font-semibold text-gray-900">By Project</h3>
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -511,7 +623,7 @@ export default function TeamDashboardPage() {
           <p className="mt-1 text-sm text-gray-500">
             Budget alerts will be sent to this Slack channel.
           </p>
-          <div className="mt-3 flex gap-3">
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <input
               type="url"
               value={slackWebhook}
@@ -522,7 +634,7 @@ export default function TeamDashboardPage() {
             <button
               onClick={handleSaveSlack}
               disabled={savingSlack}
-              className="rounded-md bg-prune-green px-4 py-2 text-sm font-medium text-white hover:bg-prune-green/90 disabled:opacity-50"
+              className="w-full rounded-md bg-prune-green px-4 py-2 text-sm font-medium text-white hover:bg-prune-green/90 disabled:opacity-50 sm:w-auto"
             >
               {savingSlack ? "Saving..." : "Configure"}
             </button>
@@ -539,7 +651,7 @@ export default function TeamDashboardPage() {
       </div>
 
       {/* Export Buttons */}
-      <div className="flex gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row">
         <button
           onClick={() => handleExport("pdf")}
           className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
