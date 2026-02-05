@@ -1197,27 +1197,68 @@ Examples:
   %(prog)s myfile.py
   %(prog)s --json myfile.js
   %(prog)s --output squeezed.py original.py
+  %(prog)s --json --language python --input code.txt --output result.json
         """
     )
 
     parser.add_argument("file", nargs="?", help="File to squeeze")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
-    parser.add_argument("--output", "-o", help="Write squeezed code to file")
+    parser.add_argument("--output", "-o", help="Write output to file (squeezed code or JSON)")
+    parser.add_argument("--input", "-i", help="Read code from this file (instead of positional arg)")
+    parser.add_argument("--language", "-l", help="Language: python, javascript, typescript")
     parser.add_argument("--demo", action="store_true", help="Run demo with sample code")
 
     args = parser.parse_args()
 
-    if args.demo or not args.file:
+    if args.demo:
         main()
         return
 
+    # Determine input source and language
+    if args.input:
+        # Read from --input file
+        code = Path(args.input).read_text()
+        language = args.language
+        if not language:
+            # Try to detect from original file if it has an extension
+            print("Error: --language is required when using --input", file=sys.stderr)
+            sys.exit(1)
+    elif args.file:
+        # Read from positional file argument
+        file_path = Path(args.file)
+        code = file_path.read_text()
+        # Auto-detect language from extension
+        ext_to_lang = {
+            ".py": "python",
+            ".js": "javascript",
+            ".jsx": "javascript",
+            ".ts": "typescript",
+            ".tsx": "typescript",
+            ".mjs": "javascript",
+            ".cjs": "javascript",
+        }
+        language = args.language or ext_to_lang.get(file_path.suffix.lower())
+        if not language:
+            print(f"Error: Unknown file extension {file_path.suffix}. Use --language to specify.", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # No input specified, run demo
+        main()
+        return
+
+    # Create squeezer and process
     squeezer = SemanticSqueezer()
-    result = squeezer.squeeze_file(args.file)
+    result = squeezer.squeeze(code, language)
 
     if args.json:
         output = result.to_dict()
         output["squeezed_code"] = result.squeezed_code
-        print(json.dumps(output, indent=2))
+        json_output = json.dumps(output, indent=2)
+
+        if args.output:
+            Path(args.output).write_text(json_output)
+        else:
+            print(json_output)
     else:
         print(f"Original: {result.original_tokens} tokens")
         print(f"Squeezed: {result.squeezed_tokens} tokens")

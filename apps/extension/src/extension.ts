@@ -6,9 +6,13 @@
  */
 
 import * as vscode from "vscode";
+import * as path from "path";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/tokenizer";
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
-import { squeezeFile, type SqueezeResult } from "@prune/squeezer";
+
+const execAsync = promisify(exec);
 
 // ============================================================================
 // State
@@ -16,12 +20,13 @@ import { squeezeFile, type SqueezeResult } from "@prune/squeezer";
 
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
+let pythonPath: string | null = null;
+let squeezerPath: string | null = null;
 
 // ============================================================================
-// Activation
+// Logging
 // ============================================================================
 
-// Prefix for all console logs to make them easy to filter in DevTools
 const LOG_PREFIX = "[Prune]";
 
 function log(message: string) {
@@ -34,6 +39,156 @@ function logError(message: string, error?: unknown) {
   console.error(LOG_PREFIX, message, errorMsg);
   outputChannel?.appendLine(`ERROR: ${message} ${errorMsg}`);
 }
+
+// ============================================================================
+// Python Squeezer Integration
+// ============================================================================
+
+interface PythonSqueezeResult {
+  original_tokens: number;
+  squeezed_tokens: number;
+  savings: number;
+  savings_percent: number;
+  is_valid: boolean;
+  error: string | null;
+  squeezed_code: string;
+}
+
+/**
+ * Find Python executable
+ */
+async function findPython(): Promise<string | null> {
+  const pythonCommands = ["python3", "python"];
+
+  for (const cmd of pythonCommands) {
+    try {
+      const { stdout } = await execAsync(`${cmd} --version`, { timeout: 5000 });
+      if (stdout.includes("Python 3")) {
+        log(`Found Python: ${cmd} (${stdout.trim()})`);
+        return cmd;
+      }
+    } catch {
+      // Try next
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find the Python squeezer script
+ */
+function findSqueezerScript(extensionPath: string): string | null {
+  // The squeezer should be in packages/squeezer-py relative to the workspace
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+
+  // Try relative to extension
+  const possiblePaths = [
+    // Development: relative to workspace
+    path.join(extensionPath, "..", "..", "packages", "squeezer-py", "semantic_squeezer.py"),
+    // Installed: bundled with extension
+    path.join(extensionPath, "squeezer-py", "semantic_squeezer.py"),
+  ];
+
+  // Also check workspace folders
+  if (workspaceFolders) {
+    for (const folder of workspaceFolders) {
+      possiblePaths.push(
+        path.join(folder.uri.fsPath, "packages", "squeezer-py", "semantic_squeezer.py")
+      );
+    }
+  }
+
+  for (const p of possiblePaths) {
+    try {
+      const fs = require("fs");
+      if (fs.existsSync(p)) {
+        log(`Found squeezer at: ${p}`);
+        return p;
+      }
+    } catch {
+      // Try next
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Check if Python squeezer is available
+ */
+async function checkPythonSqueezer(extensionPath: string): Promise<boolean> {
+  if (pythonPath && squeezerPath) {
+    return true;
+  }
+
+  pythonPath = await findPython();
+  if (!pythonPath) {
+    log("Python 3 not found");
+    return false;
+  }
+
+  squeezerPath = findSqueezerScript(extensionPath);
+  if (!squeezerPath) {
+    log("Squeezer script not found");
+    return false;
+  }
+
+  // Verify tree-sitter is installed
+  try {
+    await execAsync(`${pythonPath} -c "import tree_sitter; import tree_sitter_python; import tree_sitter_javascript"`, {
+      timeout: 10000,
+    });
+    log("Tree-sitter dependencies verified");
+    return true;
+  } catch (error) {
+    log("Tree-sitter not installed. Run: pip install tree-sitter tree-sitter-python tree-sitter-javascript");
+    return false;
+  }
+}
+
+/**
+ * Squeeze code using Python Tree-sitter squeezer
+ */
+async function squeezePython(code: string, language: string): Promise<PythonSqueezeResult> {
+  if (!pythonPath || !squeezerPath) {
+    throw new Error("Python squeezer not available");
+  }
+
+  // Write code to temp file to avoid shell escaping issues
+  const fs = require("fs");
+  const os = require("os");
+  const tempFile = path.join(os.tmpdir(), `prune-squeeze-${Date.now()}.txt`);
+  const outputFile = path.join(os.tmpdir(), `prune-squeeze-${Date.now()}-out.json`);
+
+  try {
+    fs.writeFileSync(tempFile, code, "utf8");
+
+    // Call Python squeezer
+    const cmd = `${pythonPath} "${squeezerPath}" --json --language ${language} --input "${tempFile}" --output "${outputFile}"`;
+    log(`Executing: ${cmd}`);
+
+    await execAsync(cmd, { timeout: 30000 });
+
+    // Read result
+    const resultJson = fs.readFileSync(outputFile, "utf8");
+    const result = JSON.parse(resultJson) as PythonSqueezeResult;
+
+    return result;
+  } finally {
+    // Cleanup temp files
+    try {
+      fs.unlinkSync(tempFile);
+    } catch {}
+    try {
+      fs.unlinkSync(outputFile);
+    } catch {}
+  }
+}
+
+// ============================================================================
+// Activation
+// ============================================================================
 
 export function activate(context: vscode.ExtensionContext) {
   // Create output channel
@@ -49,12 +204,21 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.tooltip = "Click to analyze token count";
   context.subscriptions.push(statusBarItem);
 
+  // Check Python squeezer availability (async, non-blocking)
+  checkPythonSqueezer(context.extensionPath).then((available) => {
+    if (available) {
+      log("Python Telegraphic Squeezer ready");
+    } else {
+      log("Python squeezer not available - install Python 3 and tree-sitter");
+    }
+  });
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.analyzeFile", analyzeCurrentFile),
     vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
-    vscode.commands.registerCommand("prune.squeezeFile", squeezeCurrentFile),
+    vscode.commands.registerCommand("prune.squeezeFile", () => squeezeCurrentFile(context)),
     vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage)
   );
 
@@ -215,7 +379,7 @@ async function copyTokenCount() {
   vscode.window.showInformationMessage("Token count copied: " + formatTokens(tokens));
 }
 
-async function squeezeCurrentFile() {
+async function squeezeCurrentFile(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showWarningMessage("No active editor");
@@ -224,86 +388,137 @@ async function squeezeCurrentFile() {
 
   const text = editor.document.getText();
   const filePath = editor.document.fileName;
-  const config = getConfig();
+  const fileName = filePath.split(/[\\/]/).pop() || "file";
 
-  // Show quick pick to select compression tier
-  const tier = await vscode.window.showQuickPick(
-    [
-      { label: "Lossless", description: "Remove comments & whitespace (~15% savings)", value: "lossless" },
-      { label: "Structural", description: "Keep signatures, compress bodies (~40% savings)", value: "structural" },
-      { label: "Telegraphic", description: "Types and signatures only (~70% savings)", value: "telegraphic" },
-    ],
-    { placeHolder: "Select compression level" }
-  );
+  // Detect language from file extension
+  const ext = path.extname(filePath).toLowerCase();
+  const languageMap: Record<string, string> = {
+    ".py": "python",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+  };
 
-  if (!tier) return;
+  const language = languageMap[ext];
+  if (!language) {
+    vscode.window.showWarningMessage(
+      `Unsupported file type: ${ext}. Supported: .py, .js, .jsx, .ts, .tsx`
+    );
+    return;
+  }
 
-  try {
-    log("---");
-    log("Squeezing: " + filePath);
-    log("Tier: " + tier.label);
+  // Check if Python squeezer is available
+  const pythonAvailable = await checkPythonSqueezer(context.extensionPath);
 
-    const result: SqueezeResult = squeezeFile(text, filePath, {
-      tier: tier.value as "lossless" | "structural" | "telegraphic",
-      preserveTodos: config.preserveTodos,
-      preserveTypeHints: config.preserveTypeHints,
-    });
-
-    log("Result: " + result.diffSummary);
-    log("Original tokens: " + result.originalTokens);
-    log("Compressed tokens: " + result.compressedTokens);
-    log("Savings: " + result.savings + " (" + result.savingsPercent + "%)");
-    log("Valid: " + result.isValid);
-
-    if (result.savings === 0) {
-      // Show the reason why no compression was possible
-      const reason = result.diffSummary || "No compressible content found";
-      vscode.window.showInformationMessage("No savings: " + reason, "View Details").then((action) => {
-        if (action === "View Details") outputChannel.show();
-      });
-      return;
-    }
-
-    // Show results
-    outputChannel.appendLine("---");
-    outputChannel.appendLine("Squeeze: " + filePath.split(/[\\/]/).pop());
-    outputChannel.appendLine("Tier: " + tier.label);
-    outputChannel.appendLine("Original: " + formatTokens(result.originalTokens) + " tokens");
-    outputChannel.appendLine("Compressed: " + formatTokens(result.compressedTokens) + " tokens");
-    outputChannel.appendLine("Savings: " + formatTokens(result.savings) + " tokens (" + result.savingsPercent + "%)");
-    outputChannel.appendLine("Summary: " + result.diffSummary);
-    outputChannel.appendLine("---");
-
-    // Ask user what to do with compressed code
-    const action = await vscode.window.showInformationMessage(
-      "Saved " + formatTokens(result.savings) + " tokens (" + result.savingsPercent + "%)",
-      "Copy to Clipboard",
-      "View in Output",
-      "Replace File"
+  if (!pythonAvailable) {
+    const action = await vscode.window.showWarningMessage(
+      "Python Telegraphic Squeezer requires Python 3 and tree-sitter. Install dependencies?",
+      "Show Instructions",
+      "Cancel"
     );
 
-    if (action === "Copy to Clipboard") {
-      await vscode.env.clipboard.writeText(result.compressedCode);
-      vscode.window.showInformationMessage("Compressed code copied to clipboard");
-    } else if (action === "View in Output") {
-      outputChannel.appendLine("\n=== COMPRESSED CODE ===\n");
-      outputChannel.appendLine(result.compressedCode);
-      outputChannel.appendLine("\n=== END COMPRESSED CODE ===\n");
+    if (action === "Show Instructions") {
+      outputChannel.appendLine("---");
+      outputChannel.appendLine("SETUP: Python Telegraphic Squeezer");
+      outputChannel.appendLine("---");
+      outputChannel.appendLine("");
+      outputChannel.appendLine("1. Install Python 3 (if not already installed)");
+      outputChannel.appendLine("   https://www.python.org/downloads/");
+      outputChannel.appendLine("");
+      outputChannel.appendLine("2. Install tree-sitter dependencies:");
+      outputChannel.appendLine("   pip install tree-sitter tree-sitter-python tree-sitter-javascript");
+      outputChannel.appendLine("");
+      outputChannel.appendLine("3. Restart VS Code and try again");
+      outputChannel.appendLine("---");
       outputChannel.show();
-    } else if (action === "Replace File") {
-      const edit = new vscode.WorkspaceEdit();
-      const fullRange = new vscode.Range(
-        editor.document.positionAt(0),
-        editor.document.positionAt(text.length)
-      );
-      edit.replace(editor.document.uri, fullRange, result.compressedCode);
-      await vscode.workspace.applyEdit(edit);
-      vscode.window.showInformationMessage("File compressed: " + result.savingsPercent + "% savings");
     }
-  } catch (error) {
-    logError("Squeeze error:", error);
-    vscode.window.showErrorMessage("Failed to squeeze file: " + (error instanceof Error ? error.message : String(error)));
+    return;
   }
+
+  // Show progress while squeezing
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Squeezing with Tree-sitter...",
+      cancellable: false,
+    },
+    async () => {
+      try {
+        log("---");
+        log("Squeezing: " + filePath);
+        log("Language: " + language);
+
+        const result = await squeezePython(text, language);
+
+        log("Original tokens: " + result.original_tokens);
+        log("Squeezed tokens: " + result.squeezed_tokens);
+        log("Savings: " + result.savings + " (" + result.savings_percent.toFixed(1) + "%)");
+        log("Valid: " + result.is_valid);
+
+        if (result.error) {
+          log("Error: " + result.error);
+        }
+
+        if (!result.is_valid) {
+          vscode.window.showWarningMessage(
+            "Compression produced invalid syntax. " + (result.error || "Using original file.")
+          );
+          return;
+        }
+
+        if (result.savings <= 0) {
+          vscode.window.showInformationMessage(
+            "No compression possible: " + (result.error || "File is already minimal")
+          );
+          return;
+        }
+
+        // Show results in output channel
+        outputChannel.appendLine("---");
+        outputChannel.appendLine("Squeeze: " + fileName);
+        outputChannel.appendLine("Language: " + language);
+        outputChannel.appendLine("Original: " + formatTokens(result.original_tokens) + " tokens");
+        outputChannel.appendLine("Squeezed: " + formatTokens(result.squeezed_tokens) + " tokens");
+        outputChannel.appendLine("Savings: " + formatTokens(result.savings) + " tokens (" + result.savings_percent.toFixed(1) + "%)");
+        outputChannel.appendLine("---");
+
+        // Ask user what to do
+        const action = await vscode.window.showInformationMessage(
+          `Saved ${formatTokens(result.savings)} tokens (${result.savings_percent.toFixed(1)}%)`,
+          "Copy to Clipboard",
+          "View in Output",
+          "Replace File"
+        );
+
+        if (action === "Copy to Clipboard") {
+          await vscode.env.clipboard.writeText(result.squeezed_code);
+          vscode.window.showInformationMessage("Compressed code copied to clipboard");
+        } else if (action === "View in Output") {
+          outputChannel.appendLine("\n=== COMPRESSED CODE ===\n");
+          outputChannel.appendLine(result.squeezed_code);
+          outputChannel.appendLine("\n=== END COMPRESSED CODE ===\n");
+          outputChannel.show();
+        } else if (action === "Replace File") {
+          const edit = new vscode.WorkspaceEdit();
+          const fullRange = new vscode.Range(
+            editor.document.positionAt(0),
+            editor.document.positionAt(text.length)
+          );
+          edit.replace(editor.document.uri, fullRange, result.squeezed_code);
+          await vscode.workspace.applyEdit(edit);
+          vscode.window.showInformationMessage("File compressed: " + result.savings_percent.toFixed(1) + "% savings");
+        }
+      } catch (error) {
+        logError("Squeeze error:", error);
+        vscode.window.showErrorMessage(
+          "Failed to squeeze: " + (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+  );
 }
 
 // ============================================================================
@@ -311,7 +526,6 @@ async function squeezeCurrentFile() {
 // ============================================================================
 
 async function checkCursorUsage() {
-  // Show progress while loading
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -320,7 +534,6 @@ async function checkCursorUsage() {
     },
     async () => {
       try {
-        // Lazy load state-scraper to avoid activation issues
         const { getCursorStatus, fetchCursorUsageDetailed } = await import("@prune/state-scraper");
 
         const status = await getCursorStatus();
@@ -333,11 +546,9 @@ async function checkCursorUsage() {
 
         const usage = status.usage!;
 
-        // Format the usage message
         const percentUsed = Math.round((usage.requestsUsed / usage.requestsLimit) * 100);
         const resetDateStr = usage.resetDate.toLocaleDateString();
 
-        // Show in output channel with details
         outputChannel.appendLine("---");
         outputChannel.appendLine("Cursor Usage Report");
         outputChannel.appendLine("---");
@@ -350,7 +561,6 @@ async function checkCursorUsage() {
         outputChannel.appendLine("Usage: " + percentUsed + "%");
         outputChannel.appendLine("Resets: " + resetDateStr);
 
-        // Try to get detailed breakdown
         const detailed = await fetchCursorUsageDetailed();
         if (detailed) {
           outputChannel.appendLine("");
@@ -363,7 +573,6 @@ async function checkCursorUsage() {
         }
         outputChannel.appendLine("---");
 
-        // Determine status color/icon based on usage
         let icon: string;
         let message: string;
 
