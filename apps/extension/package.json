@@ -42,10 +42,6 @@
       {
         "command": "prune.showDiff",
         "title": "Prune: Show Squeeze Diff"
-      },
-      {
-        "command": "prune.checkUsage",
-        "title": "Prune: Check Usage"
       }
     ],
     "configuration": {
@@ -109,7 +105,6 @@
   "devDependencies": {
     "@prune/tokenizer": "0.1.0",
     "@prune/squeezer": "0.1.0",
-    "@prune/state-scraper": "0.1.0",
     "@prune/shared": "0.1.0",
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.10.0",

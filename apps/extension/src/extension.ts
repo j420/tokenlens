@@ -8,7 +8,6 @@
 import * as vscode from "vscode";
 import { countTokens, analyzeContent, cleanup, formatTokens } from "@prune/tokenizer";
 import { squeezeFile } from "@prune/squeezer";
-import { runDiagnostics, fetchCursorUsage } from "@prune/state-scraper";
 import { type SqueezeTier, type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
 
 // ============================================================================
@@ -42,8 +41,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.squeezeSelection", squeezeSelection),
     vscode.commands.registerCommand("prune.squeezeFile", squeezeCurrentFile),
-    vscode.commands.registerCommand("prune.showDiff", showDiff),
-    vscode.commands.registerCommand("prune.checkUsage", checkUsage)
+    vscode.commands.registerCommand("prune.showDiff", showDiff)
   );
 
   // Update status bar on selection change
@@ -58,15 +56,6 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Initial status bar update
   updateStatusBar();
-
-  // Run diagnostics in background
-  runDiagnostics().then((diagnostics) => {
-    outputChannel.appendLine("Cursor installed: " + diagnostics.installed);
-    outputChannel.appendLine("State path: " + (diagnostics.statePath || "not found"));
-    outputChannel.appendLine("Has session token: " + diagnostics.hasSessionToken);
-  }).catch((err) => {
-    outputChannel.appendLine("Diagnostics error: " + err);
-  });
 
   // Show welcome message on first install
   const hasShownWelcome = context.globalState.get("prune.hasShownWelcome");
@@ -288,36 +277,6 @@ async function showDiff() {
 
   // Clean up after a delay
   setTimeout(() => disposable.dispose(), 60000);
-}
-
-async function checkUsage() {
-  const statusMessage = vscode.window.setStatusBarMessage(
-    "$(loading~spin) Checking Cursor usage..."
-  );
-
-  try {
-    const usage = await fetchCursorUsage();
-    statusMessage.dispose();
-
-    if (!usage) {
-      vscode.window.showWarningMessage(
-        "Could not fetch usage. Make sure Cursor is installed and you are logged in."
-      );
-      return;
-    }
-
-    const message = [
-      "Plan: " + usage.plan,
-      "Requests: " + usage.requestsUsed + "/" + usage.requestsLimit,
-      "Remaining: " + usage.requestsRemaining,
-      "Resets: " + usage.resetDate.toLocaleDateString(),
-    ].join(" | ");
-
-    vscode.window.showInformationMessage(message);
-  } catch (error) {
-    statusMessage.dispose();
-    vscode.window.showErrorMessage("Failed to check usage: " + error);
-  }
 }
 
 // ============================================================================
