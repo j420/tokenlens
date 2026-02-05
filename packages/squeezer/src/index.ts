@@ -170,7 +170,8 @@ export function squeeze(
   }
 
   // Parse the code
-  parser.setLanguage(langParser as Parser.Language);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parser.setLanguage(langParser as any);
   const tree = parser.parse(code);
 
   // Apply compression based on tier
@@ -509,7 +510,8 @@ function validateCode(code: string, language: SupportedLanguage): boolean {
   if (!langParser) return true;
 
   try {
-    parser.setLanguage(langParser as Parser.Language);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parser.setLanguage(langParser as any);
     const tree = parser.parse(code);
     // Check if the root node has errors
     return !tree.rootNode.hasError;
