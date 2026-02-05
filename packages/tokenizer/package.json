@@ -1,0 +1,22 @@
+{
+  "name": "@prune/tokenizer",
+  "version": "0.1.0",
+  "description": "Local token counting for OpenAI and Anthropic models",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "tiktoken": "^1.0.15",
+    "@anthropic-ai/tokenizer": "^0.0.4",
+    "@prune/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vitest": "^1.2.0"
+  }
+}
