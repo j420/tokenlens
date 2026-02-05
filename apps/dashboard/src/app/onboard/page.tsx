@@ -208,7 +208,123 @@ export default function OnboardPage() {
                     );
                   })}
                 </div>
+              ) : selectedTool === "cursor" ? (
+                /* Detailed Cursor Setup Instructions */
+                <div className="rounded-lg bg-gray-50 p-6">
+                  <div className="mb-6 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Cursor Setup Guide
+                    </h3>
+                    <button
+                      onClick={() => setSelectedTool(null)}
+                      className="text-sm text-gray-500 hover:text-gray-700"
+                    >
+                      Choose different tool
+                    </button>
+                  </div>
+
+                  {/* Step 1 */}
+                  <div className="mb-6">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">1</span>
+                      <h4 className="font-medium text-gray-900">Open Cursor Settings</h4>
+                    </div>
+                    <div className="ml-10 space-y-2 text-sm text-gray-600">
+                      <p>Press <kbd className="rounded bg-gray-200 px-2 py-0.5 font-mono text-xs">Cmd + ,</kbd> (Mac) or <kbd className="rounded bg-gray-200 px-2 py-0.5 font-mono text-xs">Ctrl + ,</kbd> (Windows/Linux)</p>
+                      <p className="text-gray-500">Or click the gear icon in the bottom-left corner of Cursor</p>
+                    </div>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className="mb-6">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">2</span>
+                      <h4 className="font-medium text-gray-900">Navigate to Models Settings</h4>
+                    </div>
+                    <div className="ml-10 space-y-2 text-sm text-gray-600">
+                      <p>In the Settings sidebar, click on <strong>"Models"</strong></p>
+                      <p>Then scroll down to find the <strong>"OpenAI API Key"</strong> section</p>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className="mb-6">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">3</span>
+                      <h4 className="font-medium text-gray-900">Enter Your OpenAI API Key</h4>
+                    </div>
+                    <div className="ml-10 space-y-2 text-sm text-gray-600">
+                      <p>Paste your OpenAI API key in the input field</p>
+                      <p className="text-gray-500">Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-prune-green hover:underline">platform.openai.com/api-keys</a></p>
+                    </div>
+                  </div>
+
+                  {/* Step 4 */}
+                  <div className="mb-6">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">4</span>
+                      <h4 className="font-medium text-gray-900">Enable Base URL Override</h4>
+                    </div>
+                    <div className="ml-10 space-y-2 text-sm text-gray-600">
+                      <p>Check the box that says <strong>"Override OpenAI Base URL"</strong></p>
+                      <p>A new input field will appear below</p>
+                    </div>
+                  </div>
+
+                  {/* Step 5 */}
+                  <div className="mb-6">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">5</span>
+                      <h4 className="font-medium text-gray-900">Paste the Prune Proxy URL</h4>
+                    </div>
+                    <div className="ml-10 space-y-3">
+                      <p className="text-sm text-gray-600">Copy this URL and paste it in the Base URL field:</p>
+                      <div className="rounded-md bg-gray-900 p-4 font-mono text-sm">
+                        <div className="flex items-center justify-between gap-2">
+                          <code className="text-green-400 break-all">{getProxyUrl("cursor")}</code>
+                          <button
+                            onClick={handleCopyToClipboard}
+                            className="shrink-0 rounded bg-gray-700 px-3 py-1 text-xs text-white hover:bg-gray-600"
+                          >
+                            {copied ? "✓" : "Copy"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Step 6 */}
+                  <div className="mb-8">
+                    <div className="mb-3 flex items-center gap-3">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">6</span>
+                      <h4 className="font-medium text-gray-900">Save and Test</h4>
+                    </div>
+                    <div className="ml-10 space-y-2 text-sm text-gray-600">
+                      <p>Click <strong>"Verify"</strong> button in Cursor to test the connection</p>
+                      <p>If successful, all your Cursor AI requests will now flow through Prune!</p>
+                    </div>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
+                    <div className="flex gap-3">
+                      <span className="text-blue-500">ℹ️</span>
+                      <div className="text-sm text-blue-800">
+                        <p className="font-medium">How it works:</p>
+                        <p className="mt-1">Cursor will send requests to Prune instead of directly to OpenAI. Prune forwards the request, tracks usage, and returns the response. Your API key is never stored.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleContinue}
+                    className="w-full rounded-lg bg-prune-green px-4 py-3 font-medium text-white transition hover:bg-emerald-600"
+                  >
+                    I've completed the setup →
+                  </button>
+                </div>
               ) : (
+                /* Other tools (Claude Code, Codex) setup */
                 <div className="rounded-lg bg-gray-50 p-6">
                   <div className="mb-4 flex items-center justify-between">
                     <h3 className="font-semibold text-gray-900">
@@ -227,22 +343,10 @@ export default function OnboardPage() {
                   </p>
 
                   <div className="mb-4 rounded-md bg-gray-900 p-4 font-mono text-sm text-gray-100">
-                    {selectedTool === "cursor" ? (
-                      <>
-                        <div className="text-gray-400 mb-2"># Base URL for Cursor:</div>
-                        <div className="text-green-400 break-all">{getProxyUrl(selectedTool)}</div>
-                        <div className="text-gray-400 mt-3 text-xs">
-                          Use your own OpenAI API key in Cursor settings
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-green-400 break-all">
-                          export {TOOLS[selectedTool].envVar}={getProxyUrl(selectedTool)}
-                        </div>
-                        <div className="text-green-400">export PRUNE_API_KEY={apiKey}</div>
-                      </>
-                    )}
+                    <div className="text-green-400 break-all">
+                      export {TOOLS[selectedTool].envVar}={getProxyUrl(selectedTool)}
+                    </div>
+                    <div className="text-green-400">export PRUNE_API_KEY={apiKey}</div>
                   </div>
 
                   <p className="mb-4 text-sm text-gray-600">
