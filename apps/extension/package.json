@@ -1,7 +1,7 @@
 {
   "name": "prune",
   "displayName": "Prune - Token Intelligence",
-  "description": "Reduce AI token costs with intelligent context compression. Zero API keys required.",
+  "description": "Real-time AI token counting for VS Code. See token costs as you code.",
   "version": "0.1.0",
   "publisher": "delimit",
   "engines": {
@@ -29,54 +29,29 @@
     "commands": [
       {
         "command": "prune.analyzeSelection",
-        "title": "Prune: Analyze Selection"
+        "title": "Prune: Analyze Token Count"
       },
       {
-        "command": "prune.squeezeSelection",
-        "title": "Prune: Squeeze Selection"
+        "command": "prune.analyzeFile",
+        "title": "Prune: Analyze Current File"
       },
       {
-        "command": "prune.squeezeFile",
-        "title": "Prune: Squeeze Current File"
-      },
-      {
-        "command": "prune.showDiff",
-        "title": "Prune: Show Squeeze Diff"
+        "command": "prune.copyTokenCount",
+        "title": "Prune: Copy Token Count"
       }
     ],
     "configuration": {
       "title": "Prune",
       "properties": {
-        "prune.defaultTier": {
-          "type": "string",
-          "default": "structural",
-          "enum": ["lossless", "structural", "telegraphic"],
-          "description": "Default compression tier"
-        },
         "prune.autoSqueezeThreshold": {
           "type": "number",
           "default": 10000,
-          "description": "Token count above which to suggest squeezing"
+          "description": "Token count above which to show warning"
         },
         "prune.showStatusBar": {
           "type": "boolean",
           "default": true,
           "description": "Show token count in status bar"
-        },
-        "prune.showPreflightWarnings": {
-          "type": "boolean",
-          "default": true,
-          "description": "Show warnings before large context operations"
-        },
-        "prune.preserveTodos": {
-          "type": "boolean",
-          "default": true,
-          "description": "Preserve TODO comments during compression"
-        },
-        "prune.preserveTypeHints": {
-          "type": "boolean",
-          "default": true,
-          "description": "Preserve type hints and annotations"
         }
       }
     },
@@ -88,9 +63,8 @@
           "when": "editorHasSelection"
         },
         {
-          "command": "prune.squeezeSelection",
-          "group": "prune",
-          "when": "editorHasSelection"
+          "command": "prune.copyTokenCount",
+          "group": "prune"
         }
       ]
     }
@@ -104,7 +78,6 @@
   },
   "devDependencies": {
     "@prune/tokenizer": "0.1.0",
-    "@prune/squeezer": "0.1.0",
     "@prune/shared": "0.1.0",
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.10.0",
