@@ -24,7 +24,7 @@ interface Session {
   roi: number;
   wasteEvents: number;
   compactions: number;
-  startTime: Date;
+  startTime: string | Date;
 }
 
 interface OverviewData {
@@ -136,11 +136,12 @@ function StatCard({
 }
 
 function SessionCard({ session }: { session: Session }) {
+  const startDate = typeof session.startTime === "string" ? new Date(session.startTime) : session.startTime;
   const time = new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
-  }).format(session.startTime);
+  }).format(startDate);
 
   const toolName =
     session.tool === "claude-code"
