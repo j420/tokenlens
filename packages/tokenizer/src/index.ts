@@ -1,18 +1,17 @@
 /**
  * @prune/tokenizer
  * Local token counting for OpenAI and Anthropic models
- * 
+ *
  * No API calls required. All counting happens locally.
+ * Uses lazy loading to prevent blocking extension activation.
  */
 
-import { encoding_for_model, Tiktoken, TiktokenModel } from "tiktoken";
-import { countTokens as countAnthropicTokens } from "@anthropic-ai/tokenizer";
-import { 
-  MODEL_PRICING, 
+import {
+  MODEL_PRICING,
   estimateCost as sharedEstimateCost,
   formatTokens,
   formatCost,
-  type ModelPricing 
+  type ModelPricing
 } from "@prune/shared";
 
 // ============================================================================
@@ -40,13 +39,52 @@ export interface BatchTokenCount {
 
 type Provider = "openai" | "anthropic";
 
+// Lazy-loaded module types
+type TiktokenModule = typeof import("tiktoken");
+type AnthropicTokenizerModule = typeof import("@anthropic-ai/tokenizer");
+type Tiktoken = import("tiktoken").Tiktoken;
+type TiktokenModel = import("tiktoken").TiktokenModel;
+
+// ============================================================================
+// Lazy Loading State
+// ============================================================================
+
+let tiktokenModule: TiktokenModule | null = null;
+let anthropicModule: AnthropicTokenizerModule | null = null;
+let tiktokenLoading: Promise<TiktokenModule> | null = null;
+let anthropicLoading: Promise<AnthropicTokenizerModule> | null = null;
+
+async function loadTiktoken(): Promise<TiktokenModule> {
+  if (tiktokenModule) return tiktokenModule;
+  if (tiktokenLoading) return tiktokenLoading;
+
+  tiktokenLoading = import("tiktoken").then(mod => {
+    tiktokenModule = mod;
+    return mod;
+  });
+
+  return tiktokenLoading;
+}
+
+async function loadAnthropicTokenizer(): Promise<AnthropicTokenizerModule> {
+  if (anthropicModule) return anthropicModule;
+  if (anthropicLoading) return anthropicLoading;
+
+  anthropicLoading = import("@anthropic-ai/tokenizer").then(mod => {
+    anthropicModule = mod;
+    return mod;
+  });
+
+  return anthropicLoading;
+}
+
 // ============================================================================
 // Model Mappings
 // ============================================================================
 
-const TIKTOKEN_MODEL_MAP: Record<string, TiktokenModel> = {
+const TIKTOKEN_MODEL_MAP: Record<string, string> = {
   "gpt-4o": "gpt-4o",
-  "gpt-4o-mini": "gpt-4o-mini", 
+  "gpt-4o-mini": "gpt-4o-mini",
   "gpt-4-turbo": "gpt-4-turbo",
   "gpt-4": "gpt-4",
   "gpt-3.5-turbo": "gpt-3.5-turbo",
@@ -57,7 +95,7 @@ const TIKTOKEN_MODEL_MAP: Record<string, TiktokenModel> = {
 
 const ANTHROPIC_MODELS = new Set([
   "claude-opus-4",
-  "claude-sonnet-4", 
+  "claude-sonnet-4",
   "claude-haiku-3.5",
   "claude-3-opus",
   "claude-3-sonnet",
@@ -72,13 +110,14 @@ const ANTHROPIC_MODELS = new Set([
 
 const encoderCache = new Map<string, Tiktoken>();
 
-function getEncoder(model: string): Tiktoken {
+async function getEncoder(model: string): Promise<Tiktoken> {
+  const tiktoken = await loadTiktoken();
   const tiktokenModel = TIKTOKEN_MODEL_MAP[model] || "gpt-4o";
-  
+
   if (!encoderCache.has(tiktokenModel)) {
-    encoderCache.set(tiktokenModel, encoding_for_model(tiktokenModel));
+    encoderCache.set(tiktokenModel, tiktoken.encoding_for_model(tiktokenModel as TiktokenModel));
   }
-  
+
   return encoderCache.get(tiktokenModel)!;
 }
 
@@ -97,16 +136,17 @@ export function detectProvider(model: string): Provider {
 }
 
 /**
- * Count tokens in text for a specific model
+ * Count tokens in text for a specific model (async version)
  */
-export function countTokens(text: string, model: string = "gpt-4o"): TokenCount {
+export async function countTokensAsync(text: string, model: string = "gpt-4o"): Promise<TokenCount> {
   const provider = detectProvider(model);
   let tokens: number;
 
   if (provider === "anthropic") {
-    tokens = countAnthropicTokens(text);
+    const anthropic = await loadAnthropicTokenizer();
+    tokens = anthropic.countTokens(text);
   } else {
-    const encoder = getEncoder(model);
+    const encoder = await getEncoder(model);
     tokens = encoder.encode(text).length;
   }
 
@@ -117,6 +157,60 @@ export function countTokens(text: string, model: string = "gpt-4o"): TokenCount 
     model,
     cost,
   };
+}
+
+/**
+ * Count tokens in text for a specific model (sync version - requires init first)
+ */
+export function countTokens(text: string, model: string = "gpt-4o"): TokenCount {
+  const provider = detectProvider(model);
+  let tokens: number;
+
+  if (provider === "anthropic") {
+    if (!anthropicModule) {
+      // Fallback: rough estimate if not loaded yet
+      tokens = Math.ceil(text.length / 4);
+    } else {
+      tokens = anthropicModule.countTokens(text);
+    }
+  } else {
+    if (!tiktokenModule) {
+      // Fallback: rough estimate if not loaded yet
+      tokens = Math.ceil(text.length / 4);
+    } else {
+      const tiktokenModel = TIKTOKEN_MODEL_MAP[model] || "gpt-4o";
+      if (!encoderCache.has(tiktokenModel)) {
+        encoderCache.set(tiktokenModel, tiktokenModule.encoding_for_model(tiktokenModel as TiktokenModel));
+      }
+      const encoder = encoderCache.get(tiktokenModel)!;
+      tokens = encoder.encode(text).length;
+    }
+  }
+
+  const cost = sharedEstimateCost(tokens, model, "input");
+
+  return {
+    tokens,
+    model,
+    cost,
+  };
+}
+
+/**
+ * Initialize tokenizers (call this early, non-blocking)
+ */
+export async function init(): Promise<void> {
+  await Promise.all([
+    loadTiktoken(),
+    loadAnthropicTokenizer(),
+  ]);
+}
+
+/**
+ * Check if tokenizers are loaded
+ */
+export function isReady(): boolean {
+  return tiktokenModule !== null && anthropicModule !== null;
 }
 
 /**
