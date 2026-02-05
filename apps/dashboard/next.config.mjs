@@ -1,9 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@prune/shared", "@prune/db", "@prune/intelligence"],
-  experimental: {
-    serverComponentsExternalPackages: ["pino"],
-  },
+  serverExternalPackages: ["pino"],
 };
 
 export default nextConfig;
