@@ -15,6 +15,33 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "claude-3-haiku-20240307": { input: 0.25, output: 1.25 },
 };
 
+// Store event by posting to the events API
+async function storeEventAsync(
+  baseUrl: string,
+  event: {
+    id: string;
+    timestamp: string;
+    provider: string;
+    tool: string;
+    model: string;
+    tokensIn: number;
+    tokensOut: number;
+    costUsd: number;
+    latencyMs: number;
+  }
+) {
+  try {
+    // Fire and forget - don't wait for response
+    fetch(`${baseUrl}/api/v1/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    }).catch(err => console.error("Failed to store event:", err));
+  } catch (error) {
+    console.error("Failed to initiate event storage:", error);
+  }
+}
+
 function estimateCost(model: string, tokensIn: number, tokensOut: number): number {
   const pricing = MODEL_PRICING[model] ?? { input: 3, output: 15 };
   const inputCost = (tokensIn / 1_000_000) * pricing.input;
@@ -107,18 +134,27 @@ export async function POST(
     const tokensOut = responseData.usage?.output_tokens ?? 0;
     const estimatedCost = estimateCost(model, tokensIn, tokensOut);
 
-    // Log the event (in production, store to database)
-    console.log({
-      type: "proxy_event",
-      correlationId,
-      provider: "anthropic",
+    // Store the event
+    const event = {
+      id: correlationId,
+      timestamp: new Date().toISOString(),
+      provider: "anthropic" as const,
+      tool: "cursor" as const, // Cursor can use Anthropic API too
       model,
       tokensIn,
       tokensOut,
-      estimatedCostUsd: estimatedCost,
+      costUsd: estimatedCost,
       latencyMs,
+    };
+
+    // Get base URL from request
+    const baseUrl = new URL(request.url).origin;
+    storeEventAsync(baseUrl, event);
+
+    console.log({
+      type: "proxy_event",
+      ...event,
       pruneApiKey: pruneApiKey ? "present" : "absent",
-      timestamp: new Date().toISOString(),
     });
 
     // Return response with Prune headers
