@@ -38,6 +38,10 @@
       {
         "command": "prune.copyTokenCount",
         "title": "Prune: Copy Token Count"
+      },
+      {
+        "command": "prune.squeezeFile",
+        "title": "Prune: Squeeze File (Compress for AI)"
       }
     ],
     "configuration": {
@@ -79,6 +83,7 @@
   "devDependencies": {
     "@prune/tokenizer": "0.1.0",
     "@prune/shared": "0.1.0",
+    "@prune/squeezer": "0.1.0",
     "@types/vscode": "^1.85.0",
     "@types/node": "^20.10.0",
     "esbuild": "^0.19.11",

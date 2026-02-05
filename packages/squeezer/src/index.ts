@@ -1,143 +1,24 @@
 /**
  * @prune/squeezer
- * Tree-sitter AST-based code compression
+ * TypeScript Compiler API-based code compression
  *
  * Three-tier compression strategy:
  * 1. Lossless: Strip comments, whitespace, docstrings (~15% savings)
  * 2. Structural: Prune function bodies, keep signatures (~40% savings)
  * 3. Telegraphic: Interface definitions only (~70% savings)
+ *
+ * Uses TypeScript's built-in parser (pure JavaScript, no native bindings)
  */
 
-import Parser from "tree-sitter";
-import { 
-  type SqueezeTier, 
-  type SqueezeResult, 
+import * as ts from "typescript";
+import {
+  type SqueezeTier,
+  type SqueezeResult,
   type SqueezeOptions,
   type SupportedLanguage,
-  getLanguageFromPath 
+  getLanguageFromPath,
 } from "@prune/shared";
 import { countTokens } from "@prune/tokenizer";
-
-// Import language grammars
-import TypeScript from "tree-sitter-typescript";
-import Python from "tree-sitter-python";
-import Go from "tree-sitter-go";
-import Java from "tree-sitter-java";
-
-// ============================================================================
-// Parser Setup
-// ============================================================================
-
-const parser = new Parser();
-
-const LANGUAGE_PARSERS: Record<SupportedLanguage, unknown> = {
-  typescript: TypeScript.typescript,
-  javascript: TypeScript.typescript, // TSX parser handles JS too
-  python: Python,
-  go: Go,
-  rust: null, // Removed due to npm package availability issues
-  java: Java,
-  cpp: null,
-  c: null,
-};
-
-// ============================================================================
-// Node Type Definitions
-// ============================================================================
-
-interface NodeTypes {
-  comment: string[];
-  docstring: string[];
-  function: string[];
-  functionBody: string[];
-  class: string[];
-  classBody: string[];
-  import: string[];
-  typeDefinition: string[];
-}
-
-const LANGUAGE_NODE_TYPES: Record<SupportedLanguage, NodeTypes> = {
-  typescript: {
-    comment: ["comment", "multiline_comment"],
-    docstring: ["comment"],
-    function: ["function_declaration", "method_definition", "arrow_function"],
-    functionBody: ["statement_block"],
-    class: ["class_declaration"],
-    classBody: ["class_body"],
-    import: ["import_statement", "export_statement"],
-    typeDefinition: ["type_alias_declaration", "interface_declaration"],
-  },
-  javascript: {
-    comment: ["comment", "multiline_comment"],
-    docstring: ["comment"],
-    function: ["function_declaration", "method_definition", "arrow_function"],
-    functionBody: ["statement_block"],
-    class: ["class_declaration"],
-    classBody: ["class_body"],
-    import: ["import_statement", "export_statement"],
-    typeDefinition: [],
-  },
-  python: {
-    comment: ["comment"],
-    docstring: ["expression_statement"], // String literals at start of function
-    function: ["function_definition"],
-    functionBody: ["block"],
-    class: ["class_definition"],
-    classBody: ["block"],
-    import: ["import_statement", "import_from_statement"],
-    typeDefinition: [],
-  },
-  go: {
-    comment: ["comment", "block_comment"],
-    docstring: ["comment"],
-    function: ["function_declaration", "method_declaration"],
-    functionBody: ["block"],
-    class: ["type_declaration"],
-    classBody: ["struct_type", "interface_type"],
-    import: ["import_declaration"],
-    typeDefinition: ["type_declaration"],
-  },
-  rust: {
-    comment: ["line_comment", "block_comment"],
-    docstring: ["line_comment"],
-    function: ["function_item"],
-    functionBody: ["block"],
-    class: ["struct_item", "impl_item"],
-    classBody: ["declaration_list"],
-    import: ["use_declaration"],
-    typeDefinition: ["type_item"],
-  },
-  java: {
-    comment: ["line_comment", "block_comment"],
-    docstring: ["block_comment"],
-    function: ["method_declaration", "constructor_declaration"],
-    functionBody: ["block"],
-    class: ["class_declaration", "interface_declaration"],
-    classBody: ["class_body"],
-    import: ["import_declaration"],
-    typeDefinition: ["interface_declaration"],
-  },
-  cpp: {
-    comment: ["comment"],
-    docstring: ["comment"],
-    function: ["function_definition"],
-    functionBody: ["compound_statement"],
-    class: ["class_specifier", "struct_specifier"],
-    classBody: ["field_declaration_list"],
-    import: ["preproc_include"],
-    typeDefinition: ["type_definition"],
-  },
-  c: {
-    comment: ["comment"],
-    docstring: ["comment"],
-    function: ["function_definition"],
-    functionBody: ["compound_statement"],
-    class: ["struct_specifier"],
-    classBody: ["field_declaration_list"],
-    import: ["preproc_include"],
-    typeDefinition: ["type_definition"],
-  },
-};
 
 // ============================================================================
 // Core Squeeze Functions
@@ -153,26 +34,22 @@ export function squeeze(
 ): SqueezeResult {
   const { tier } = options;
 
-  // Get the language parser
-  const langParser = LANGUAGE_PARSERS[language];
-  if (!langParser) {
-    // Language not supported, return original
-    return {
-      originalCode: code,
-      compressedCode: code,
-      originalTokens: countTokens(code).tokens,
-      compressedTokens: countTokens(code).tokens,
-      savings: 0,
-      savingsPercent: 0,
-      diffSummary: "Language not supported for compression",
-      isValid: true,
-    };
+  // Only TypeScript/JavaScript supported with full AST parsing
+  const isJSLike = language === "typescript" || language === "javascript";
+
+  if (!isJSLike) {
+    // For other languages, use regex-based compression
+    return squeezeWithRegex(code, language, tier);
   }
 
-  // Parse the code
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  parser.setLanguage(langParser as any);
-  const tree = parser.parse(code);
+  // Parse with TypeScript compiler
+  const sourceFile = ts.createSourceFile(
+    "file.ts",
+    code,
+    ts.ScriptTarget.Latest,
+    true, // setParentNodes
+    language === "javascript" ? ts.ScriptKind.JS : ts.ScriptKind.TS
+  );
 
   // Apply compression based on tier
   let compressedCode: string;
@@ -182,23 +59,20 @@ export function squeeze(
     case "lossless":
       ({ code: compressedCode, summary: diffSummary } = losslessCompress(
         code,
-        tree,
-        language
+        sourceFile
       ));
       break;
     case "structural":
       ({ code: compressedCode, summary: diffSummary } = structuralCompress(
         code,
-        tree,
-        language,
+        sourceFile,
         options
       ));
       break;
     case "telegraphic":
       ({ code: compressedCode, summary: diffSummary } = telegraphicCompress(
         code,
-        tree,
-        language
+        sourceFile
       ));
       break;
     default:
@@ -206,27 +80,12 @@ export function squeeze(
       diffSummary = "No compression applied";
   }
 
-  // Validate the compressed code
-  const isValid = validateCode(compressedCode, language);
-  if (!isValid) {
-    // Revert to original if validation fails
-    return {
-      originalCode: code,
-      compressedCode: code,
-      originalTokens: countTokens(code).tokens,
-      compressedTokens: countTokens(code).tokens,
-      savings: 0,
-      savingsPercent: 0,
-      diffSummary: "Compression failed validation, using original",
-      isValid: false,
-    };
-  }
-
   // Calculate token counts
   const originalTokens = countTokens(code).tokens;
   const compressedTokens = countTokens(compressedCode).tokens;
   const savings = originalTokens - compressedTokens;
-  const savingsPercent = Math.round((savings / originalTokens) * 100);
+  const savingsPercent =
+    originalTokens > 0 ? Math.round((savings / originalTokens) * 100) : 0;
 
   return {
     originalCode: code,
@@ -265,7 +124,7 @@ export function squeezeFile(
 }
 
 // ============================================================================
-// Compression Strategies
+// TypeScript/JavaScript Compression (AST-based)
 // ============================================================================
 
 /**
@@ -273,33 +132,27 @@ export function squeezeFile(
  */
 function losslessCompress(
   code: string,
-  tree: Parser.Tree,
-  language: SupportedLanguage
+  sourceFile: ts.SourceFile
 ): { code: string; summary: string } {
-  const nodeTypes = LANGUAGE_NODE_TYPES[language];
-  const removals: Array<{ start: number; end: number; type: string }> = [];
+  const removals: Array<{ start: number; end: number }> = [];
   let commentsRemoved = 0;
-  let docstringsRemoved = 0;
 
-  // Walk the tree and collect nodes to remove
-  function walk(node: Parser.SyntaxNode) {
-    // Check for comments
-    if (nodeTypes.comment.includes(node.type)) {
-      // Preserve TODOs and important comments
-      const text = code.slice(node.startIndex, node.endIndex);
-      if (!text.includes("TODO") && !text.includes("FIXME") && !text.includes("@ts-")) {
-        removals.push({ start: node.startIndex, end: node.endIndex, type: "comment" });
-        commentsRemoved++;
-      }
-    }
+  // Get all comments
+  const comments = getComments(code, sourceFile);
 
-    // Recurse into children
-    for (const child of node.children) {
-      walk(child);
+  for (const comment of comments) {
+    const text = code.slice(comment.pos, comment.end);
+    // Preserve TODOs and important comments
+    if (
+      !text.includes("TODO") &&
+      !text.includes("FIXME") &&
+      !text.includes("@ts-") &&
+      !text.includes("eslint-")
+    ) {
+      removals.push({ start: comment.pos, end: comment.end });
+      commentsRemoved++;
     }
   }
-
-  walk(tree.rootNode);
 
   // Apply removals in reverse order to preserve indices
   let result = code;
@@ -312,7 +165,6 @@ function losslessCompress(
 
   const summary = [
     commentsRemoved > 0 ? commentsRemoved + " comments removed" : null,
-    docstringsRemoved > 0 ? docstringsRemoved + " docstrings removed" : null,
     "whitespace normalized",
   ]
     .filter(Boolean)
@@ -326,88 +178,155 @@ function losslessCompress(
  */
 function structuralCompress(
   code: string,
-  tree: Parser.Tree,
-  language: SupportedLanguage,
+  sourceFile: ts.SourceFile,
   options: SqueezeOptions
 ): { code: string; summary: string } {
-  const nodeTypes = LANGUAGE_NODE_TYPES[language];
-  const replacements: Array<{ start: number; end: number; replacement: string }> = [];
+  const replacements: Array<{
+    start: number;
+    end: number;
+    replacement: string;
+  }> = [];
   let functionsCompressed = 0;
 
-  function walk(node: Parser.SyntaxNode) {
-    // Check for function declarations
-    if (nodeTypes.function.includes(node.type)) {
-      // Find the function body
-      const bodyNode = node.children.find((child) =>
-        nodeTypes.functionBody.includes(child.type)
-      );
+  function visit(node: ts.Node) {
+    // Function declarations
+    if (ts.isFunctionDeclaration(node) && node.body) {
+      const bodyStart = node.body.getStart(sourceFile);
+      const bodyEnd = node.body.getEnd();
+      replacements.push({
+        start: bodyStart,
+        end: bodyEnd,
+        replacement: "{ /* ... */ }",
+      });
+      functionsCompressed++;
+      return; // Don't recurse into function body
+    }
 
-      if (bodyNode) {
-        // Check if this is the active file (don't compress active function)
-        const shouldCompress = !options.activeFile || 
-          !code.slice(node.startIndex, node.endIndex).includes("// ACTIVE");
+    // Method declarations
+    if (ts.isMethodDeclaration(node) && node.body) {
+      const bodyStart = node.body.getStart(sourceFile);
+      const bodyEnd = node.body.getEnd();
+      replacements.push({
+        start: bodyStart,
+        end: bodyEnd,
+        replacement: "{ /* ... */ }",
+      });
+      functionsCompressed++;
+      return;
+    }
 
-        if (shouldCompress) {
-          // Replace body with ellipsis placeholder
-          const ellipsis = getEllipsisForLanguage(language);
+    // Arrow functions (only top-level or class properties)
+    if (ts.isArrowFunction(node) && node.body) {
+      const parent = node.parent;
+      // Only compress arrow functions assigned to variables/properties
+      if (
+        ts.isVariableDeclaration(parent) ||
+        ts.isPropertyDeclaration(parent)
+      ) {
+        if (ts.isBlock(node.body)) {
+          const bodyStart = node.body.getStart(sourceFile);
+          const bodyEnd = node.body.getEnd();
           replacements.push({
-            start: bodyNode.startIndex,
-            end: bodyNode.endIndex,
-            replacement: ellipsis,
+            start: bodyStart,
+            end: bodyEnd,
+            replacement: "{ /* ... */ }",
           });
           functionsCompressed++;
+          return;
         }
       }
     }
 
-    // Recurse into children
-    for (const child of node.children) {
-      walk(child);
+    // Function expressions
+    if (ts.isFunctionExpression(node) && node.body) {
+      const bodyStart = node.body.getStart(sourceFile);
+      const bodyEnd = node.body.getEnd();
+      replacements.push({
+        start: bodyStart,
+        end: bodyEnd,
+        replacement: "{ /* ... */ }",
+      });
+      functionsCompressed++;
+      return;
     }
+
+    ts.forEachChild(node, visit);
   }
 
-  walk(tree.rootNode);
+  visit(sourceFile);
 
   // Start with lossless compression
-  const { code: losslessCode } = losslessCompress(code, tree, language);
+  const { code: losslessCode } = losslessCompress(code, sourceFile);
 
   // Re-parse after lossless compression
-  const newTree = parser.parse(losslessCode);
-  
-  // Apply structural replacements
-  let result = losslessCode;
-  
-  // Recalculate replacements on the new tree
-  const newReplacements: Array<{ start: number; end: number; replacement: string }> = [];
-  
-  function walkNew(node: Parser.SyntaxNode) {
-    if (nodeTypes.function.includes(node.type)) {
-      const bodyNode = node.children.find((child) =>
-        nodeTypes.functionBody.includes(child.type)
-      );
-      if (bodyNode) {
-        const ellipsis = getEllipsisForLanguage(language);
+  const newSourceFile = ts.createSourceFile(
+    "file.ts",
+    losslessCode,
+    ts.ScriptTarget.Latest,
+    true
+  );
+
+  // Recalculate positions on the new source
+  const newReplacements: Array<{
+    start: number;
+    end: number;
+    replacement: string;
+  }> = [];
+
+  function visitNew(node: ts.Node) {
+    if (ts.isFunctionDeclaration(node) && node.body) {
+      newReplacements.push({
+        start: node.body.getStart(newSourceFile),
+        end: node.body.getEnd(),
+        replacement: "{ /* ... */ }",
+      });
+      return;
+    }
+    if (ts.isMethodDeclaration(node) && node.body) {
+      newReplacements.push({
+        start: node.body.getStart(newSourceFile),
+        end: node.body.getEnd(),
+        replacement: "{ /* ... */ }",
+      });
+      return;
+    }
+    if (ts.isArrowFunction(node) && node.body && ts.isBlock(node.body)) {
+      const parent = node.parent;
+      if (
+        ts.isVariableDeclaration(parent) ||
+        ts.isPropertyDeclaration(parent)
+      ) {
         newReplacements.push({
-          start: bodyNode.startIndex,
-          end: bodyNode.endIndex,
-          replacement: ellipsis,
+          start: node.body.getStart(newSourceFile),
+          end: node.body.getEnd(),
+          replacement: "{ /* ... */ }",
         });
+        return;
       }
     }
-    for (const child of node.children) {
-      walkNew(child);
+    if (ts.isFunctionExpression(node) && node.body) {
+      newReplacements.push({
+        start: node.body.getStart(newSourceFile),
+        end: node.body.getEnd(),
+        replacement: "{ /* ... */ }",
+      });
+      return;
     }
+    ts.forEachChild(node, visitNew);
   }
-  
-  walkNew(newTree.rootNode);
+
+  visitNew(newSourceFile);
 
   // Apply replacements in reverse order
+  let result = losslessCode;
   for (const rep of newReplacements.sort((a, b) => b.start - a.start)) {
     result = result.slice(0, rep.start) + rep.replacement + result.slice(rep.end);
   }
 
   const summary = [
-    functionsCompressed > 0 ? functionsCompressed + " function bodies compressed" : null,
+    functionsCompressed > 0
+      ? functionsCompressed + " function bodies compressed"
+      : null,
     "comments removed",
   ]
     .filter(Boolean)
@@ -421,63 +340,146 @@ function structuralCompress(
  */
 function telegraphicCompress(
   code: string,
-  tree: Parser.Tree,
-  language: SupportedLanguage
+  sourceFile: ts.SourceFile
 ): { code: string; summary: string } {
-  const nodeTypes = LANGUAGE_NODE_TYPES[language];
   const keeps: Array<{ start: number; end: number; type: string }> = [];
 
-  function walk(node: Parser.SyntaxNode) {
+  function visit(node: ts.Node) {
     // Keep imports
-    if (nodeTypes.import.includes(node.type)) {
-      keeps.push({ start: node.startIndex, end: node.endIndex, type: "import" });
+    if (ts.isImportDeclaration(node)) {
+      keeps.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        type: "import",
+      });
     }
 
-    // Keep type definitions
-    if (nodeTypes.typeDefinition.includes(node.type)) {
-      keeps.push({ start: node.startIndex, end: node.endIndex, type: "type" });
+    // Keep exports (type exports)
+    if (ts.isExportDeclaration(node)) {
+      keeps.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        type: "export",
+      });
     }
 
-    // Keep function signatures (just the signature line)
-    if (nodeTypes.function.includes(node.type)) {
-      const bodyNode = node.children.find((child) =>
-        nodeTypes.functionBody.includes(child.type)
-      );
-      if (bodyNode) {
-        // Keep everything up to the body
-        keeps.push({
-          start: node.startIndex,
-          end: bodyNode.startIndex,
-          type: "function_signature",
-        });
+    // Keep type aliases
+    if (ts.isTypeAliasDeclaration(node)) {
+      keeps.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        type: "type",
+      });
+    }
+
+    // Keep interfaces
+    if (ts.isInterfaceDeclaration(node)) {
+      keeps.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        type: "interface",
+      });
+    }
+
+    // Keep class declarations (signatures only)
+    if (ts.isClassDeclaration(node)) {
+      // Extract class with method signatures only
+      const className = node.name?.getText(sourceFile) || "Anonymous";
+      const members: string[] = [];
+
+      for (const member of node.members) {
+        if (ts.isPropertyDeclaration(member)) {
+          // Keep property declarations
+          const propText = member.getText(sourceFile);
+          members.push("  " + propText.split("=")[0].trim() + ";");
+        } else if (ts.isMethodDeclaration(member)) {
+          // Keep method signature only
+          const name = member.name.getText(sourceFile);
+          const params = member.parameters
+            .map((p) => p.getText(sourceFile))
+            .join(", ");
+          const returnType = member.type
+            ? ": " + member.type.getText(sourceFile)
+            : "";
+          members.push(`  ${name}(${params})${returnType};`);
+        }
       }
+
+      const classText = `class ${className} {\n${members.join("\n")}\n}`;
+      // Store as a synthetic entry
+      keeps.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        type: "class_signature",
+      });
     }
 
-    // Keep class declarations (without method bodies)
-    if (nodeTypes.class.includes(node.type)) {
-      keeps.push({ start: node.startIndex, end: node.endIndex, type: "class" });
+    // Keep function signatures (declarations without body)
+    if (ts.isFunctionDeclaration(node) && node.name) {
+      const name = node.name.getText(sourceFile);
+      const params = node.parameters
+        .map((p) => p.getText(sourceFile))
+        .join(", ");
+      const returnType = node.type ? ": " + node.type.getText(sourceFile) : "";
+      const signature = `function ${name}(${params})${returnType};`;
+
+      keeps.push({
+        start: node.getStart(sourceFile),
+        end: node.getEnd(),
+        type: "function_signature",
+      });
     }
 
-    for (const child of node.children) {
-      walk(child);
-    }
+    ts.forEachChild(node, visit);
   }
 
-  walk(tree.rootNode);
+  visit(sourceFile);
 
   // Build result from kept sections
   const sortedKeeps = keeps.sort((a, b) => a.start - b.start);
-  const sections = sortedKeeps.map(
-    (k) => code.slice(k.start, k.end).trim()
-  );
-  
-  // Join with newlines and add ellipsis markers
-  const result = sections.join("\n\n// ...\n\n");
+
+  // For telegraphic, we rebuild with signatures only
+  const sections: string[] = [];
+  let lastEnd = 0;
+
+  for (const keep of sortedKeeps) {
+    if (keep.type === "import" || keep.type === "export") {
+      sections.push(code.slice(keep.start, keep.end));
+    } else if (keep.type === "type" || keep.type === "interface") {
+      sections.push(code.slice(keep.start, keep.end));
+    } else if (keep.type === "function_signature") {
+      // Get function signature only
+      const node = findNodeAt(sourceFile, keep.start);
+      if (node && ts.isFunctionDeclaration(node) && node.name) {
+        const name = node.name.getText(sourceFile);
+        const params = node.parameters
+          .map((p) => p.getText(sourceFile))
+          .join(", ");
+        const returnType = node.type
+          ? ": " + node.type.getText(sourceFile)
+          : "";
+        const modifiers = node.modifiers
+          ? node.modifiers.map((m) => m.getText(sourceFile)).join(" ") + " "
+          : "";
+        sections.push(`${modifiers}function ${name}(${params})${returnType};`);
+      }
+    } else if (keep.type === "class_signature") {
+      // Get class with method signatures
+      const node = findNodeAt(sourceFile, keep.start);
+      if (node && ts.isClassDeclaration(node)) {
+        sections.push(extractClassSignature(node, sourceFile));
+      }
+    }
+  }
+
+  const result = sections.join("\n\n");
 
   const summary = [
     sortedKeeps.filter((k) => k.type === "import").length + " imports",
-    sortedKeeps.filter((k) => k.type === "type").length + " type definitions",
-    sortedKeeps.filter((k) => k.type === "function_signature").length + " function signatures",
+    sortedKeeps.filter((k) => k.type === "type" || k.type === "interface")
+      .length + " type definitions",
+    sortedKeeps.filter((k) => k.type === "function_signature").length +
+      " function signatures",
     "all bodies removed",
   ].join(", ");
 
@@ -485,39 +487,296 @@ function telegraphicCompress(
 }
 
 // ============================================================================
-// Utilities
+// Regex-based compression for non-JS languages
 // ============================================================================
 
-function getEllipsisForLanguage(language: SupportedLanguage): string {
+function squeezeWithRegex(
+  code: string,
+  language: SupportedLanguage,
+  tier: SqueezeTier
+): SqueezeResult {
+  let compressedCode = code;
+  let diffSummary = "";
+
+  switch (tier) {
+    case "lossless": {
+      // Remove comments based on language
+      const { result, count } = removeCommentsRegex(code, language);
+      compressedCode = result;
+      compressedCode = compressedCode.replace(/\n{3,}/g, "\n\n");
+      diffSummary = count + " comments removed, whitespace normalized";
+      break;
+    }
+    case "structural": {
+      // Remove comments + collapse function bodies
+      const { result: noComments, count } = removeCommentsRegex(code, language);
+      compressedCode = collapseFunctionBodiesRegex(noComments, language);
+      diffSummary = count + " comments removed, function bodies collapsed";
+      break;
+    }
+    case "telegraphic": {
+      // Extract only signatures
+      compressedCode = extractSignaturesRegex(code, language);
+      diffSummary = "Only signatures and type definitions kept";
+      break;
+    }
+  }
+
+  const originalTokens = countTokens(code).tokens;
+  const compressedTokens = countTokens(compressedCode).tokens;
+  const savings = originalTokens - compressedTokens;
+  const savingsPercent =
+    originalTokens > 0 ? Math.round((savings / originalTokens) * 100) : 0;
+
+  return {
+    originalCode: code,
+    compressedCode,
+    originalTokens,
+    compressedTokens,
+    savings,
+    savingsPercent,
+    diffSummary,
+    isValid: true,
+  };
+}
+
+function removeCommentsRegex(
+  code: string,
+  language: SupportedLanguage
+): { result: string; count: number } {
+  let result = code;
+  let count = 0;
+
   switch (language) {
     case "python":
-      return ":\n    ...";
+      // Remove # comments (but not in strings)
+      result = result.replace(/(?<!["'])#(?!.*["']).*$/gm, () => {
+        count++;
+        return "";
+      });
+      // Remove docstrings
+      result = result.replace(/"""[\s\S]*?"""|'''[\s\S]*?'''/g, () => {
+        count++;
+        return '""';
+      });
+      break;
+
     case "go":
-    case "rust":
     case "java":
+    case "rust":
     case "cpp":
     case "c":
-      return "{ /* ... */ }";
-    case "typescript":
-    case "javascript":
+      // Remove // comments
+      result = result.replace(/\/\/.*$/gm, () => {
+        count++;
+        return "";
+      });
+      // Remove /* */ comments
+      result = result.replace(/\/\*[\s\S]*?\*\//g, () => {
+        count++;
+        return "";
+      });
+      break;
+
     default:
-      return "{ /* ... */ }";
+      // Generic: remove // and /* */
+      result = result.replace(/\/\/.*$/gm, () => {
+        count++;
+        return "";
+      });
+      result = result.replace(/\/\*[\s\S]*?\*\//g, () => {
+        count++;
+        return "";
+      });
+  }
+
+  return { result, count };
+}
+
+function collapseFunctionBodiesRegex(
+  code: string,
+  language: SupportedLanguage
+): string {
+  switch (language) {
+    case "python":
+      // Replace function bodies with ...
+      return code.replace(
+        /(def\s+\w+\s*\([^)]*\)[^:]*:)\s*\n((?:[ \t]+.+\n?)+)/g,
+        "$1\n    ..."
+      );
+
+    case "go":
+      // Replace function bodies with { /* ... */ }
+      return code.replace(
+        /(func\s+(?:\([^)]*\)\s*)?\w+\s*\([^)]*\)[^{]*)\{[^}]*\}/gs,
+        "$1{ /* ... */ }"
+      );
+
+    case "java":
+      // Simplified: replace method bodies
+      return code.replace(
+        /((?:public|private|protected|static|\s)+[\w<>\[\]]+\s+\w+\s*\([^)]*\)[^{]*)\{[^}]*\}/gs,
+        "$1{ /* ... */ }"
+      );
+
+    default:
+      return code;
   }
 }
 
-function validateCode(code: string, language: SupportedLanguage): boolean {
-  const langParser = LANGUAGE_PARSERS[language];
-  if (!langParser) return true;
+function extractSignaturesRegex(
+  code: string,
+  language: SupportedLanguage
+): string {
+  const lines = code.split("\n");
+  const signatures: string[] = [];
 
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    parser.setLanguage(langParser as any);
-    const tree = parser.parse(code);
-    // Check if the root node has errors
-    return !tree.rootNode.hasError;
-  } catch {
-    return false;
+  switch (language) {
+    case "python": {
+      // Extract imports, class defs, and function defs
+      for (const line of lines) {
+        if (
+          line.match(/^import\s/) ||
+          line.match(/^from\s.*import/) ||
+          line.match(/^class\s/) ||
+          line.match(/^def\s/)
+        ) {
+          signatures.push(line.replace(/:$/, ""));
+        }
+      }
+      break;
+    }
+
+    case "go": {
+      // Extract imports, type defs, and func signatures
+      for (const line of lines) {
+        if (
+          line.match(/^import\s/) ||
+          line.match(/^type\s/) ||
+          line.match(/^func\s/)
+        ) {
+          signatures.push(line.replace(/\{.*$/, ""));
+        }
+      }
+      break;
+    }
+
+    default:
+      return code;
   }
+
+  return signatures.join("\n");
+}
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+function getComments(
+  code: string,
+  sourceFile: ts.SourceFile
+): Array<{ pos: number; end: number }> {
+  const comments: Array<{ pos: number; end: number }> = [];
+
+  // Get leading comments
+  function collectComments(node: ts.Node) {
+    const ranges = ts.getLeadingCommentRanges(code, node.pos);
+    if (ranges) {
+      for (const range of ranges) {
+        comments.push({ pos: range.pos, end: range.end });
+      }
+    }
+    const trailingRanges = ts.getTrailingCommentRanges(code, node.end);
+    if (trailingRanges) {
+      for (const range of trailingRanges) {
+        comments.push({ pos: range.pos, end: range.end });
+      }
+    }
+    ts.forEachChild(node, collectComments);
+  }
+
+  collectComments(sourceFile);
+
+  // Deduplicate
+  const seen = new Set<string>();
+  return comments.filter((c) => {
+    const key = `${c.pos}-${c.end}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function findNodeAt(sourceFile: ts.SourceFile, pos: number): ts.Node | null {
+  let found: ts.Node | null = null;
+
+  function visit(node: ts.Node) {
+    if (node.getStart(sourceFile) === pos) {
+      found = node;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return found;
+}
+
+function extractClassSignature(
+  node: ts.ClassDeclaration,
+  sourceFile: ts.SourceFile
+): string {
+  const className = node.name?.getText(sourceFile) || "Anonymous";
+  const members: string[] = [];
+
+  for (const member of node.members) {
+    if (ts.isPropertyDeclaration(member)) {
+      const name = member.name.getText(sourceFile);
+      const type = member.type ? ": " + member.type.getText(sourceFile) : "";
+      const modifiers = member.modifiers
+        ? member.modifiers.map((m) => m.getText(sourceFile)).join(" ") + " "
+        : "";
+      members.push(`  ${modifiers}${name}${type};`);
+    } else if (ts.isMethodDeclaration(member)) {
+      const name = member.name.getText(sourceFile);
+      const params = member.parameters
+        .map((p) => p.getText(sourceFile))
+        .join(", ");
+      const returnType = member.type
+        ? ": " + member.type.getText(sourceFile)
+        : "";
+      const modifiers = member.modifiers
+        ? member.modifiers.map((m) => m.getText(sourceFile)).join(" ") + " "
+        : "";
+      members.push(`  ${modifiers}${name}(${params})${returnType};`);
+    } else if (ts.isConstructorDeclaration(member)) {
+      const params = member.parameters
+        .map((p) => p.getText(sourceFile))
+        .join(", ");
+      members.push(`  constructor(${params});`);
+    }
+  }
+
+  const extendsClause = node.heritageClauses?.find(
+    (h) => h.token === ts.SyntaxKind.ExtendsKeyword
+  );
+  const implementsClause = node.heritageClauses?.find(
+    (h) => h.token === ts.SyntaxKind.ImplementsKeyword
+  );
+
+  let classDecl = `class ${className}`;
+  if (extendsClause) {
+    classDecl += ` extends ${extendsClause.types
+      .map((t) => t.getText(sourceFile))
+      .join(", ")}`;
+  }
+  if (implementsClause) {
+    classDecl += ` implements ${implementsClause.types
+      .map((t) => t.getText(sourceFile))
+      .join(", ")}`;
+  }
+
+  return `${classDecl} {\n${members.join("\n")}\n}`;
 }
 
 /**
@@ -534,7 +793,8 @@ export function generateDiffSummary(
   const originalTokens = countTokens(original).tokens;
   const compressedTokens = countTokens(compressed).tokens;
   const tokensSaved = originalTokens - compressedTokens;
-  const percentSaved = Math.round((tokensSaved / originalTokens) * 100);
+  const percentSaved =
+    originalTokens > 0 ? Math.round((tokensSaved / originalTokens) * 100) : 0;
 
   return [
     linesRemoved + " lines removed",

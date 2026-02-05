@@ -8,6 +8,7 @@
 import * as vscode from "vscode";
 import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/tokenizer";
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
+import { squeezeFile, type SqueezeResult } from "@prune/squeezer";
 
 // ============================================================================
 // State
@@ -38,7 +39,8 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.analyzeFile", analyzeCurrentFile),
-    vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount)
+    vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
+    vscode.commands.registerCommand("prune.squeezeFile", squeezeCurrentFile)
   );
 
   // Update status bar on selection change
@@ -196,6 +198,83 @@ async function copyTokenCount() {
 
   await vscode.env.clipboard.writeText(tokens.toString());
   vscode.window.showInformationMessage("Token count copied: " + formatTokens(tokens));
+}
+
+async function squeezeCurrentFile() {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showWarningMessage("No active editor");
+    return;
+  }
+
+  const text = editor.document.getText();
+  const filePath = editor.document.fileName;
+  const config = getConfig();
+
+  // Show quick pick to select compression tier
+  const tier = await vscode.window.showQuickPick(
+    [
+      { label: "Lossless", description: "Remove comments & whitespace (~15% savings)", value: "lossless" },
+      { label: "Structural", description: "Keep signatures, compress bodies (~40% savings)", value: "structural" },
+      { label: "Telegraphic", description: "Types and signatures only (~70% savings)", value: "telegraphic" },
+    ],
+    { placeHolder: "Select compression level" }
+  );
+
+  if (!tier) return;
+
+  try {
+    const result: SqueezeResult = squeezeFile(text, filePath, {
+      tier: tier.value as "lossless" | "structural" | "telegraphic",
+      preserveTodos: config.preserveTodos,
+      preserveTypeHints: config.preserveTypeHints,
+    });
+
+    if (result.savings === 0) {
+      vscode.window.showInformationMessage("No compression possible for this file");
+      return;
+    }
+
+    // Show results
+    outputChannel.appendLine("---");
+    outputChannel.appendLine("Squeeze: " + filePath.split(/[\\/]/).pop());
+    outputChannel.appendLine("Tier: " + tier.label);
+    outputChannel.appendLine("Original: " + formatTokens(result.originalTokens) + " tokens");
+    outputChannel.appendLine("Compressed: " + formatTokens(result.compressedTokens) + " tokens");
+    outputChannel.appendLine("Savings: " + formatTokens(result.savings) + " tokens (" + result.savingsPercent + "%)");
+    outputChannel.appendLine("Summary: " + result.diffSummary);
+    outputChannel.appendLine("---");
+
+    // Ask user what to do with compressed code
+    const action = await vscode.window.showInformationMessage(
+      "Saved " + formatTokens(result.savings) + " tokens (" + result.savingsPercent + "%)",
+      "Copy to Clipboard",
+      "View in Output",
+      "Replace File"
+    );
+
+    if (action === "Copy to Clipboard") {
+      await vscode.env.clipboard.writeText(result.compressedCode);
+      vscode.window.showInformationMessage("Compressed code copied to clipboard");
+    } else if (action === "View in Output") {
+      outputChannel.appendLine("\n=== COMPRESSED CODE ===\n");
+      outputChannel.appendLine(result.compressedCode);
+      outputChannel.appendLine("\n=== END COMPRESSED CODE ===\n");
+      outputChannel.show();
+    } else if (action === "Replace File") {
+      const edit = new vscode.WorkspaceEdit();
+      const fullRange = new vscode.Range(
+        editor.document.positionAt(0),
+        editor.document.positionAt(text.length)
+      );
+      edit.replace(editor.document.uri, fullRange, result.compressedCode);
+      await vscode.workspace.applyEdit(edit);
+      vscode.window.showInformationMessage("File compressed: " + result.savingsPercent + "% savings");
+    }
+  } catch (error) {
+    outputChannel.appendLine("Squeeze error: " + error);
+    vscode.window.showErrorMessage("Failed to squeeze file: " + (error instanceof Error ? error.message : String(error)));
+  }
 }
 
 // ============================================================================
