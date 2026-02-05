@@ -1,0 +1,28 @@
+{
+  "name": "@prune/squeezer",
+  "version": "0.1.0",
+  "description": "Tree-sitter AST-based code compression for token optimization",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "tree-sitter": "^0.21.1",
+    "tree-sitter-typescript": "^0.21.2",
+    "tree-sitter-python": "^0.21.0",
+    "tree-sitter-go": "^0.21.0",
+    "tree-sitter-rust": "^0.21.2",
+    "tree-sitter-java": "^0.21.0",
+    "@prune/shared": "workspace:*",
+    "@prune/tokenizer": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.0",
+    "vitest": "^1.2.0"
+  }
+}

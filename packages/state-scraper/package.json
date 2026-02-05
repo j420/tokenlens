@@ -1,0 +1,23 @@
+{
+  "name": "@prune/state-scraper",
+  "version": "0.1.0",
+  "description": "Read Cursor's local state for zero-key usage tracking",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "@prune/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "@types/better-sqlite3": "^7.6.8",
+    "@types/node": "^20.10.0",
+    "vitest": "^1.2.0"
+  }
+}
