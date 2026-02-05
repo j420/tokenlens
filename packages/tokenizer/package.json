@@ -13,7 +13,7 @@
   "dependencies": {
     "tiktoken": "^1.0.15",
     "@anthropic-ai/tokenizer": "^0.0.4",
-    "@prune/shared": "workspace:*"
+    "@prune/shared": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

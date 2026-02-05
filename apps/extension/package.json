@@ -107,10 +107,10 @@
     "publish": "vsce publish"
   },
   "dependencies": {
-    "@prune/tokenizer": "workspace:*",
-    "@prune/squeezer": "workspace:*",
-    "@prune/state-scraper": "workspace:*",
-    "@prune/shared": "workspace:*"
+    "@prune/tokenizer": "0.1.0",
+    "@prune/squeezer": "0.1.0",
+    "@prune/state-scraper": "0.1.0",
+    "@prune/shared": "0.1.0"
   },
   "devDependencies": {
     "@types/vscode": "^1.85.0",
