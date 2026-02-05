@@ -22,7 +22,6 @@ import { countTokens } from "@prune/tokenizer";
 import TypeScript from "tree-sitter-typescript";
 import Python from "tree-sitter-python";
 import Go from "tree-sitter-go";
-import Rust from "tree-sitter-rust";
 import Java from "tree-sitter-java";
 
 // ============================================================================
@@ -36,9 +35,9 @@ const LANGUAGE_PARSERS: Record<SupportedLanguage, unknown> = {
   javascript: TypeScript.typescript, // TSX parser handles JS too
   python: Python,
   go: Go,
-  rust: Rust,
+  rust: null, // Removed due to npm package availability issues
   java: Java,
-  cpp: null, // Will add tree-sitter-cpp if needed
+  cpp: null,
   c: null,
 };
 
