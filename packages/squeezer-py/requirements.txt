@@ -1,0 +1,6 @@
+# Tree-sitter core
+tree-sitter>=0.21.0
+
+# Language grammars
+tree-sitter-python>=0.21.0
+tree-sitter-javascript>=0.21.0
