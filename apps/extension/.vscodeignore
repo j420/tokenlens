@@ -10,3 +10,8 @@ src/**
 *.log
 **/.env*
 **/.git/**
+squeezer-py/**
+
+# Explicitly include wasm files
+!wasm/**
+!wasm/*.wasm

@@ -79,20 +79,25 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --loader:.wasm=file",
     "watch": "npm run build -- --watch",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish"
   },
   "devDependencies": {
-    "@prune/tokenizer": "0.1.0",
     "@prune/shared": "0.1.0",
     "@prune/squeezer": "0.1.0",
     "@prune/state-scraper": "0.1.0",
-    "@types/vscode": "^1.85.0",
+    "@prune/tokenizer": "0.1.0",
     "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0",
     "esbuild": "^0.19.11",
-    "typescript": "^5.3.3",
-    "@vscode/vsce": "^2.22.0"
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "^0.3.0",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.26.5"
   }
 }
