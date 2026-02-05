@@ -12,10 +12,10 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "vitest run"
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@prune/shared": "*"
+    "@prune/shared": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

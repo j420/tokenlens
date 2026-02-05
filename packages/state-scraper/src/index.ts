@@ -1,16 +1,51 @@
 /**
  * @prune/state-scraper
  * Read Cursor's local state for zero-key usage tracking
- * 
+ *
  * Cursor stores session data in a local SQLite database.
  * We can read usage information without requiring API keys.
+ *
+ * Uses sql.js (pure JavaScript/WebAssembly) - no native compilation required.
  */
 
-import Database from "better-sqlite3";
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const initSqlJs = require("sql.js");
+
 import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
 import { type CursorUsage } from "@prune/shared";
+
+// Type definitions for sql.js
+interface SqlJsDatabase {
+  run(sql: string, params?: unknown[]): void;
+  exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
+  prepare(sql: string): SqlJsStatement;
+  close(): void;
+}
+
+interface SqlJsStatement {
+  bind(params?: unknown[]): boolean;
+  step(): boolean;
+  getAsObject(params?: unknown): Record<string, unknown>;
+  free(): boolean;
+  run(params?: unknown[]): void;
+  reset(): void;
+}
+
+interface SqlJsStatic {
+  Database: new (data?: ArrayLike<number> | Buffer | null) => SqlJsDatabase;
+}
+
+// Cache the SQL.js initialization
+let sqlJsInstance: SqlJsStatic | null = null;
+
+async function getSqlJs(): Promise<SqlJsStatic> {
+  if (!sqlJsInstance) {
+    sqlJsInstance = await initSqlJs() as SqlJsStatic;
+  }
+  return sqlJsInstance!;
+}
 
 // ============================================================================
 // Path Detection
@@ -104,26 +139,44 @@ export function getVSCodeStatePath(): string | null {
 // Database Operations
 // ============================================================================
 
-interface StateRow {
-  key: string;
-  value: string;
+/**
+ * Open a SQLite database using sql.js
+ */
+async function openDatabase(dbPath: string): Promise<SqlJsDatabase | null> {
+  try {
+    const SQL = await getSqlJs();
+    const buffer = fs.readFileSync(dbPath);
+    return new SQL.Database(buffer);
+  } catch (error) {
+    console.error("Failed to open database:", error);
+    return null;
+  }
 }
 
 /**
  * Read a value from the state database
  */
-export function readStateValue(dbPath: string, key: string): string | null {
+export async function readStateValue(dbPath: string, key: string): Promise<string | null> {
+  const db = await openDatabase(dbPath);
+  if (!db) return null;
+
   try {
-    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
-    
     const stmt = db.prepare("SELECT value FROM ItemTable WHERE key = ?");
-    const row = stmt.get(key) as StateRow | undefined;
-    
+    stmt.bind([key]);
+
+    if (stmt.step()) {
+      const row = stmt.getAsObject();
+      stmt.free();
+      db.close();
+      return (row.value as string) ?? null;
+    }
+
+    stmt.free();
     db.close();
-    
-    return row?.value ?? null;
+    return null;
   } catch (error) {
     console.error("Failed to read state value:", error);
+    db.close();
     return null;
   }
 }
@@ -131,18 +184,20 @@ export function readStateValue(dbPath: string, key: string): string | null {
 /**
  * Read all state keys (for debugging/exploration)
  */
-export function readAllStateKeys(dbPath: string): string[] {
+export async function readAllStateKeys(dbPath: string): Promise<string[]> {
+  const db = await openDatabase(dbPath);
+  if (!db) return [];
+
   try {
-    const db = new Database(dbPath, { readonly: true, fileMustExist: true });
-    
-    const stmt = db.prepare("SELECT key FROM ItemTable");
-    const rows = stmt.all() as Array<{ key: string }>;
-    
+    const results = db.exec("SELECT key FROM ItemTable");
     db.close();
-    
-    return rows.map((r) => r.key);
+
+    if (results.length === 0) return [];
+
+    return results[0].values.map((row: unknown[]) => row[0] as string);
   } catch (error) {
     console.error("Failed to read state keys:", error);
+    db.close();
     return [];
   }
 }
@@ -164,7 +219,7 @@ const CURSOR_STATE_KEYS = {
 /**
  * Get Cursor session token for API access
  */
-export function getCursorSessionToken(): string | null {
+export async function getCursorSessionToken(): Promise<string | null> {
   const dbPath = getCursorStatePath();
   if (!dbPath) return null;
 
@@ -174,7 +229,7 @@ export function getCursorSessionToken(): string | null {
 /**
  * Get Cursor user ID
  */
-export function getCursorUserId(): string | null {
+export async function getCursorUserId(): Promise<string | null> {
   const dbPath = getCursorStatePath();
   if (!dbPath) return null;
 
@@ -201,7 +256,7 @@ interface CursorUsageResponse {
  * Fetch usage data from Cursor's API using the session token
  */
 export async function fetchCursorUsage(): Promise<CursorUsage | null> {
-  const sessionToken = getCursorSessionToken();
+  const sessionToken = await getCursorSessionToken();
   if (!sessionToken) {
     console.error("No Cursor session token found");
     return null;
@@ -256,26 +311,34 @@ export function watchCursorState(
 
   let lastValues: Record<string, string | null> = {};
   const keysToWatch = Object.values(CURSOR_STATE_KEYS);
+  let isRunning = true;
 
-  // Initial read
-  for (const key of keysToWatch) {
-    lastValues[key] = readStateValue(dbPath, key);
-  }
+  // Initial read and setup polling
+  const poll = async () => {
+    if (!isRunning) return;
 
-  // Poll for changes
-  const interval = setInterval(() => {
     for (const key of keysToWatch) {
-      const currentValue = readStateValue(dbPath, key);
+      const currentValue = await readStateValue(dbPath, key);
       if (currentValue !== lastValues[key]) {
-        callback(key, currentValue);
+        if (lastValues[key] !== undefined) {
+          // Only callback after initial read
+          callback(key, currentValue);
+        }
         lastValues[key] = currentValue;
       }
     }
-  }, pollIntervalMs);
+
+    if (isRunning) {
+      setTimeout(poll, pollIntervalMs);
+    }
+  };
+
+  // Start polling
+  poll();
 
   // Return cleanup function
   return () => {
-    clearInterval(interval);
+    isRunning = false;
   };
 }
 
@@ -294,7 +357,7 @@ export interface CursorDiagnostics {
 /**
  * Run diagnostics on Cursor installation
  */
-export function runDiagnostics(): CursorDiagnostics {
+export async function runDiagnostics(): Promise<CursorDiagnostics> {
   const statePath = getCursorStatePath();
   const installed = statePath !== null;
 
@@ -303,9 +366,9 @@ export function runDiagnostics(): CursorDiagnostics {
   let stateKeyCount = 0;
 
   if (statePath) {
-    hasSessionToken = getCursorSessionToken() !== null;
-    userId = getCursorUserId();
-    stateKeyCount = readAllStateKeys(statePath).length;
+    hasSessionToken = (await getCursorSessionToken()) !== null;
+    userId = await getCursorUserId();
+    stateKeyCount = (await readAllStateKeys(statePath)).length;
   }
 
   return {
