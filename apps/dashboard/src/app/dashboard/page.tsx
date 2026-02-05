@@ -206,25 +206,23 @@ export default function DashboardPage() {
           </p>
 
           <div className="mx-auto max-w-md rounded-lg bg-gray-50 p-6 text-left">
-            <h3 className="mb-3 font-medium text-gray-900">Quick Setup for Cursor:</h3>
+            <h3 className="mb-3 font-medium text-gray-900">Quick Setup:</h3>
             <ol className="space-y-2 text-sm text-gray-600">
               <li className="flex gap-2">
                 <span className="font-semibold text-prune-green">1.</span>
-                Open Cursor Settings → Models → OpenAI
+                Install the Prune extension in VS Code / Cursor
               </li>
               <li className="flex gap-2">
                 <span className="font-semibold text-prune-green">2.</span>
-                Enable "Override OpenAI Base URL"
+                Open any code file
               </li>
               <li className="flex gap-2">
                 <span className="font-semibold text-prune-green">3.</span>
-                <span>
-                  Enter: <code className="rounded bg-gray-200 px-1 text-xs">{typeof window !== "undefined" ? window.location.origin : ""}/api/v1/proxy/openai</code>
-                </span>
+                Check the status bar for token counts
               </li>
               <li className="flex gap-2">
                 <span className="font-semibold text-prune-green">4.</span>
-                Add your OpenAI API key and save
+                Right-click to access Prune commands
               </li>
             </ol>
           </div>
@@ -244,7 +242,7 @@ export default function DashboardPage() {
           <h3 className="mb-4 text-lg font-semibold text-gray-900">Spend Over Time (7 days)</h3>
           <div className="rounded-lg border border-gray-200 bg-white p-6">
             <div className="flex h-[300px] items-center justify-center text-gray-400">
-              Usage data will appear here once you start using Cursor through Prune
+              Usage data will appear here once you start using the Prune extension
             </div>
           </div>
         </div>
