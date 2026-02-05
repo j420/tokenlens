@@ -149,16 +149,22 @@ export type SupportedLanguage =
 export const LANGUAGE_EXTENSIONS: Record<string, SupportedLanguage> = {
   ".ts": "typescript",
   ".tsx": "typescript",
+  ".mts": "typescript",
+  ".cts": "typescript",
   ".js": "javascript",
   ".jsx": "javascript",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
   ".py": "python",
   ".go": "go",
   ".rs": "rust",
   ".java": "java",
   ".cpp": "cpp",
   ".cc": "cpp",
+  ".cxx": "cpp",
   ".c": "c",
   ".h": "c",
+  ".hpp": "cpp",
 };
 
 // ============================================================================

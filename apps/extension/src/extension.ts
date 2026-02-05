@@ -21,10 +21,24 @@ let outputChannel: vscode.OutputChannel;
 // Activation
 // ============================================================================
 
+// Prefix for all console logs to make them easy to filter in DevTools
+const LOG_PREFIX = "[Prune]";
+
+function log(message: string) {
+  console.log(LOG_PREFIX, message);
+  outputChannel?.appendLine(message);
+}
+
+function logError(message: string, error?: unknown) {
+  const errorMsg = error instanceof Error ? error.message : String(error || "");
+  console.error(LOG_PREFIX, message, errorMsg);
+  outputChannel?.appendLine(`ERROR: ${message} ${errorMsg}`);
+}
+
 export function activate(context: vscode.ExtensionContext) {
   // Create output channel
   outputChannel = vscode.window.createOutputChannel("Prune");
-  outputChannel.appendLine("Prune extension activated");
+  log("Prune extension activated");
 
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(
@@ -57,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Initial status bar update
   updateStatusBar();
 
-  outputChannel.appendLine("Prune ready - token counting active");
+  log("Prune ready - token counting active");
 }
 
 export function deactivate() {
@@ -106,7 +120,7 @@ function updateStatusBar() {
     }
     statusBarItem.command = "prune.analyzeSelection";
   } catch (error) {
-    outputChannel.appendLine("Token count error: " + error);
+    logError("Token count error:", error);
     statusBarItem.text = "$(symbol-misc) Prune";
     statusBarItem.tooltip = "Error counting tokens";
     statusBarItem.backgroundColor = undefined;
@@ -225,14 +239,28 @@ async function squeezeCurrentFile() {
   if (!tier) return;
 
   try {
+    log("---");
+    log("Squeezing: " + filePath);
+    log("Tier: " + tier.label);
+
     const result: SqueezeResult = squeezeFile(text, filePath, {
       tier: tier.value as "lossless" | "structural" | "telegraphic",
       preserveTodos: config.preserveTodos,
       preserveTypeHints: config.preserveTypeHints,
     });
 
+    log("Result: " + result.diffSummary);
+    log("Original tokens: " + result.originalTokens);
+    log("Compressed tokens: " + result.compressedTokens);
+    log("Savings: " + result.savings + " (" + result.savingsPercent + "%)");
+    log("Valid: " + result.isValid);
+
     if (result.savings === 0) {
-      vscode.window.showInformationMessage("No compression possible for this file");
+      // Show the reason why no compression was possible
+      const reason = result.diffSummary || "No compressible content found";
+      vscode.window.showInformationMessage("No savings: " + reason, "View Details").then((action) => {
+        if (action === "View Details") outputChannel.show();
+      });
       return;
     }
 
@@ -273,7 +301,7 @@ async function squeezeCurrentFile() {
       vscode.window.showInformationMessage("File compressed: " + result.savingsPercent + "% savings");
     }
   } catch (error) {
-    outputChannel.appendLine("Squeeze error: " + error);
+    logError("Squeeze error:", error);
     vscode.window.showErrorMessage("Failed to squeeze file: " + (error instanceof Error ? error.message : String(error)));
   }
 }
@@ -299,7 +327,7 @@ async function checkCursorUsage() {
 
         if (!status.available) {
           vscode.window.showWarningMessage("Cursor Usage: " + (status.error || "Not available"));
-          outputChannel.appendLine("Cursor usage check failed: " + status.error);
+          logError("Cursor usage check failed:", status.error);
           return;
         }
 
@@ -359,9 +387,8 @@ async function checkCursorUsage() {
           });
         }
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        outputChannel.appendLine("Cursor usage error: " + errorMsg);
-        vscode.window.showErrorMessage("Failed to check Cursor usage: " + errorMsg);
+        logError("Cursor usage error:", error);
+        vscode.window.showErrorMessage("Failed to check Cursor usage: " + (error instanceof Error ? error.message : String(error)));
       }
     }
   );
