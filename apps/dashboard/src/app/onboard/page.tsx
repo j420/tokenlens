@@ -20,7 +20,7 @@ const TOOLS: Record<Tool, ToolConfig> = {
     icon: "terminal",
     subtitle: "Terminal / CLI",
     envVar: "ANTHROPIC_BASE_URL",
-    baseUrl: "https://delimit.dev/api/v1/proxy/anthropic",
+    baseUrl: "", // Will be set dynamically
     instructions: [
       "Add these two lines to your ~/.zshrc (or ~/.bashrc):",
       "Then restart your terminal or run: source ~/.zshrc",
@@ -32,7 +32,7 @@ const TOOLS: Record<Tool, ToolConfig> = {
     icon: "terminal",
     subtitle: "Terminal / CLI",
     envVar: "OPENAI_BASE_URL",
-    baseUrl: "https://delimit.dev/api/v1/proxy/openai",
+    baseUrl: "", // Will be set dynamically
     instructions: [
       "Add these two lines to your ~/.zshrc (or ~/.bashrc):",
       "Then restart your terminal or run: source ~/.zshrc",
@@ -42,14 +42,14 @@ const TOOLS: Record<Tool, ToolConfig> = {
   cursor: {
     name: "Cursor",
     icon: "cursor",
-    subtitle: "VS Code (Max Mode)",
-    envVar: "ANTHROPIC_BASE_URL",
-    baseUrl: "https://delimit.dev/api/v1/proxy/anthropic",
+    subtitle: "VS Code (API Key Mode)",
+    envVar: "Override OpenAI Base URL",
+    baseUrl: "", // Will be set dynamically
     instructions: [
-      "Open Cursor Settings (Cmd+, or Ctrl+,)",
-      "Navigate to Models > Override OpenAI Base URL",
-      "Paste the URL and API key below",
-      "Click Save. Cursor will now flow through Prune.",
+      "Open Cursor Settings → Models → OpenAI",
+      "Enable 'Override OpenAI Base URL'",
+      "Paste the URL below, then add your OpenAI API key",
+      "Cursor will now track usage through Prune.",
     ],
   },
 };
@@ -72,15 +72,33 @@ export default function OnboardPage() {
   const [copied, setCopied] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [firstEvent, setFirstEvent] = useState<{ tokens: number; cost: number } | null>(null);
+  const [baseUrl, setBaseUrl] = useState("");
+
+  // Get the actual base URL from the current location
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setBaseUrl(window.location.origin);
+    }
+  }, []);
 
   const handleToolSelect = (tool: Tool) => {
     setSelectedTool(tool);
   };
 
+  const getProxyUrl = (tool: Tool) => {
+    if (tool === "codex" || tool === "cursor") {
+      return `${baseUrl}/api/v1/proxy/openai`;
+    }
+    return `${baseUrl}/api/v1/proxy/anthropic`;
+  };
+
   const handleCopyToClipboard = async () => {
     if (!selectedTool) return;
     const config = TOOLS[selectedTool];
-    const text = `export ${config.envVar}=${config.baseUrl}\nexport PRUNE_API_KEY=${apiKey}`;
+    const proxyUrl = getProxyUrl(selectedTool);
+    const text = selectedTool === "cursor"
+      ? proxyUrl
+      : `export ${config.envVar}=${proxyUrl}\nexport PRUNE_API_KEY=${apiKey}`;
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -209,10 +227,22 @@ export default function OnboardPage() {
                   </p>
 
                   <div className="mb-4 rounded-md bg-gray-900 p-4 font-mono text-sm text-gray-100">
-                    <div className="text-green-400">
-                      export {TOOLS[selectedTool].envVar}={TOOLS[selectedTool].baseUrl}
-                    </div>
-                    <div className="text-green-400">export PRUNE_API_KEY={apiKey}</div>
+                    {selectedTool === "cursor" ? (
+                      <>
+                        <div className="text-gray-400 mb-2"># Base URL for Cursor:</div>
+                        <div className="text-green-400 break-all">{getProxyUrl(selectedTool)}</div>
+                        <div className="text-gray-400 mt-3 text-xs">
+                          Use your own OpenAI API key in Cursor settings
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-green-400 break-all">
+                          export {TOOLS[selectedTool].envVar}={getProxyUrl(selectedTool)}
+                        </div>
+                        <div className="text-green-400">export PRUNE_API_KEY={apiKey}</div>
+                      </>
+                    )}
                   </div>
 
                   <p className="mb-4 text-sm text-gray-600">

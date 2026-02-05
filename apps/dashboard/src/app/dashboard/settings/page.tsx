@@ -61,7 +61,7 @@ const MOCK_SETTINGS: Settings = {
     {
       id: "cursor",
       name: "Cursor",
-      envVar: "ANTHROPIC_BASE_URL",
+      envVar: "Override OpenAI Base URL",
       connected: false,
       lastSeen: null,
     },
