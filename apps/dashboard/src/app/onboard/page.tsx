@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 
 type Tool = "claude-code" | "codex" | "cursor";
+type CursorProvider = "openai" | "anthropic";
 
 interface ToolConfig {
   name: string;
@@ -54,6 +55,21 @@ const TOOLS: Record<Tool, ToolConfig> = {
   },
 };
 
+const CURSOR_PROVIDERS: Record<CursorProvider, { name: string; icon: string; apiKeyUrl: string; settingsPath: string }> = {
+  openai: {
+    name: "OpenAI",
+    icon: "🟢",
+    apiKeyUrl: "https://platform.openai.com/api-keys",
+    settingsPath: "Models → OpenAI API Key",
+  },
+  anthropic: {
+    name: "Anthropic",
+    icon: "🟠",
+    apiKeyUrl: "https://console.anthropic.com/settings/keys",
+    settingsPath: "Models → Anthropic API Key",
+  },
+};
+
 // Generate a mock API key for demo purposes
 function generateApiKey(): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -68,6 +84,7 @@ export default function OnboardPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
+  const [cursorProvider, setCursorProvider] = useState<CursorProvider>("openai");
   const [apiKey] = useState(generateApiKey);
   const [copied, setCopied] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -85,9 +102,14 @@ export default function OnboardPage() {
     setSelectedTool(tool);
   };
 
-  const getProxyUrl = (tool: Tool) => {
-    if (tool === "codex" || tool === "cursor") {
+  const getProxyUrl = (tool: Tool, provider?: CursorProvider) => {
+    if (tool === "codex") {
       return `${baseUrl}/api/v1/proxy/openai`;
+    }
+    if (tool === "cursor") {
+      return provider === "anthropic"
+        ? `${baseUrl}/api/v1/proxy/anthropic`
+        : `${baseUrl}/api/v1/proxy/openai`;
     }
     return `${baseUrl}/api/v1/proxy/anthropic`;
   };
@@ -95,7 +117,7 @@ export default function OnboardPage() {
   const handleCopyToClipboard = async () => {
     if (!selectedTool) return;
     const config = TOOLS[selectedTool];
-    const proxyUrl = getProxyUrl(selectedTool);
+    const proxyUrl = getProxyUrl(selectedTool, cursorProvider);
     const text = selectedTool === "cursor"
       ? proxyUrl
       : `export ${config.envVar}=${proxyUrl}\nexport PRUNE_API_KEY=${apiKey}`;
@@ -223,6 +245,38 @@ export default function OnboardPage() {
                     </button>
                   </div>
 
+                  {/* Provider Selection */}
+                  <div className="mb-6">
+                    <p className="mb-3 text-sm font-medium text-gray-700">Which AI provider do you want to use?</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {(Object.keys(CURSOR_PROVIDERS) as CursorProvider[]).map((provider) => {
+                        const config = CURSOR_PROVIDERS[provider];
+                        const isSelected = cursorProvider === provider;
+                        return (
+                          <button
+                            key={provider}
+                            onClick={() => setCursorProvider(provider)}
+                            className={`rounded-lg border-2 p-4 text-left transition ${
+                              isSelected
+                                ? "border-prune-green bg-prune-green/5"
+                                : "border-gray-200 hover:border-gray-300"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="text-xl">{config.icon}</span>
+                              <span className={`font-medium ${isSelected ? "text-prune-green" : "text-gray-900"}`}>
+                                {config.name}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500">
+                              {provider === "openai" ? "GPT-4o, o1, o3-mini" : "Claude Sonnet, Opus, Haiku"}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
                   {/* Step 1 */}
                   <div className="mb-6">
                     <div className="mb-3 flex items-center gap-3">
@@ -243,7 +297,7 @@ export default function OnboardPage() {
                     </div>
                     <div className="ml-10 space-y-2 text-sm text-gray-600">
                       <p>In the Settings sidebar, click on <strong>"Models"</strong></p>
-                      <p>Then scroll down to find the <strong>"OpenAI API Key"</strong> section</p>
+                      <p>Then scroll down to find the <strong>"{CURSOR_PROVIDERS[cursorProvider].settingsPath}"</strong> section</p>
                     </div>
                   </div>
 
@@ -251,11 +305,21 @@ export default function OnboardPage() {
                   <div className="mb-6">
                     <div className="mb-3 flex items-center gap-3">
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-prune-green text-sm font-bold text-white">3</span>
-                      <h4 className="font-medium text-gray-900">Enter Your OpenAI API Key</h4>
+                      <h4 className="font-medium text-gray-900">Enter Your {CURSOR_PROVIDERS[cursorProvider].name} API Key</h4>
                     </div>
                     <div className="ml-10 space-y-2 text-sm text-gray-600">
-                      <p>Paste your OpenAI API key in the input field</p>
-                      <p className="text-gray-500">Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-prune-green hover:underline">platform.openai.com/api-keys</a></p>
+                      <p>Paste your {CURSOR_PROVIDERS[cursorProvider].name} API key in the input field</p>
+                      <p className="text-gray-500">
+                        Get your API key from{" "}
+                        <a
+                          href={CURSOR_PROVIDERS[cursorProvider].apiKeyUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-prune-green hover:underline"
+                        >
+                          {cursorProvider === "openai" ? "platform.openai.com/api-keys" : "console.anthropic.com/settings/keys"}
+                        </a>
+                      </p>
                     </div>
                   </div>
 
@@ -266,7 +330,7 @@ export default function OnboardPage() {
                       <h4 className="font-medium text-gray-900">Enable Base URL Override</h4>
                     </div>
                     <div className="ml-10 space-y-2 text-sm text-gray-600">
-                      <p>Check the box that says <strong>"Override OpenAI Base URL"</strong></p>
+                      <p>Check the box that says <strong>"Override {CURSOR_PROVIDERS[cursorProvider].name} Base URL"</strong></p>
                       <p>A new input field will appear below</p>
                     </div>
                   </div>
@@ -281,7 +345,7 @@ export default function OnboardPage() {
                       <p className="text-sm text-gray-600">Copy this URL and paste it in the Base URL field:</p>
                       <div className="rounded-md bg-gray-900 p-4 font-mono text-sm">
                         <div className="flex items-center justify-between gap-2">
-                          <code className="text-green-400 break-all">{getProxyUrl("cursor")}</code>
+                          <code className="text-green-400 break-all">{getProxyUrl("cursor", cursorProvider)}</code>
                           <button
                             onClick={handleCopyToClipboard}
                             className="shrink-0 rounded bg-gray-700 px-3 py-1 text-xs text-white hover:bg-gray-600"
@@ -305,13 +369,29 @@ export default function OnboardPage() {
                     </div>
                   </div>
 
-                  {/* Info box */}
+                  {/* Info box - API Key Explanation */}
                   <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4">
                     <div className="flex gap-3">
                       <span className="text-blue-500">ℹ️</span>
                       <div className="text-sm text-blue-800">
                         <p className="font-medium">How it works:</p>
-                        <p className="mt-1">Cursor will send requests to Prune instead of directly to OpenAI. Prune forwards the request, tracks usage, and returns the response. Your API key is never stored.</p>
+                        <ul className="mt-2 space-y-1 list-disc list-inside">
+                          <li><strong>You use your own API key</strong> — Prune does not provide or store API keys</li>
+                          <li>Cursor sends requests to Prune, which forwards them to {CURSOR_PROVIDERS[cursorProvider].name}</li>
+                          <li>Your API key is passed through transparently and never stored by Prune</li>
+                          <li>Prune only captures usage metrics (tokens, cost) before forwarding the request</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Security note */}
+                  <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex gap-3">
+                      <span className="text-amber-500">🔒</span>
+                      <div className="text-sm text-amber-800">
+                        <p className="font-medium">Security Note:</p>
+                        <p className="mt-1">The URL override only changes where requests are routed. Your API key remains secure and is passed directly to {CURSOR_PROVIDERS[cursorProvider].name}'s API servers after Prune logs the usage metrics.</p>
                       </div>
                     </div>
                   </div>
