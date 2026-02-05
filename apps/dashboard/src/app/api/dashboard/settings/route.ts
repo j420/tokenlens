@@ -19,8 +19,8 @@ const MOCK_SETTINGS = {
     },
     {
       id: "cursor",
-      name: "Cursor",
-      envVar: "ANTHROPIC_BASE_URL",
+      name: "Cursor (API Key Mode)",
+      envVar: "Override OpenAI Base URL",
       connected: false,
       lastSeen: null,
     },
