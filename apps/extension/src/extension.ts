@@ -27,11 +27,14 @@ export function activate(context: vscode.ExtensionContext) {
   outputChannel = vscode.window.createOutputChannel("Prune");
   outputChannel.appendLine("Prune extension activated");
 
-  // Run diagnostics
-  const diagnostics = runDiagnostics();
-  outputChannel.appendLine("Cursor installed: " + diagnostics.installed);
-  outputChannel.appendLine("State path: " + (diagnostics.statePath || "not found"));
-  outputChannel.appendLine("Has session token: " + diagnostics.hasSessionToken);
+  // Run diagnostics asynchronously (don't block activation)
+  runDiagnostics().then((diagnostics) => {
+    outputChannel.appendLine("Cursor installed: " + diagnostics.installed);
+    outputChannel.appendLine("State path: " + (diagnostics.statePath || "not found"));
+    outputChannel.appendLine("Has session token: " + diagnostics.hasSessionToken);
+  }).catch((err) => {
+    outputChannel.appendLine("Diagnostics failed: " + err);
+  });
 
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(
