@@ -20,11 +20,33 @@ import * as path from "path";
 import type { Parser as ParserType, Language, SyntaxNode, Tree } from "web-tree-sitter";
 
 // Dynamic import for web-tree-sitter (handles CommonJS/ESM compatibility)
-let Parser: typeof ParserType;
-async function loadParser(): Promise<typeof ParserType> {
-  if (Parser) return Parser;
+let ParserClass: typeof ParserType | null = null;
+let LanguageClass: any = null;
+
+async function loadTreeSitter(): Promise<{ Parser: typeof ParserType; Language: any }> {
+  if (ParserClass && LanguageClass) {
+    return { Parser: ParserClass, Language: LanguageClass };
+  }
+
+  // In CommonJS (bundled by esbuild), it's require('web-tree-sitter').Parser
   const mod = await import("web-tree-sitter");
-  Parser = (mod as any).default || mod.Parser || mod;
+
+  // Try different ways to get the Parser and Language classes
+  if ((mod as any).Parser && typeof (mod as any).Parser.init === 'function') {
+    ParserClass = (mod as any).Parser;
+    LanguageClass = (mod as any).Language;
+  } else if ((mod as any).default?.Parser && typeof (mod as any).default.Parser.init === 'function') {
+    ParserClass = (mod as any).default.Parser;
+    LanguageClass = (mod as any).default.Language;
+  } else {
+    throw new Error('Could not find Parser class in web-tree-sitter module');
+  }
+
+  return { Parser: ParserClass!, Language: LanguageClass };
+}
+
+async function loadParser(): Promise<typeof ParserType> {
+  const { Parser } = await loadTreeSitter();
   return Parser;
 }
 
@@ -100,12 +122,9 @@ export async function initParser(wasmDir: string): Promise<void> {
   if (parserInitialized) return;
 
   const P = await loadParser();
-  const wasmPath = path.join(wasmDir, "tree-sitter.wasm");
   await P.init({
     locateFile: (file: string) => {
-      if (file === "tree-sitter.wasm") {
-        return wasmPath;
-      }
+      // web-tree-sitter looks for web-tree-sitter.wasm
       return path.join(wasmDir, file);
     },
   });
@@ -123,11 +142,11 @@ export async function loadLanguage(
   const cached = languageCache.get(language);
   if (cached) return cached;
 
-  const P = await loadParser();
+  const { Language } = await loadTreeSitter();
   const langFile = `tree-sitter-${language}.wasm`;
   const langPath = path.join(wasmDir, langFile);
 
-  const lang = await P.Language.load(langPath);
+  const lang = await Language.load(langPath);
   languageCache.set(language, lang);
 
   return lang;

@@ -11,6 +11,9 @@ src/**
 **/.env*
 **/.git/**
 squeezer-py/**
+test-*.cjs
+test-*.mjs
+test-*.js
 
 # Explicitly include wasm files
 !wasm/**
