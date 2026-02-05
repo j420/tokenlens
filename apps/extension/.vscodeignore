@@ -1,0 +1,12 @@
+.vscode/**
+.vscode-test/**
+src/**
+**/*.ts
+!**/*.d.ts
+**/tsconfig.json
+.gitignore
+**/.turbo/**
+**/node_modules/**
+*.log
+**/.env*
+**/.git/**
