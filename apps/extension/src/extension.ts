@@ -6,58 +6,10 @@
  */
 
 import * as vscode from "vscode";
+import { countTokens, analyzeContent, cleanup, formatTokens } from "@prune/tokenizer";
+import { squeezeFile } from "@prune/squeezer";
+import { runDiagnostics, fetchCursorUsage } from "@prune/state-scraper";
 import { type SqueezeTier, type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
-
-// ============================================================================
-// Lazy-loaded modules (prevents WASM blocking activation)
-// ============================================================================
-
-type TokenizerModule = typeof import("@prune/tokenizer");
-type SqueezerModule = typeof import("@prune/squeezer");
-type StateScraperModule = typeof import("@prune/state-scraper");
-
-let tokenizerModule: TokenizerModule | null = null;
-let squeezerModule: SqueezerModule | null = null;
-let stateScraperModule: StateScraperModule | null = null;
-let modulesLoaded = false;
-let modulesLoading = false;
-
-async function loadModules(): Promise<boolean> {
-  if (modulesLoaded) return true;
-  if (modulesLoading) {
-    // Wait for loading to complete
-    while (modulesLoading && !modulesLoaded) {
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    return modulesLoaded;
-  }
-
-  modulesLoading = true;
-  try {
-    outputChannel?.appendLine("Loading tokenizer module...");
-    tokenizerModule = await import("@prune/tokenizer");
-    // Initialize tokenizers (loads tiktoken WASM in background)
-    await tokenizerModule.init();
-    outputChannel?.appendLine("Tokenizer loaded and initialized");
-
-    outputChannel?.appendLine("Loading squeezer module...");
-    squeezerModule = await import("@prune/squeezer");
-    outputChannel?.appendLine("Squeezer loaded");
-
-    outputChannel?.appendLine("Loading state-scraper module...");
-    stateScraperModule = await import("@prune/state-scraper");
-    outputChannel?.appendLine("State-scraper loaded");
-
-    modulesLoaded = true;
-    outputChannel?.appendLine("All modules loaded successfully");
-    return true;
-  } catch (error) {
-    outputChannel?.appendLine("Failed to load modules: " + error);
-    return false;
-  } finally {
-    modulesLoading = false;
-  }
-}
 
 // ============================================================================
 // State
@@ -72,21 +24,20 @@ let lastSqueezeResult: { original: string; compressed: string } | null = null;
 // ============================================================================
 
 export function activate(context: vscode.ExtensionContext) {
-  // Create output channel first
+  // Create output channel
   outputChannel = vscode.window.createOutputChannel("Prune");
-  outputChannel.appendLine("Prune extension activating...");
+  outputChannel.appendLine("Prune extension activated");
 
-  // Create status bar item immediately with loading state
+  // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100
   );
-  statusBarItem.text = "$(loading~spin) Prune";
-  statusBarItem.tooltip = "Loading Prune...";
-  statusBarItem.show();
+  statusBarItem.command = "prune.analyzeSelection";
+  statusBarItem.tooltip = "Click to analyze selection";
   context.subscriptions.push(statusBarItem);
 
-  // Register commands (they will wait for modules when called)
+  // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.squeezeSelection", squeezeSelection),
@@ -105,26 +56,16 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.window.onDidChangeActiveTextEditor(updateStatusBar)
   );
 
-  // Load modules in background, then update status bar
-  loadModules().then((success) => {
-    if (success) {
-      outputChannel.appendLine("Prune extension activated successfully");
-      updateStatusBar();
+  // Initial status bar update
+  updateStatusBar();
 
-      // Run diagnostics
-      if (stateScraperModule) {
-        stateScraperModule.runDiagnostics().then((diagnostics) => {
-          outputChannel.appendLine("Cursor installed: " + diagnostics.installed);
-          outputChannel.appendLine("State path: " + (diagnostics.statePath || "not found"));
-          outputChannel.appendLine("Has session token: " + diagnostics.hasSessionToken);
-        }).catch((err) => {
-          outputChannel.appendLine("Diagnostics failed: " + err);
-        });
-      }
-    } else {
-      statusBarItem.text = "$(error) Prune";
-      statusBarItem.tooltip = "Failed to load Prune. Check Output panel.";
-    }
+  // Run diagnostics in background
+  runDiagnostics().then((diagnostics) => {
+    outputChannel.appendLine("Cursor installed: " + diagnostics.installed);
+    outputChannel.appendLine("State path: " + (diagnostics.statePath || "not found"));
+    outputChannel.appendLine("Has session token: " + diagnostics.hasSessionToken);
+  }).catch((err) => {
+    outputChannel.appendLine("Diagnostics error: " + err);
   });
 
   // Show welcome message on first install
@@ -136,9 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  if (tokenizerModule) {
-    tokenizerModule.cleanup();
-  }
+  cleanup();
   outputChannel?.dispose();
 }
 
@@ -150,14 +89,6 @@ function updateStatusBar() {
   const config = getConfig();
   if (!config.showStatusBar) {
     statusBarItem.hide();
-    return;
-  }
-
-  // If modules not loaded yet, show loading state
-  if (!modulesLoaded || !tokenizerModule) {
-    statusBarItem.text = "$(loading~spin) Prune";
-    statusBarItem.tooltip = "Loading Prune...";
-    statusBarItem.show();
     return;
   }
 
@@ -176,27 +107,23 @@ function updateStatusBar() {
     : editor.document.getText(selection);
 
   try {
-    const { tokens, cost, isLarge, formatted } = tokenizerModule.analyzeContent(
-      text,
-      "gpt-4o",
-      config.autoSqueezeThreshold
-    );
+    const analysis = analyzeContent(text, "gpt-4o", config.autoSqueezeThreshold);
 
-    // Update status bar
-    if (isLarge) {
-      statusBarItem.text = "$(warning) " + formatted.tokens + " tokens";
+    if (analysis.isLarge) {
+      statusBarItem.text = "$(warning) " + analysis.formatted.tokens + " tokens";
       statusBarItem.backgroundColor = new vscode.ThemeColor(
         "statusBarItem.warningBackground"
       );
       statusBarItem.tooltip = "Large context detected! Click to squeeze.";
       statusBarItem.command = "prune.squeezeSelection";
     } else {
-      statusBarItem.text = "$(symbol-misc) " + formatted.tokens;
+      statusBarItem.text = "$(symbol-misc) " + analysis.formatted.tokens;
       statusBarItem.backgroundColor = undefined;
-      statusBarItem.tooltip = formatted.tokens + " tokens (~" + formatted.cost + ")";
+      statusBarItem.tooltip = analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")";
       statusBarItem.command = "prune.analyzeSelection";
     }
   } catch (error) {
+    outputChannel.appendLine("Token count error: " + error);
     statusBarItem.text = "$(symbol-misc) Prune";
     statusBarItem.tooltip = "Error counting tokens";
     statusBarItem.backgroundColor = undefined;
@@ -210,12 +137,6 @@ function updateStatusBar() {
 // ============================================================================
 
 async function analyzeSelection() {
-  // Ensure modules are loaded
-  if (!await loadModules() || !tokenizerModule) {
-    vscode.window.showErrorMessage("Prune modules failed to load");
-    return;
-  }
-
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showWarningMessage("No active editor");
@@ -228,7 +149,7 @@ async function analyzeSelection() {
     : editor.document.getText(selection);
 
   const config = getConfig();
-  const analysis = tokenizerModule.analyzeContent(text, "gpt-4o", config.autoSqueezeThreshold);
+  const analysis = analyzeContent(text, "gpt-4o", config.autoSqueezeThreshold);
 
   const message = [
     "Tokens: " + analysis.formatted.tokens,
@@ -251,12 +172,6 @@ async function analyzeSelection() {
 }
 
 async function squeezeSelection() {
-  // Ensure modules are loaded
-  if (!await loadModules() || !tokenizerModule || !squeezerModule) {
-    vscode.window.showErrorMessage("Prune modules failed to load");
-    return;
-  }
-
   const editor = vscode.window.activeTextEditor;
   if (!editor) {
     vscode.window.showWarningMessage("No active editor");
@@ -276,7 +191,7 @@ async function squeezeSelection() {
   if (!tier) return;
 
   // Perform squeeze
-  const result = squeezerModule.squeezeFile(text, filePath, {
+  const result = squeezeFile(text, filePath, {
     tier,
     preserveTodos: config.preserveTodos,
     preserveTypeHints: config.preserveTypeHints,
@@ -297,8 +212,8 @@ async function squeezeSelection() {
 
   // Show result
   const savingsMessage = [
-    "Squeezed: " + tokenizerModule.formatTokens(result.originalTokens),
-    " -> " + tokenizerModule.formatTokens(result.compressedTokens),
+    "Squeezed: " + formatTokens(result.originalTokens),
+    " -> " + formatTokens(result.compressedTokens),
     " (saved " + result.savingsPercent + "%)",
   ].join("");
 
@@ -376,18 +291,12 @@ async function showDiff() {
 }
 
 async function checkUsage() {
-  // Ensure modules are loaded
-  if (!await loadModules() || !stateScraperModule) {
-    vscode.window.showErrorMessage("Prune modules failed to load");
-    return;
-  }
-
   const statusMessage = vscode.window.setStatusBarMessage(
     "$(loading~spin) Checking Cursor usage..."
   );
 
   try {
-    const usage = await stateScraperModule.fetchCursorUsage();
+    const usage = await fetchCursorUsage();
     statusMessage.dispose();
 
     if (!usage) {
