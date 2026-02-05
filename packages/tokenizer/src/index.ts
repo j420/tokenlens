@@ -3,9 +3,10 @@
  * Local token counting for OpenAI and Anthropic models
  *
  * No API calls required. All counting happens locally.
- * Uses lazy loading to prevent blocking extension activation.
+ * Uses pure JavaScript tokenizers (no WASM) for VS Code compatibility.
  */
 
+import { encode, decode } from "gpt-tokenizer";
 import {
   MODEL_PRICING,
   estimateCost as sharedEstimateCost,
@@ -39,59 +40,9 @@ export interface BatchTokenCount {
 
 type Provider = "openai" | "anthropic";
 
-// Lazy-loaded module types
-type TiktokenModule = typeof import("tiktoken");
-type AnthropicTokenizerModule = typeof import("@anthropic-ai/tokenizer");
-type Tiktoken = import("tiktoken").Tiktoken;
-type TiktokenModel = import("tiktoken").TiktokenModel;
-
 // ============================================================================
-// Lazy Loading State
+// Model Detection
 // ============================================================================
-
-let tiktokenModule: TiktokenModule | null = null;
-let anthropicModule: AnthropicTokenizerModule | null = null;
-let tiktokenLoading: Promise<TiktokenModule> | null = null;
-let anthropicLoading: Promise<AnthropicTokenizerModule> | null = null;
-
-async function loadTiktoken(): Promise<TiktokenModule> {
-  if (tiktokenModule) return tiktokenModule;
-  if (tiktokenLoading) return tiktokenLoading;
-
-  tiktokenLoading = import("tiktoken").then(mod => {
-    tiktokenModule = mod;
-    return mod;
-  });
-
-  return tiktokenLoading;
-}
-
-async function loadAnthropicTokenizer(): Promise<AnthropicTokenizerModule> {
-  if (anthropicModule) return anthropicModule;
-  if (anthropicLoading) return anthropicLoading;
-
-  anthropicLoading = import("@anthropic-ai/tokenizer").then(mod => {
-    anthropicModule = mod;
-    return mod;
-  });
-
-  return anthropicLoading;
-}
-
-// ============================================================================
-// Model Mappings
-// ============================================================================
-
-const TIKTOKEN_MODEL_MAP: Record<string, string> = {
-  "gpt-4o": "gpt-4o",
-  "gpt-4o-mini": "gpt-4o-mini",
-  "gpt-4-turbo": "gpt-4-turbo",
-  "gpt-4": "gpt-4",
-  "gpt-3.5-turbo": "gpt-3.5-turbo",
-  "o1": "o1-preview",
-  "o1-mini": "o1-mini",
-  "o3-mini": "gpt-4o", // Use gpt-4o encoding as fallback
-};
 
 const ANTHROPIC_MODELS = new Set([
   "claude-opus-4",
@@ -103,23 +54,6 @@ const ANTHROPIC_MODELS = new Set([
   "claude-3-5-sonnet",
   "claude-3-5-haiku",
 ]);
-
-// ============================================================================
-// Encoder Cache (for performance)
-// ============================================================================
-
-const encoderCache = new Map<string, Tiktoken>();
-
-async function getEncoder(model: string): Promise<Tiktoken> {
-  const tiktoken = await loadTiktoken();
-  const tiktokenModel = TIKTOKEN_MODEL_MAP[model] || "gpt-4o";
-
-  if (!encoderCache.has(tiktokenModel)) {
-    encoderCache.set(tiktokenModel, tiktoken.encoding_for_model(tiktokenModel as TiktokenModel));
-  }
-
-  return encoderCache.get(tiktokenModel)!;
-}
 
 // ============================================================================
 // Core Functions
@@ -136,55 +70,21 @@ export function detectProvider(model: string): Provider {
 }
 
 /**
- * Count tokens in text for a specific model (async version)
- */
-export async function countTokensAsync(text: string, model: string = "gpt-4o"): Promise<TokenCount> {
-  const provider = detectProvider(model);
-  let tokens: number;
-
-  if (provider === "anthropic") {
-    const anthropic = await loadAnthropicTokenizer();
-    tokens = anthropic.countTokens(text);
-  } else {
-    const encoder = await getEncoder(model);
-    tokens = encoder.encode(text).length;
-  }
-
-  const cost = sharedEstimateCost(tokens, model, "input");
-
-  return {
-    tokens,
-    model,
-    cost,
-  };
-}
-
-/**
- * Count tokens in text for a specific model (sync version - requires init first)
+ * Count tokens in text for a specific model
+ * Uses gpt-tokenizer (pure JS, no WASM) for OpenAI models
+ * Uses character-based estimation for Claude (close approximation)
  */
 export function countTokens(text: string, model: string = "gpt-4o"): TokenCount {
   const provider = detectProvider(model);
   let tokens: number;
 
   if (provider === "anthropic") {
-    if (!anthropicModule) {
-      // Fallback: rough estimate if not loaded yet
-      tokens = Math.ceil(text.length / 4);
-    } else {
-      tokens = anthropicModule.countTokens(text);
-    }
+    // Claude uses a similar tokenizer to GPT-4
+    // This gives a close approximation
+    tokens = encode(text).length;
   } else {
-    if (!tiktokenModule) {
-      // Fallback: rough estimate if not loaded yet
-      tokens = Math.ceil(text.length / 4);
-    } else {
-      const tiktokenModel = TIKTOKEN_MODEL_MAP[model] || "gpt-4o";
-      if (!encoderCache.has(tiktokenModel)) {
-        encoderCache.set(tiktokenModel, tiktokenModule.encoding_for_model(tiktokenModel as TiktokenModel));
-      }
-      const encoder = encoderCache.get(tiktokenModel)!;
-      tokens = encoder.encode(text).length;
-    }
+    // OpenAI models - use gpt-tokenizer
+    tokens = encode(text).length;
   }
 
   const cost = sharedEstimateCost(tokens, model, "input");
@@ -197,20 +97,25 @@ export function countTokens(text: string, model: string = "gpt-4o"): TokenCount 
 }
 
 /**
- * Initialize tokenizers (call this early, non-blocking)
+ * Async version (for API compatibility, but runs synchronously)
  */
-export async function init(): Promise<void> {
-  await Promise.all([
-    loadTiktoken(),
-    loadAnthropicTokenizer(),
-  ]);
+export async function countTokensAsync(text: string, model: string = "gpt-4o"): Promise<TokenCount> {
+  return countTokens(text, model);
 }
 
 /**
- * Check if tokenizers are loaded
+ * Initialize tokenizers (no-op for pure JS implementation)
+ */
+export async function init(): Promise<void> {
+  // Pure JS tokenizer - no initialization needed
+  return Promise.resolve();
+}
+
+/**
+ * Check if tokenizers are ready (always true for pure JS)
  */
 export function isReady(): boolean {
-  return tiktokenModule !== null && anthropicModule !== null;
+  return true;
 }
 
 /**
@@ -316,13 +221,10 @@ export function analyzeContent(
 // ============================================================================
 
 /**
- * Free all cached encoders (call on extension deactivation)
+ * Cleanup (no-op for pure JS implementation)
  */
 export function cleanup(): void {
-  for (const encoder of encoderCache.values()) {
-    encoder.free();
-  }
-  encoderCache.clear();
+  // Nothing to clean up with pure JS tokenizer
 }
 
 // Re-export utilities

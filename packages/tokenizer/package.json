@@ -11,9 +11,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "tiktoken": "^1.0.15",
-    "@anthropic-ai/tokenizer": "^0.0.4",
-    "@prune/shared": "0.1.0"
+    "@prune/shared": "0.1.0",
+    "gpt-tokenizer": "^3.4.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
