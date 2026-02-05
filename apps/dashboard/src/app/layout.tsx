@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Prune - Token Intelligence for AI Coding Tools",
   description: "See what you spend, where the waste is, and what you're about to spend.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({
