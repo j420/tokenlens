@@ -1,8 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install",
-  "buildCommand": "cd apps/dashboard && npm run build",
+  "buildCommand": "npm run build --workspace=@prune/dashboard",
   "outputDirectory": "apps/dashboard/.next",
-  "framework": "nextjs",
-  "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/dashboard/ packages/"
+  "framework": "nextjs"
 }
