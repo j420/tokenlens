@@ -36,7 +36,9 @@ async function loadModules(): Promise<boolean> {
   try {
     outputChannel?.appendLine("Loading tokenizer module...");
     tokenizerModule = await import("@prune/tokenizer");
-    outputChannel?.appendLine("Tokenizer loaded");
+    // Initialize tokenizers (loads tiktoken WASM in background)
+    await tokenizerModule.init();
+    outputChannel?.appendLine("Tokenizer loaded and initialized");
 
     outputChannel?.appendLine("Loading squeezer module...");
     squeezerModule = await import("@prune/squeezer");
