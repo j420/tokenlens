@@ -22,7 +22,6 @@ import { countTokens } from "@prune/tokenizer";
 import TypeScript from "tree-sitter-typescript";
 import Python from "tree-sitter-python";
 import Go from "tree-sitter-go";
-import Rust from "tree-sitter-rust";
 import Java from "tree-sitter-java";
 
 // ============================================================================
@@ -36,9 +35,9 @@ const LANGUAGE_PARSERS: Record<SupportedLanguage, unknown> = {
   javascript: TypeScript.typescript, // TSX parser handles JS too
   python: Python,
   go: Go,
-  rust: Rust,
+  rust: null, // Removed due to npm package availability issues
   java: Java,
-  cpp: null, // Will add tree-sitter-cpp if needed
+  cpp: null,
   c: null,
 };
 
@@ -171,7 +170,8 @@ export function squeeze(
   }
 
   // Parse the code
-  parser.setLanguage(langParser as Parser.Language);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parser.setLanguage(langParser as any);
   const tree = parser.parse(code);
 
   // Apply compression based on tier
@@ -510,7 +510,8 @@ function validateCode(code: string, language: SupportedLanguage): boolean {
   if (!langParser) return true;
 
   try {
-    parser.setLanguage(langParser as Parser.Language);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parser.setLanguage(langParser as any);
     const tree = parser.parse(code);
     // Check if the root node has errors
     return !tree.rootNode.hasError;
