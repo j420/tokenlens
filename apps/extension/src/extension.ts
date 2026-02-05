@@ -117,7 +117,7 @@ function findSqueezerScript(extensionPath: string): string | null {
 /**
  * Check if Python squeezer is available
  */
-async function checkPythonSqueezer(extensionPath: string): Promise<boolean> {
+async function checkPythonSqueezer(extensionPath: string, autoInstall: boolean = false): Promise<boolean> {
   if (pythonPath && squeezerPath) {
     return true;
   }
@@ -142,7 +142,39 @@ async function checkPythonSqueezer(extensionPath: string): Promise<boolean> {
     log("Tree-sitter dependencies verified");
     return true;
   } catch (error) {
-    log("Tree-sitter not installed. Run: pip install tree-sitter tree-sitter-python tree-sitter-javascript");
+    log("Tree-sitter not installed");
+
+    if (autoInstall) {
+      return await installTreeSitter();
+    }
+    return false;
+  }
+}
+
+/**
+ * Auto-install tree-sitter Python packages
+ */
+async function installTreeSitter(): Promise<boolean> {
+  if (!pythonPath) return false;
+
+  log("Installing tree-sitter dependencies...");
+
+  try {
+    // Use pip to install
+    const pipCmd = `${pythonPath} -m pip install tree-sitter tree-sitter-python tree-sitter-javascript --user --quiet`;
+    log(`Running: ${pipCmd}`);
+
+    await execAsync(pipCmd, { timeout: 120000 }); // 2 min timeout for install
+
+    // Verify installation
+    await execAsync(`${pythonPath} -c "import tree_sitter; import tree_sitter_python; import tree_sitter_javascript"`, {
+      timeout: 10000,
+    });
+
+    log("Tree-sitter installed successfully!");
+    return true;
+  } catch (error) {
+    logError("Failed to install tree-sitter:", error);
     return false;
   }
 }
@@ -411,31 +443,44 @@ async function squeezeCurrentFile(context: vscode.ExtensionContext) {
   }
 
   // Check if Python squeezer is available
-  const pythonAvailable = await checkPythonSqueezer(context.extensionPath);
+  let pythonAvailable = await checkPythonSqueezer(context.extensionPath);
 
   if (!pythonAvailable) {
-    const action = await vscode.window.showWarningMessage(
-      "Python Telegraphic Squeezer requires Python 3 and tree-sitter. Install dependencies?",
-      "Show Instructions",
-      "Cancel"
-    );
+    // Check if Python exists but tree-sitter is missing
+    if (pythonPath && squeezerPath) {
+      const action = await vscode.window.showWarningMessage(
+        "Tree-sitter not installed. Install automatically?",
+        "Install Now",
+        "Cancel"
+      );
 
-    if (action === "Show Instructions") {
-      outputChannel.appendLine("---");
-      outputChannel.appendLine("SETUP: Python Telegraphic Squeezer");
-      outputChannel.appendLine("---");
-      outputChannel.appendLine("");
-      outputChannel.appendLine("1. Install Python 3 (if not already installed)");
-      outputChannel.appendLine("   https://www.python.org/downloads/");
-      outputChannel.appendLine("");
-      outputChannel.appendLine("2. Install tree-sitter dependencies:");
-      outputChannel.appendLine("   pip install tree-sitter tree-sitter-python tree-sitter-javascript");
-      outputChannel.appendLine("");
-      outputChannel.appendLine("3. Restart VS Code and try again");
-      outputChannel.appendLine("---");
-      outputChannel.show();
+      if (action === "Install Now") {
+        // Show progress during installation
+        pythonAvailable = await vscode.window.withProgress(
+          {
+            location: vscode.ProgressLocation.Notification,
+            title: "Installing tree-sitter...",
+            cancellable: false,
+          },
+          async () => {
+            return await installTreeSitter();
+          }
+        );
+
+        if (pythonAvailable) {
+          vscode.window.showInformationMessage("Tree-sitter installed successfully!");
+        } else {
+          vscode.window.showErrorMessage("Failed to install tree-sitter. Try manually: pip install tree-sitter tree-sitter-python tree-sitter-javascript");
+          return;
+        }
+      } else {
+        return;
+      }
+    } else {
+      // Python not found
+      vscode.window.showErrorMessage("Python 3 is required. Install from https://www.python.org/downloads/");
+      return;
     }
-    return;
   }
 
   // Show progress while squeezing
