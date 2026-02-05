@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from "uuid";
 
 export const runtime = "edge";
 
-// Model pricing for cost estimation
+// Model pricing for cost estimation ($ per 1M tokens)
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "gpt-4o": { input: 2.5, output: 10 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
@@ -14,6 +14,33 @@ const MODEL_PRICING: Record<string, { input: number; output: number }> = {
   "o1-mini": { input: 3, output: 12 },
   "o3-mini": { input: 1.1, output: 4.4 },
 };
+
+// Store event by posting to the events API
+async function storeEventAsync(
+  baseUrl: string,
+  event: {
+    id: string;
+    timestamp: string;
+    provider: string;
+    tool: string;
+    model: string;
+    tokensIn: number;
+    tokensOut: number;
+    costUsd: number;
+    latencyMs: number;
+  }
+) {
+  try {
+    // Fire and forget - don't wait for response
+    fetch(`${baseUrl}/api/v1/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(event),
+    }).catch(err => console.error("Failed to store event:", err));
+  } catch (error) {
+    console.error("Failed to initiate event storage:", error);
+  }
+}
 
 function estimateCost(model: string, tokensIn: number, tokensOut: number): number {
   const pricing = MODEL_PRICING[model] ?? { input: 2.5, output: 10 };
@@ -97,17 +124,27 @@ export async function POST(
     const tokensOut = responseData.usage?.completion_tokens ?? 0;
     const estimatedCost = estimateCost(model, tokensIn, tokensOut);
 
-    console.log({
-      type: "proxy_event",
-      correlationId,
-      provider: "openai",
+    // Store the event
+    const event = {
+      id: correlationId,
+      timestamp: new Date().toISOString(),
+      provider: "openai" as const,
+      tool: "cursor" as const, // Cursor uses OpenAI API
       model,
       tokensIn,
       tokensOut,
-      estimatedCostUsd: estimatedCost,
+      costUsd: estimatedCost,
       latencyMs,
+    };
+
+    // Get base URL from request
+    const baseUrl = new URL(request.url).origin;
+    storeEventAsync(baseUrl, event);
+
+    console.log({
+      type: "proxy_event",
+      ...event,
       pruneApiKey: pruneApiKey ? "present" : "absent",
-      timestamp: new Date().toISOString(),
     });
 
     const responseHeaders = new Headers();

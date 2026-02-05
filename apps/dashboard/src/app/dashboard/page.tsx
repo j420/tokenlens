@@ -42,57 +42,23 @@ interface OverviewData {
   }>;
 }
 
-// Mock data for demo
-const MOCK_DATA: OverviewData = {
-  todaySpend: 14.2,
-  dailyAverage: 10.8,
-  sessions: 6,
-  productiveRoi: 0.68,
-  pruneSaved: 4.8,
-  pruneSavedDetails: { trims: 3, alerts: 1 },
-  recentSessions: [
-    {
-      id: "session-1",
-      tool: "claude-code",
-      taskDescription: "auth-service refactor",
-      tokens: 84000,
-      cost: 4.2,
-      roi: 0.52,
-      wasteEvents: 2,
-      compactions: 1,
-      startTime: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    },
-    {
-      id: "session-2",
-      tool: "cursor",
-      taskDescription: "frontend button fix",
-      tokens: 12000,
-      cost: 0.45,
-      roi: 0.94,
-      wasteEvents: 0,
-      compactions: 0,
-      startTime: new Date(Date.now() - 5 * 60 * 60 * 1000),
-    },
-    {
-      id: "session-3",
-      tool: "claude-code",
-      taskDescription: "test generation",
-      tokens: 42000,
-      cost: 2.1,
-      roi: 0.78,
-      wasteEvents: 1,
-      compactions: 0,
-      startTime: new Date(Date.now() - 8 * 60 * 60 * 1000),
-    },
-  ],
+// Empty data for initial state
+const EMPTY_DATA: OverviewData = {
+  todaySpend: 0,
+  dailyAverage: 0,
+  sessions: 0,
+  productiveRoi: 0,
+  pruneSaved: 0,
+  pruneSavedDetails: { trims: 0, alerts: 0 },
+  recentSessions: [],
   chartData: [
-    { date: "Mon", productive: 8, waste: 2 },
-    { date: "Tue", productive: 12, waste: 4 },
-    { date: "Wed", productive: 10, waste: 5 },
-    { date: "Thu", productive: 7, waste: 3 },
-    { date: "Fri", productive: 11, waste: 4 },
-    { date: "Sat", productive: 4, waste: 1 },
-    { date: "Sun", productive: 9, waste: 5 },
+    { date: "Mon", productive: 0, waste: 0 },
+    { date: "Tue", productive: 0, waste: 0 },
+    { date: "Wed", productive: 0, waste: 0 },
+    { date: "Thu", productive: 0, waste: 0 },
+    { date: "Fri", productive: 0, waste: 0 },
+    { date: "Sat", productive: 0, waste: 0 },
+    { date: "Sun", productive: 0, waste: 0 },
   ],
 };
 
@@ -188,8 +154,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // In a real app, fetch from /api/dashboard/overview
-    // For now, use mock data
     const fetchData = async () => {
       setLoading(true);
       try {
@@ -198,16 +162,19 @@ export default function DashboardPage() {
           const result = await response.json();
           setData(result);
         } else {
-          setData(MOCK_DATA);
+          setData(EMPTY_DATA);
         }
       } catch {
-        setData(MOCK_DATA);
+        setData(EMPTY_DATA);
       }
       setLoading(false);
     };
 
     fetchData();
   }, [period]);
+
+  // Check if we have real data
+  const hasData = data && (data.sessions > 0 || data.todaySpend > 0);
 
   if (loading || !data) {
     return (
@@ -224,6 +191,66 @@ export default function DashboardPage() {
       : spendDiff < 0
       ? `▼ ${formatCurrency(Math.abs(spendDiff))} less than your daily average`
       : "Same as your daily average";
+
+  // Empty state - no data yet
+  if (!hasData) {
+    return (
+      <div className="space-y-8">
+        <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-12 text-center">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-prune-green/10 text-3xl">
+            🌱
+          </div>
+          <h2 className="mb-2 text-xl font-semibold text-gray-900">Welcome to Prune!</h2>
+          <p className="mb-6 text-gray-600">
+            Connect your AI coding tool to start tracking usage and costs.
+          </p>
+
+          <div className="mx-auto max-w-md rounded-lg bg-gray-50 p-6 text-left">
+            <h3 className="mb-3 font-medium text-gray-900">Quick Setup for Cursor:</h3>
+            <ol className="space-y-2 text-sm text-gray-600">
+              <li className="flex gap-2">
+                <span className="font-semibold text-prune-green">1.</span>
+                Open Cursor Settings → Models → OpenAI
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold text-prune-green">2.</span>
+                Enable "Override OpenAI Base URL"
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold text-prune-green">3.</span>
+                <span>
+                  Enter: <code className="rounded bg-gray-200 px-1 text-xs">{typeof window !== "undefined" ? window.location.origin : ""}/api/v1/proxy/openai</code>
+                </span>
+              </li>
+              <li className="flex gap-2">
+                <span className="font-semibold text-prune-green">4.</span>
+                Add your OpenAI API key and save
+              </li>
+            </ol>
+          </div>
+
+          <div className="mt-6">
+            <Link
+              href="/onboard"
+              className="inline-flex items-center rounded-lg bg-prune-green px-6 py-3 font-medium text-white transition hover:bg-emerald-600"
+            >
+              Full Setup Guide →
+            </Link>
+          </div>
+        </div>
+
+        {/* Still show the chart area but empty */}
+        <div>
+          <h3 className="mb-4 text-lg font-semibold text-gray-900">Spend Over Time (7 days)</h3>
+          <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="flex h-[300px] items-center justify-center text-gray-400">
+              Usage data will appear here once you start using Cursor through Prune
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8">
