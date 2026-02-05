@@ -40,7 +40,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.analyzeFile", analyzeCurrentFile),
     vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
-    vscode.commands.registerCommand("prune.squeezeFile", squeezeCurrentFile)
+    vscode.commands.registerCommand("prune.squeezeFile", squeezeCurrentFile),
+    vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage)
   );
 
   // Update status bar on selection change
@@ -275,6 +276,95 @@ async function squeezeCurrentFile() {
     outputChannel.appendLine("Squeeze error: " + error);
     vscode.window.showErrorMessage("Failed to squeeze file: " + (error instanceof Error ? error.message : String(error)));
   }
+}
+
+// ============================================================================
+// Cursor Usage Check (lazy loaded)
+// ============================================================================
+
+async function checkCursorUsage() {
+  // Show progress while loading
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Checking Cursor usage...",
+      cancellable: false,
+    },
+    async () => {
+      try {
+        // Lazy load state-scraper to avoid activation issues
+        const { getCursorStatus, fetchCursorUsageDetailed } = await import("@prune/state-scraper");
+
+        const status = await getCursorStatus();
+
+        if (!status.available) {
+          vscode.window.showWarningMessage("Cursor Usage: " + (status.error || "Not available"));
+          outputChannel.appendLine("Cursor usage check failed: " + status.error);
+          return;
+        }
+
+        const usage = status.usage!;
+
+        // Format the usage message
+        const percentUsed = Math.round((usage.requestsUsed / usage.requestsLimit) * 100);
+        const resetDateStr = usage.resetDate.toLocaleDateString();
+
+        // Show in output channel with details
+        outputChannel.appendLine("---");
+        outputChannel.appendLine("Cursor Usage Report");
+        outputChannel.appendLine("---");
+        if (status.email) {
+          outputChannel.appendLine("Account: " + status.email);
+        }
+        outputChannel.appendLine("Plan: " + usage.plan.toUpperCase());
+        outputChannel.appendLine("Requests Used: " + usage.requestsUsed + " / " + usage.requestsLimit);
+        outputChannel.appendLine("Requests Remaining: " + usage.requestsRemaining);
+        outputChannel.appendLine("Usage: " + percentUsed + "%");
+        outputChannel.appendLine("Resets: " + resetDateStr);
+
+        // Try to get detailed breakdown
+        const detailed = await fetchCursorUsageDetailed();
+        if (detailed) {
+          outputChannel.appendLine("");
+          outputChannel.appendLine("By Model:");
+          outputChannel.appendLine("  GPT-4: " + detailed["gpt-4"].numRequests + " requests, " + detailed["gpt-4"].numTokens + " tokens");
+          outputChannel.appendLine("  GPT-3.5: " + detailed["gpt-3.5-turbo"].numRequests + " requests, " + detailed["gpt-3.5-turbo"].numTokens + " tokens");
+          if (detailed["gpt-4o-mini"]) {
+            outputChannel.appendLine("  GPT-4o-mini: " + detailed["gpt-4o-mini"].numRequests + " requests, " + detailed["gpt-4o-mini"].numTokens + " tokens");
+          }
+        }
+        outputChannel.appendLine("---");
+
+        // Determine status color/icon based on usage
+        let icon: string;
+        let message: string;
+
+        if (percentUsed >= 90) {
+          icon = "$(warning)";
+          message = icon + " Cursor: " + usage.requestsRemaining + " requests left (" + percentUsed + "% used)";
+          vscode.window.showWarningMessage(message, "View Details").then((action) => {
+            if (action === "View Details") outputChannel.show();
+          });
+        } else if (percentUsed >= 70) {
+          icon = "$(info)";
+          message = icon + " Cursor: " + usage.requestsRemaining + " / " + usage.requestsLimit + " requests remaining";
+          vscode.window.showInformationMessage(message, "View Details").then((action) => {
+            if (action === "View Details") outputChannel.show();
+          });
+        } else {
+          icon = "$(check)";
+          message = icon + " Cursor: " + usage.requestsRemaining + " / " + usage.requestsLimit + " requests remaining";
+          vscode.window.showInformationMessage(message, "View Details").then((action) => {
+            if (action === "View Details") outputChannel.show();
+          });
+        }
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        outputChannel.appendLine("Cursor usage error: " + errorMsg);
+        vscode.window.showErrorMessage("Failed to check Cursor usage: " + errorMsg);
+      }
+    }
+  );
 }
 
 // ============================================================================

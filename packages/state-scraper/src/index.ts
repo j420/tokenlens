@@ -2,50 +2,24 @@
  * @prune/state-scraper
  * Read Cursor's local state for zero-key usage tracking
  *
- * Cursor stores session data in a local SQLite database.
- * We can read usage information without requiring API keys.
+ * Uses sqlite3 CLI via child_process - no WASM, no native bindings.
+ * This approach avoids extension activation issues entirely.
  *
- * Uses sql.js (pure JavaScript/WebAssembly) - no native compilation required.
+ * Flow:
+ * 1. Copy state.vscdb to temp file (avoids locking issues)
+ * 2. Run sqlite3 CLI to extract session token
+ * 3. Call Cursor API with token to get usage stats
+ * 4. Clean up temp file
  */
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const initSqlJs = require("sql.js");
 
 import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
 import { type CursorUsage } from "@prune/shared";
 
-// Type definitions for sql.js
-interface SqlJsDatabase {
-  run(sql: string, params?: unknown[]): void;
-  exec(sql: string): Array<{ columns: string[]; values: unknown[][] }>;
-  prepare(sql: string): SqlJsStatement;
-  close(): void;
-}
-
-interface SqlJsStatement {
-  bind(params?: unknown[]): boolean;
-  step(): boolean;
-  getAsObject(params?: unknown): Record<string, unknown>;
-  free(): boolean;
-  run(params?: unknown[]): void;
-  reset(): void;
-}
-
-interface SqlJsStatic {
-  Database: new (data?: ArrayLike<number> | Buffer | null) => SqlJsDatabase;
-}
-
-// Cache the SQL.js initialization
-let sqlJsInstance: SqlJsStatic | null = null;
-
-async function getSqlJs(): Promise<SqlJsStatic> {
-  if (!sqlJsInstance) {
-    sqlJsInstance = await initSqlJs() as SqlJsStatic;
-  }
-  return sqlJsInstance!;
-}
+const execAsync = promisify(exec);
 
 // ============================================================================
 // Path Detection
@@ -136,48 +110,72 @@ export function getVSCodeStatePath(): string | null {
 }
 
 // ============================================================================
-// Database Operations
+// SQLite CLI Operations
 // ============================================================================
 
 /**
- * Open a SQLite database using sql.js
+ * Check if sqlite3 CLI is available
  */
-async function openDatabase(dbPath: string): Promise<SqlJsDatabase | null> {
+export async function isSqliteAvailable(): Promise<boolean> {
   try {
-    const SQL = await getSqlJs();
-    const buffer = fs.readFileSync(dbPath);
-    return new SQL.Database(buffer);
-  } catch (error) {
-    console.error("Failed to open database:", error);
-    return null;
+    await execAsync("sqlite3 --version");
+    return true;
+  } catch {
+    return false;
   }
 }
 
 /**
- * Read a value from the state database
+ * Copy database to temp file to avoid locking issues
+ */
+function copyToTemp(dbPath: string): string {
+  const tempDir = os.tmpdir();
+  const tempFile = path.join(tempDir, `cursor_state_${Date.now()}.db`);
+  fs.copyFileSync(dbPath, tempFile);
+  return tempFile;
+}
+
+/**
+ * Clean up temp file
+ */
+function cleanupTemp(tempFile: string): void {
+  try {
+    if (fs.existsSync(tempFile)) {
+      fs.unlinkSync(tempFile);
+    }
+  } catch {
+    // Ignore cleanup errors
+  }
+}
+
+/**
+ * Read a value from the state database using sqlite3 CLI
  */
 export async function readStateValue(dbPath: string, key: string): Promise<string | null> {
-  const db = await openDatabase(dbPath);
-  if (!db) return null;
+  let tempFile: string | null = null;
 
   try {
-    const stmt = db.prepare("SELECT value FROM ItemTable WHERE key = ?");
-    stmt.bind([key]);
+    // Copy to temp to avoid locking the IDE's database
+    tempFile = copyToTemp(dbPath);
 
-    if (stmt.step()) {
-      const row = stmt.getAsObject();
-      stmt.free();
-      db.close();
-      return (row.value as string) ?? null;
-    }
+    // Escape the key for SQL
+    const escapedKey = key.replace(/'/g, "''");
 
-    stmt.free();
-    db.close();
-    return null;
+    // Run sqlite3 query
+    const { stdout } = await execAsync(
+      `sqlite3 "${tempFile}" "SELECT value FROM ItemTable WHERE key = '${escapedKey}';"`,
+      { timeout: 5000 }
+    );
+
+    const value = stdout.trim();
+    return value || null;
   } catch (error) {
     console.error("Failed to read state value:", error);
-    db.close();
     return null;
+  } finally {
+    if (tempFile) {
+      cleanupTemp(tempFile);
+    }
   }
 }
 
@@ -185,20 +183,24 @@ export async function readStateValue(dbPath: string, key: string): Promise<strin
  * Read all state keys (for debugging/exploration)
  */
 export async function readAllStateKeys(dbPath: string): Promise<string[]> {
-  const db = await openDatabase(dbPath);
-  if (!db) return [];
+  let tempFile: string | null = null;
 
   try {
-    const results = db.exec("SELECT key FROM ItemTable");
-    db.close();
+    tempFile = copyToTemp(dbPath);
 
-    if (results.length === 0) return [];
+    const { stdout } = await execAsync(
+      `sqlite3 "${tempFile}" "SELECT key FROM ItemTable;"`,
+      { timeout: 5000 }
+    );
 
-    return results[0].values.map((row: unknown[]) => row[0] as string);
+    return stdout.trim().split("\n").filter(Boolean);
   } catch (error) {
     console.error("Failed to read state keys:", error);
-    db.close();
     return [];
+  } finally {
+    if (tempFile) {
+      cleanupTemp(tempFile);
+    }
   }
 }
 
@@ -210,20 +212,36 @@ export async function readAllStateKeys(dbPath: string): Promise<string[]> {
  * Known Cursor state keys
  */
 const CURSOR_STATE_KEYS = {
-  SESSION_TOKEN: "workos.cursorSessionToken",
+  // Primary session token key
+  SESSION_TOKEN: "cursorAuth/accessToken",
+  // Alternative keys that Cursor might use
+  SESSION_TOKEN_ALT: "workos.cursorSessionToken",
+  REFRESH_TOKEN: "cursorAuth/refreshToken",
+  // User info
   USER_ID: "cursor.userId",
+  USER_EMAIL: "cursorAuth/cachedEmail",
+  // Workspace
   WORKSPACE_ID: "cursor.workspaceId",
   AUTH_STATE: "cursor.authState",
 };
 
 /**
  * Get Cursor session token for API access
+ * Tries multiple known key locations
  */
 export async function getCursorSessionToken(): Promise<string | null> {
   const dbPath = getCursorStatePath();
   if (!dbPath) return null;
 
-  return readStateValue(dbPath, CURSOR_STATE_KEYS.SESSION_TOKEN);
+  // Try primary key first
+  let token = await readStateValue(dbPath, CURSOR_STATE_KEYS.SESSION_TOKEN);
+  if (token) return token;
+
+  // Try alternative key
+  token = await readStateValue(dbPath, CURSOR_STATE_KEYS.SESSION_TOKEN_ALT);
+  if (token) return token;
+
+  return null;
 }
 
 /**
@@ -236,20 +254,40 @@ export async function getCursorUserId(): Promise<string | null> {
   return readStateValue(dbPath, CURSOR_STATE_KEYS.USER_ID);
 }
 
+/**
+ * Get Cursor user email
+ */
+export async function getCursorUserEmail(): Promise<string | null> {
+  const dbPath = getCursorStatePath();
+  if (!dbPath) return null;
+
+  return readStateValue(dbPath, CURSOR_STATE_KEYS.USER_EMAIL);
+}
+
 // ============================================================================
-// Usage API (requires session token)
+// Usage API
 // ============================================================================
 
-interface CursorUsageResponse {
-  usage: {
-    requests_remaining: number;
-    requests_used: number;
-    requests_limit: number;
-    reset_at: string;
+interface CursorUsageApiResponse {
+  "gpt-4": {
+    numRequests: number;
+    maxRequestUsage: number | null;
+    numRequestsTotal: number;
+    numTokens: number;
   };
-  plan: {
-    type: string;
+  "gpt-3.5-turbo": {
+    numRequests: number;
+    maxRequestUsage: number | null;
+    numRequestsTotal: number;
+    numTokens: number;
   };
+  "gpt-4o-mini"?: {
+    numRequests: number;
+    maxRequestUsage: number | null;
+    numRequestsTotal: number;
+    numTokens: number;
+  };
+  startOfMonth: string;
 }
 
 /**
@@ -263,26 +301,38 @@ export async function fetchCursorUsage(): Promise<CursorUsage | null> {
   }
 
   try {
-    const response = await fetch("https://api.cursor.com/usage", {
+    // Cursor uses a specific usage endpoint
+    const response = await fetch("https://www.cursor.com/api/usage", {
+      method: "GET",
       headers: {
-        Authorization: "Bearer " + sessionToken,
-        "Content-Type": "application/json",
+        Cookie: `WorkosCursorSessionToken=${sessionToken}`,
+        "User-Agent": "Mozilla/5.0 (compatible; Prune/1.0)",
       },
     });
 
     if (!response.ok) {
-      console.error("Failed to fetch Cursor usage:", response.statusText);
+      console.error("Failed to fetch Cursor usage:", response.status, response.statusText);
       return null;
     }
 
-    const data = (await response.json()) as CursorUsageResponse;
+    const data = (await response.json()) as CursorUsageApiResponse;
+
+    // Calculate totals from the response
+    const gpt4Usage = data["gpt-4"];
+    const maxRequests = gpt4Usage.maxRequestUsage ?? 500; // Default to 500 for pro
+    const requestsUsed = gpt4Usage.numRequests;
+    const requestsRemaining = Math.max(0, maxRequests - requestsUsed);
+
+    // Parse reset date from startOfMonth
+    const resetDate = new Date(data.startOfMonth);
+    resetDate.setMonth(resetDate.getMonth() + 1); // Reset at start of next month
 
     return {
-      requestsRemaining: data.usage.requests_remaining,
-      requestsUsed: data.usage.requests_used,
-      requestsLimit: data.usage.requests_limit,
-      resetDate: new Date(data.usage.reset_at),
-      plan: data.plan.type as "free" | "pro" | "business",
+      requestsRemaining,
+      requestsUsed,
+      requestsLimit: maxRequests,
+      resetDate,
+      plan: maxRequests > 150 ? "pro" : "free",
     };
   } catch (error) {
     console.error("Failed to fetch Cursor usage:", error);
@@ -290,56 +340,32 @@ export async function fetchCursorUsage(): Promise<CursorUsage | null> {
   }
 }
 
-// ============================================================================
-// State Watcher
-// ============================================================================
-
-type StateChangeCallback = (key: string, value: string | null) => void;
-
 /**
- * Watch for changes to the state database
+ * Get detailed usage breakdown by model
  */
-export function watchCursorState(
-  callback: StateChangeCallback,
-  pollIntervalMs: number = 5000
-): () => void {
-  const dbPath = getCursorStatePath();
-  if (!dbPath) {
-    console.error("Cursor state database not found");
-    return () => {};
+export async function fetchCursorUsageDetailed(): Promise<CursorUsageApiResponse | null> {
+  const sessionToken = await getCursorSessionToken();
+  if (!sessionToken) {
+    return null;
   }
 
-  let lastValues: Record<string, string | null> = {};
-  const keysToWatch = Object.values(CURSOR_STATE_KEYS);
-  let isRunning = true;
+  try {
+    const response = await fetch("https://www.cursor.com/api/usage", {
+      method: "GET",
+      headers: {
+        Cookie: `WorkosCursorSessionToken=${sessionToken}`,
+        "User-Agent": "Mozilla/5.0 (compatible; Prune/1.0)",
+      },
+    });
 
-  // Initial read and setup polling
-  const poll = async () => {
-    if (!isRunning) return;
-
-    for (const key of keysToWatch) {
-      const currentValue = await readStateValue(dbPath, key);
-      if (currentValue !== lastValues[key]) {
-        if (lastValues[key] !== undefined) {
-          // Only callback after initial read
-          callback(key, currentValue);
-        }
-        lastValues[key] = currentValue;
-      }
+    if (!response.ok) {
+      return null;
     }
 
-    if (isRunning) {
-      setTimeout(poll, pollIntervalMs);
-    }
-  };
-
-  // Start polling
-  poll();
-
-  // Return cleanup function
-  return () => {
-    isRunning = false;
-  };
+    return (await response.json()) as CursorUsageApiResponse;
+  } catch {
+    return null;
+  }
 }
 
 // ============================================================================
@@ -349,8 +375,10 @@ export function watchCursorState(
 export interface CursorDiagnostics {
   installed: boolean;
   statePath: string | null;
+  sqliteAvailable: boolean;
   hasSessionToken: boolean;
   userId: string | null;
+  userEmail: string | null;
   stateKeyCount: number;
 }
 
@@ -360,23 +388,90 @@ export interface CursorDiagnostics {
 export async function runDiagnostics(): Promise<CursorDiagnostics> {
   const statePath = getCursorStatePath();
   const installed = statePath !== null;
+  const sqliteAvailable = await isSqliteAvailable();
 
   let hasSessionToken = false;
   let userId: string | null = null;
+  let userEmail: string | null = null;
   let stateKeyCount = 0;
 
-  if (statePath) {
+  if (statePath && sqliteAvailable) {
     hasSessionToken = (await getCursorSessionToken()) !== null;
     userId = await getCursorUserId();
+    userEmail = await getCursorUserEmail();
     stateKeyCount = (await readAllStateKeys(statePath)).length;
   }
 
   return {
     installed,
     statePath,
+    sqliteAvailable,
     hasSessionToken,
     userId,
+    userEmail,
     stateKeyCount,
+  };
+}
+
+// ============================================================================
+// Convenience function for extension
+// ============================================================================
+
+export interface CursorStatus {
+  available: boolean;
+  error?: string;
+  usage?: CursorUsage;
+  email?: string;
+}
+
+/**
+ * Get complete Cursor status in one call
+ * This is the main function for the VS Code extension to use
+ */
+export async function getCursorStatus(): Promise<CursorStatus> {
+  // Check if sqlite3 is available
+  const sqliteOk = await isSqliteAvailable();
+  if (!sqliteOk) {
+    return {
+      available: false,
+      error: "sqlite3 CLI not found. Install SQLite to enable Cursor usage tracking.",
+    };
+  }
+
+  // Check if Cursor is installed
+  const dbPath = getCursorStatePath();
+  if (!dbPath) {
+    return {
+      available: false,
+      error: "Cursor not installed or state database not found.",
+    };
+  }
+
+  // Check if we have a session token
+  const token = await getCursorSessionToken();
+  if (!token) {
+    return {
+      available: false,
+      error: "Not logged into Cursor. Please sign in to Cursor first.",
+    };
+  }
+
+  // Fetch usage
+  const usage = await fetchCursorUsage();
+  if (!usage) {
+    return {
+      available: false,
+      error: "Failed to fetch usage from Cursor API. Token may be expired.",
+    };
+  }
+
+  // Get email for display
+  const email = await getCursorUserEmail();
+
+  return {
+    available: true,
+    usage,
+    email: email ?? undefined,
   };
 }
 
