@@ -7,12 +7,9 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
 import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/tokenizer";
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
-
-const execAsync = promisify(exec);
+import { SemanticSqueezer, initParser, loadLanguage } from "./squeezer";
 
 // ============================================================================
 // State
@@ -20,8 +17,8 @@ const execAsync = promisify(exec);
 
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
-let pythonPath: string | null = null;
-let squeezerPath: string | null = null;
+let squeezerInstance: SemanticSqueezer | null = null;
+let wasmDir: string | null = null;
 
 // ============================================================================
 // Logging
@@ -41,180 +38,50 @@ function logError(message: string, error?: unknown) {
 }
 
 // ============================================================================
-// Python Squeezer Integration
+// WASM Squeezer Integration
 // ============================================================================
 
-interface PythonSqueezeResult {
-  original_tokens: number;
-  squeezed_tokens: number;
-  savings: number;
-  savings_percent: number;
-  is_valid: boolean;
-  error: string | null;
-  squeezed_code: string;
-}
-
 /**
- * Find Python executable
+ * Initialize the WASM-based squeezer
  */
-async function findPython(): Promise<string | null> {
-  const pythonCommands = ["python3", "python"];
-
-  for (const cmd of pythonCommands) {
-    try {
-      const { stdout } = await execAsync(`${cmd} --version`, { timeout: 5000 });
-      if (stdout.includes("Python 3")) {
-        log(`Found Python: ${cmd} (${stdout.trim()})`);
-        return cmd;
-      }
-    } catch {
-      // Try next
-    }
-  }
-
-  return null;
-}
-
-/**
- * Find the Python squeezer script
- */
-function findSqueezerScript(extensionPath: string): string | null {
-  // The squeezer should be in packages/squeezer-py relative to the workspace
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-
-  // Try relative to extension
-  const possiblePaths = [
-    // Development: relative to workspace
-    path.join(extensionPath, "..", "..", "packages", "squeezer-py", "semantic_squeezer.py"),
-    // Installed: bundled with extension
-    path.join(extensionPath, "squeezer-py", "semantic_squeezer.py"),
-  ];
-
-  // Also check workspace folders
-  if (workspaceFolders) {
-    for (const folder of workspaceFolders) {
-      possiblePaths.push(
-        path.join(folder.uri.fsPath, "packages", "squeezer-py", "semantic_squeezer.py")
-      );
-    }
-  }
-
-  for (const p of possiblePaths) {
-    try {
-      const fs = require("fs");
-      if (fs.existsSync(p)) {
-        log(`Found squeezer at: ${p}`);
-        return p;
-      }
-    } catch {
-      // Try next
-    }
-  }
-
-  return null;
-}
-
-/**
- * Check if Python squeezer is available
- */
-async function checkPythonSqueezer(extensionPath: string, autoInstall: boolean = false): Promise<boolean> {
-  if (pythonPath && squeezerPath) {
+async function initSqueezer(extensionPath: string): Promise<boolean> {
+  if (squeezerInstance && wasmDir) {
     return true;
   }
 
-  pythonPath = await findPython();
-  if (!pythonPath) {
-    log("Python 3 not found");
-    return false;
-  }
-
-  squeezerPath = findSqueezerScript(extensionPath);
-  if (!squeezerPath) {
-    log("Squeezer script not found");
-    return false;
-  }
-
-  // Verify tree-sitter is installed
   try {
-    await execAsync(`${pythonPath} -c "import tree_sitter; import tree_sitter_python; import tree_sitter_javascript"`, {
-      timeout: 10000,
-    });
-    log("Tree-sitter dependencies verified");
+    // Find WASM directory
+    const possiblePaths = [
+      // Installed: bundled with extension
+      path.join(extensionPath, "wasm"),
+      // Development: relative to dist
+      path.join(extensionPath, "..", "wasm"),
+    ];
+
+    const fs = require("fs");
+    for (const p of possiblePaths) {
+      const wasmFile = path.join(p, "tree-sitter.wasm");
+      if (fs.existsSync(wasmFile)) {
+        wasmDir = p;
+        log(`Found WASM files at: ${p}`);
+        break;
+      }
+    }
+
+    if (!wasmDir) {
+      log("WASM files not found");
+      return false;
+    }
+
+    // Initialize parser
+    await initParser(wasmDir);
+    squeezerInstance = new SemanticSqueezer();
+
+    log("WASM Squeezer initialized successfully");
     return true;
   } catch (error) {
-    log("Tree-sitter not installed");
-
-    if (autoInstall) {
-      return await installTreeSitter();
-    }
+    logError("Failed to initialize WASM squeezer:", error);
     return false;
-  }
-}
-
-/**
- * Auto-install tree-sitter Python packages
- */
-async function installTreeSitter(): Promise<boolean> {
-  if (!pythonPath) return false;
-
-  log("Installing tree-sitter dependencies...");
-
-  try {
-    // Use pip to install
-    const pipCmd = `${pythonPath} -m pip install tree-sitter tree-sitter-python tree-sitter-javascript --user --quiet`;
-    log(`Running: ${pipCmd}`);
-
-    await execAsync(pipCmd, { timeout: 120000 }); // 2 min timeout for install
-
-    // Verify installation
-    await execAsync(`${pythonPath} -c "import tree_sitter; import tree_sitter_python; import tree_sitter_javascript"`, {
-      timeout: 10000,
-    });
-
-    log("Tree-sitter installed successfully!");
-    return true;
-  } catch (error) {
-    logError("Failed to install tree-sitter:", error);
-    return false;
-  }
-}
-
-/**
- * Squeeze code using Python Tree-sitter squeezer
- */
-async function squeezePython(code: string, language: string): Promise<PythonSqueezeResult> {
-  if (!pythonPath || !squeezerPath) {
-    throw new Error("Python squeezer not available");
-  }
-
-  // Write code to temp file to avoid shell escaping issues
-  const fs = require("fs");
-  const os = require("os");
-  const tempFile = path.join(os.tmpdir(), `prune-squeeze-${Date.now()}.txt`);
-  const outputFile = path.join(os.tmpdir(), `prune-squeeze-${Date.now()}-out.json`);
-
-  try {
-    fs.writeFileSync(tempFile, code, "utf8");
-
-    // Call Python squeezer
-    const cmd = `${pythonPath} "${squeezerPath}" --json --language ${language} --input "${tempFile}" --output "${outputFile}"`;
-    log(`Executing: ${cmd}`);
-
-    await execAsync(cmd, { timeout: 30000 });
-
-    // Read result
-    const resultJson = fs.readFileSync(outputFile, "utf8");
-    const result = JSON.parse(resultJson) as PythonSqueezeResult;
-
-    return result;
-  } finally {
-    // Cleanup temp files
-    try {
-      fs.unlinkSync(tempFile);
-    } catch {}
-    try {
-      fs.unlinkSync(outputFile);
-    } catch {}
   }
 }
 
@@ -236,12 +103,12 @@ export function activate(context: vscode.ExtensionContext) {
   statusBarItem.tooltip = "Click to analyze token count";
   context.subscriptions.push(statusBarItem);
 
-  // Check Python squeezer availability (async, non-blocking)
-  checkPythonSqueezer(context.extensionPath).then((available) => {
+  // Initialize WASM squeezer (async, non-blocking)
+  initSqueezer(context.extensionPath).then((available) => {
     if (available) {
-      log("Python Telegraphic Squeezer ready");
+      log("WASM Telegraphic Squeezer ready");
     } else {
-      log("Python squeezer not available - install Python 3 and tree-sitter");
+      log("WASM squeezer initialization failed");
     }
   });
 
@@ -429,7 +296,7 @@ async function squeezeCurrentFile(context: vscode.ExtensionContext) {
     ".js": "javascript",
     ".jsx": "javascript",
     ".ts": "typescript",
-    ".tsx": "typescript",
+    ".tsx": "tsx",
     ".mjs": "javascript",
     ".cjs": "javascript",
   };
@@ -442,52 +309,18 @@ async function squeezeCurrentFile(context: vscode.ExtensionContext) {
     return;
   }
 
-  // Check if Python squeezer is available
-  let pythonAvailable = await checkPythonSqueezer(context.extensionPath);
-
-  if (!pythonAvailable) {
-    // Check if Python exists but tree-sitter is missing
-    if (pythonPath && squeezerPath) {
-      const action = await vscode.window.showWarningMessage(
-        "Tree-sitter not installed. Install automatically?",
-        "Install Now",
-        "Cancel"
-      );
-
-      if (action === "Install Now") {
-        // Show progress during installation
-        pythonAvailable = await vscode.window.withProgress(
-          {
-            location: vscode.ProgressLocation.Notification,
-            title: "Installing tree-sitter...",
-            cancellable: false,
-          },
-          async () => {
-            return await installTreeSitter();
-          }
-        );
-
-        if (pythonAvailable) {
-          vscode.window.showInformationMessage("Tree-sitter installed successfully!");
-        } else {
-          vscode.window.showErrorMessage("Failed to install tree-sitter. Try manually: pip install tree-sitter tree-sitter-python tree-sitter-javascript");
-          return;
-        }
-      } else {
-        return;
-      }
-    } else {
-      // Python not found
-      vscode.window.showErrorMessage("Python 3 is required. Install from https://www.python.org/downloads/");
-      return;
-    }
+  // Initialize squeezer if needed
+  const squeezerAvailable = await initSqueezer(context.extensionPath);
+  if (!squeezerAvailable || !squeezerInstance || !wasmDir) {
+    vscode.window.showErrorMessage("Squeezer not available. Check output for details.");
+    return;
   }
 
   // Show progress while squeezing
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Squeezing with Tree-sitter...",
+      title: "Squeezing with WASM Tree-sitter...",
       cancellable: false,
     },
     async () => {
@@ -496,18 +329,18 @@ async function squeezeCurrentFile(context: vscode.ExtensionContext) {
         log("Squeezing: " + filePath);
         log("Language: " + language);
 
-        const result = await squeezePython(text, language);
+        const result = await squeezerInstance!.squeeze(text, language, wasmDir!);
 
-        log("Original tokens: " + result.original_tokens);
-        log("Squeezed tokens: " + result.squeezed_tokens);
-        log("Savings: " + result.savings + " (" + result.savings_percent.toFixed(1) + "%)");
-        log("Valid: " + result.is_valid);
+        log("Original tokens: " + result.originalTokens);
+        log("Squeezed tokens: " + result.squeezedTokens);
+        log("Savings: " + result.savings + " (" + result.savingsPercent.toFixed(1) + "%)");
+        log("Valid: " + result.isValid);
 
         if (result.error) {
           log("Error: " + result.error);
         }
 
-        if (!result.is_valid) {
+        if (!result.isValid) {
           vscode.window.showWarningMessage(
             "Compression produced invalid syntax. " + (result.error || "Using original file.")
           );
@@ -525,25 +358,25 @@ async function squeezeCurrentFile(context: vscode.ExtensionContext) {
         outputChannel.appendLine("---");
         outputChannel.appendLine("Squeeze: " + fileName);
         outputChannel.appendLine("Language: " + language);
-        outputChannel.appendLine("Original: " + formatTokens(result.original_tokens) + " tokens");
-        outputChannel.appendLine("Squeezed: " + formatTokens(result.squeezed_tokens) + " tokens");
-        outputChannel.appendLine("Savings: " + formatTokens(result.savings) + " tokens (" + result.savings_percent.toFixed(1) + "%)");
+        outputChannel.appendLine("Original: " + formatTokens(result.originalTokens) + " tokens");
+        outputChannel.appendLine("Squeezed: " + formatTokens(result.squeezedTokens) + " tokens");
+        outputChannel.appendLine("Savings: " + formatTokens(result.savings) + " tokens (" + result.savingsPercent.toFixed(1) + "%)");
         outputChannel.appendLine("---");
 
         // Ask user what to do
         const action = await vscode.window.showInformationMessage(
-          `Saved ${formatTokens(result.savings)} tokens (${result.savings_percent.toFixed(1)}%)`,
+          `Saved ${formatTokens(result.savings)} tokens (${result.savingsPercent.toFixed(1)}%)`,
           "Copy to Clipboard",
           "View in Output",
           "Replace File"
         );
 
         if (action === "Copy to Clipboard") {
-          await vscode.env.clipboard.writeText(result.squeezed_code);
+          await vscode.env.clipboard.writeText(result.squeezedCode);
           vscode.window.showInformationMessage("Compressed code copied to clipboard");
         } else if (action === "View in Output") {
           outputChannel.appendLine("\n=== COMPRESSED CODE ===\n");
-          outputChannel.appendLine(result.squeezed_code);
+          outputChannel.appendLine(result.squeezedCode);
           outputChannel.appendLine("\n=== END COMPRESSED CODE ===\n");
           outputChannel.show();
         } else if (action === "Replace File") {
@@ -552,9 +385,9 @@ async function squeezeCurrentFile(context: vscode.ExtensionContext) {
             editor.document.positionAt(0),
             editor.document.positionAt(text.length)
           );
-          edit.replace(editor.document.uri, fullRange, result.squeezed_code);
+          edit.replace(editor.document.uri, fullRange, result.squeezedCode);
           await vscode.workspace.applyEdit(edit);
-          vscode.window.showInformationMessage("File compressed: " + result.savings_percent.toFixed(1) + "% savings");
+          vscode.window.showInformationMessage("File compressed: " + result.savingsPercent.toFixed(1) + "% savings");
         }
       } catch (error) {
         logError("Squeeze error:", error);
