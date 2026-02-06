@@ -281,17 +281,19 @@ export async function loadLanguage(language: string, wasmDir: string): Promise<a
 
   debugLog("Loading language from:", langPath);
 
-  // Convert to URL for loading
-  const langUrl = pathToWasmUrl(langPath);
-  debugLog("Language URL:", langUrl);
-
   try {
-    const lang = await Language.load(langUrl);
+    // Read WASM file as buffer to avoid path resolution issues on Windows
+    // Language.load() accepts ArrayBuffer/Uint8Array which bypasses URL handling
+    const wasmBuffer = fs.readFileSync(langPath);
+    debugLog("Read WASM buffer, size:", wasmBuffer.length, "bytes");
+
+    const lang = await Language.load(wasmBuffer);
     languageCache.set(language, lang);
     debugLog("Language loaded successfully:", language);
     return lang;
   } catch (loadError) {
     const error = loadError instanceof Error ? loadError : new Error(String(loadError));
+    debugLog("Language load error:", error.message);
     throw new Error(`Failed to load language ${language}: ${error.message}`);
   }
 }
