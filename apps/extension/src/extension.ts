@@ -12,6 +12,8 @@ import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/token
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
 import { SemanticSqueezer, initParser, loadLanguage, setDebugMode } from "./squeezer";
 import { analyzeContext, type ContextAnalysis, type FileRelevance } from "./context-analyzer";
+import { PruneIntelligenceEngine, runTests as runIntelligenceTests } from "./prune-intelligence";
+import { testSamples } from "./prune-intelligence.test";
 
 // ============================================================================
 // State
@@ -22,6 +24,7 @@ let outputChannel: vscode.OutputChannel;
 let squeezerInstance: SemanticSqueezer | null = null;
 let wasmDir: string | null = null;
 let sqliteWarningShown = false; // Only show sqlite warning once
+let intelligenceEngine: PruneIntelligenceEngine | null = null;
 
 // ============================================================================
 // Logging
@@ -141,6 +144,10 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Initialize Intelligence Engine
+  intelligenceEngine = new PruneIntelligenceEngine();
+  log("Prune Intelligence Engine initialized");
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
@@ -148,7 +155,9 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
     vscode.commands.registerCommand("prune.squeezeFile", () => squeezeCurrentFile(context)),
     vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage),
-    vscode.commands.registerCommand("prune.analyzeContext", () => analyzeContextCommand(context))
+    vscode.commands.registerCommand("prune.analyzeContext", () => analyzeContextCommand(context)),
+    vscode.commands.registerCommand("prune.smartContext", () => smartContextCommand(context)),
+    vscode.commands.registerCommand("prune.runTests", runTestsCommand)
   );
 
   // Update status bar on selection change
@@ -661,6 +670,279 @@ async function analyzeContextCommand(context: vscode.ExtensionContext) {
         logError("Context analysis error:", error);
         vscode.window.showErrorMessage(
           "Failed to analyze context: " + (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+  );
+}
+
+// ============================================================================
+// Prune v2 Intelligence Commands
+// ============================================================================
+
+async function smartContextCommand(context: vscode.ExtensionContext) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showWarningMessage("No active file to analyze");
+    return;
+  }
+
+  if (!intelligenceEngine) {
+    intelligenceEngine = new PruneIntelligenceEngine();
+  }
+
+  // Get user's intent/prompt
+  const prompt = await vscode.window.showInputBox({
+    prompt: "What do you want to do? (e.g., 'fix the auth bug', 'refactor the user service')",
+    placeHolder: "Describe your task...",
+  });
+
+  if (!prompt) {
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Prune v2: Analyzing with Intelligence Engine...",
+      cancellable: false,
+    },
+    async () => {
+      try {
+        const activeFilePath = editor.document.uri.fsPath;
+        const activeFileContent = editor.document.getText();
+        const cursorLine = editor.selection.active.line + 1;
+
+        // Get all workspace files
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+          vscode.window.showWarningMessage("No workspace folder open");
+          return;
+        }
+
+        // Find all relevant files
+        const filePatterns = "**/*.{js,jsx,ts,tsx,py,go,rs,java,kt,c,cpp,h,hpp,rb,php,cs,swift}";
+        const excludePattern = "**/node_modules/**";
+        const files = await vscode.workspace.findFiles(filePatterns, excludePattern);
+
+        // Read file contents and detect language
+        const workspaceFiles: Array<{path: string; content: string; language: string}> = [];
+
+        for (const file of files.slice(0, 100)) {
+          try {
+            const doc = await vscode.workspace.openTextDocument(file);
+            const content = doc.getText();
+            if (content.length < 500000) {
+              const ext = path.extname(file.fsPath).toLowerCase();
+              const langMap: Record<string, string> = {
+                ".ts": "typescript", ".tsx": "typescript", ".js": "javascript",
+                ".jsx": "javascript", ".py": "python", ".go": "go", ".rs": "rust",
+                ".java": "java", ".kt": "kotlin", ".c": "c", ".cpp": "cpp",
+                ".h": "c", ".hpp": "cpp", ".rb": "ruby", ".php": "php",
+                ".cs": "csharp", ".swift": "swift",
+              };
+              workspaceFiles.push({
+                path: file.fsPath,
+                content,
+                language: langMap[ext] || "unknown",
+              });
+            }
+          } catch {
+            // Skip files that can't be read
+          }
+        }
+
+        // Analyze with intelligence engine
+        await intelligenceEngine!.analyzeFiles(workspaceFiles);
+
+        // Select context based on prompt
+        const selection = intelligenceEngine!.selectContext(prompt, {
+          activeFile: activeFilePath,
+          cursorLine,
+          modelMaxTokens: 128000,
+        });
+
+        // Get stats
+        const stats = intelligenceEngine!.getStats();
+
+        // Generate manifest
+        const manifest = intelligenceEngine!.generateManifest();
+
+        // Show results
+        outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("  PRUNE v2 INTELLIGENT CONTEXT SELECTION");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("");
+        outputChannel.appendLine(`📝 Task: "${prompt}"`);
+        outputChannel.appendLine(`📄 Active file: ${path.basename(activeFilePath)}:${cursorLine}`);
+        outputChannel.appendLine("");
+        outputChannel.appendLine("───────────────────────────────────────────────────────────────────────");
+        outputChannel.appendLine("  📊 CODEBASE ANALYSIS");
+        outputChannel.appendLine("───────────────────────────────────────────────────────────────────────");
+        outputChannel.appendLine(`  Files analyzed:    ${stats.fileCount}`);
+        outputChannel.appendLine(`  Symbols found:     ${stats.symbolCount}`);
+        outputChannel.appendLine(`  Dependencies:      ${stats.edgeCount} edges`);
+        outputChannel.appendLine(`  Total tokens:      ${formatTokens(stats.totalTokens)}`);
+        outputChannel.appendLine("");
+        outputChannel.appendLine("───────────────────────────────────────────────────────────────────────");
+        outputChannel.appendLine("  ✅ SELECTED CONTEXT (sorted by relevance)");
+        outputChannel.appendLine("───────────────────────────────────────────────────────────────────────");
+
+        // Group by category
+        const critical = selection.selectedSymbols.filter(s => s.relevance.category === "critical");
+        const high = selection.selectedSymbols.filter(s => s.relevance.category === "high");
+        const medium = selection.selectedSymbols.filter(s => s.relevance.category === "medium");
+        const low = selection.selectedSymbols.filter(s => s.relevance.category === "low");
+
+        if (critical.length > 0) {
+          outputChannel.appendLine("");
+          outputChannel.appendLine("  🔴 CRITICAL (full code):");
+          for (const item of critical) {
+            const score = item.relevance.score.toString().padStart(3);
+            const tokens = formatTokens(item.tokens).padStart(6);
+            const reasons = item.relevance.reasons.slice(0, 2).join(", ");
+            outputChannel.appendLine(`    [${score}] ${tokens}  ${item.symbol.kind}: ${item.symbol.name}`);
+            outputChannel.appendLine(`                └─ ${reasons}`);
+          }
+        }
+
+        if (high.length > 0) {
+          outputChannel.appendLine("");
+          outputChannel.appendLine("  🟠 HIGH (full code):");
+          for (const item of high.slice(0, 10)) {
+            const score = item.relevance.score.toString().padStart(3);
+            const tokens = formatTokens(item.tokens).padStart(6);
+            const reasons = item.relevance.reasons.slice(0, 2).join(", ");
+            outputChannel.appendLine(`    [${score}] ${tokens}  ${item.symbol.kind}: ${item.symbol.name}`);
+            outputChannel.appendLine(`                └─ ${reasons}`);
+          }
+          if (high.length > 10) {
+            outputChannel.appendLine(`    ... and ${high.length - 10} more`);
+          }
+        }
+
+        if (medium.length > 0) {
+          outputChannel.appendLine("");
+          outputChannel.appendLine("  🟡 MEDIUM (signatures only):");
+          for (const item of medium.slice(0, 10)) {
+            const score = item.relevance.score.toString().padStart(3);
+            const tokens = formatTokens(item.tokens).padStart(6);
+            outputChannel.appendLine(`    [${score}] ${tokens}  ${item.symbol.kind}: ${item.symbol.name}`);
+          }
+          if (medium.length > 10) {
+            outputChannel.appendLine(`    ... and ${medium.length - 10} more`);
+          }
+        }
+
+        if (low.length > 0) {
+          outputChannel.appendLine("");
+          outputChannel.appendLine("  🟢 LOW (reference only):");
+          outputChannel.appendLine(`    ${low.length} symbols included as references`);
+        }
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("───────────────────────────────────────────────────────────────────────");
+        outputChannel.appendLine("  💰 CONTEXT BUDGET");
+        outputChannel.appendLine("───────────────────────────────────────────────────────────────────────");
+        outputChannel.appendLine(`  Selected:     ${formatTokens(selection.totalTokens)} tokens`);
+        outputChannel.appendLine(`  Remaining:    ${formatTokens(selection.budgetRemaining)} tokens`);
+        outputChannel.appendLine(`  Excluded:     ${selection.excludedCount} symbols`);
+        outputChannel.appendLine(`  Compression:  ${((1 - selection.compressionRatio) * 100).toFixed(1)}% reduction`);
+
+        const costPerMillion = 3;
+        const originalCost = (stats.totalTokens / 1000000) * costPerMillion;
+        const selectedCost = (selection.totalTokens / 1000000) * costPerMillion;
+        const savings = originalCost - selectedCost;
+        outputChannel.appendLine(`  Est. savings: ~$${savings.toFixed(4)} per request`);
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════════════");
+        outputChannel.show();
+
+        // Show summary notification
+        const totalSelected = selection.selectedSymbols.length;
+        const compressionPct = ((1 - selection.compressionRatio) * 100).toFixed(0);
+
+        vscode.window.showInformationMessage(
+          `Prune v2: Selected ${totalSelected} symbols (${formatTokens(selection.totalTokens)} tokens), ${compressionPct}% reduction`,
+          "View Details",
+          "Copy Context"
+        ).then(async (action) => {
+          if (action === "View Details") {
+            outputChannel.show();
+          } else if (action === "Copy Context") {
+            // Generate concatenated context
+            const contextText = selection.selectedSymbols
+              .map(s => `// === ${s.symbol.filePath}:${s.symbol.startLine} ===\n${s.content}`)
+              .join("\n\n");
+            await vscode.env.clipboard.writeText(contextText);
+            vscode.window.showInformationMessage("Context copied to clipboard");
+          }
+        });
+      } catch (error) {
+        logError("Smart context error:", error);
+        vscode.window.showErrorMessage(
+          "Failed to analyze: " + (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+  );
+}
+
+async function runTestsCommand() {
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Running Prune Intelligence Engine tests...",
+      cancellable: false,
+    },
+    async () => {
+      try {
+        outputChannel.appendLine("");
+        outputChannel.appendLine("Running Prune Intelligence Engine Tests...");
+        outputChannel.appendLine("");
+
+        // Run tests and capture output
+        const originalLog = console.log;
+        const originalError = console.error;
+        const logLines: string[] = [];
+
+        console.log = (...args) => {
+          const line = args.map(a =>
+            typeof a === 'object' ? JSON.stringify(a) : String(a)
+          ).join(' ');
+          logLines.push(line);
+          originalLog.apply(console, args);
+        };
+        console.error = (...args) => {
+          const line = args.map(a =>
+            typeof a === 'object' ? JSON.stringify(a) : String(a)
+          ).join(' ');
+          logLines.push(line);
+          originalError.apply(console, args);
+        };
+
+        // Import and run tests
+        const { TestRunner } = await import("./prune-intelligence.test");
+        const runner = new TestRunner();
+        await runner.runAllTests();
+
+        // Restore console
+        console.log = originalLog;
+        console.error = originalError;
+
+        // Output to channel
+        for (const line of logLines) {
+          outputChannel.appendLine(line);
+        }
+
+        outputChannel.show();
+        vscode.window.showInformationMessage("Test run complete. See output for results.");
+      } catch (error) {
+        logError("Test run error:", error);
+        vscode.window.showErrorMessage(
+          "Tests failed: " + (error instanceof Error ? error.message : String(error))
         );
       }
     }
