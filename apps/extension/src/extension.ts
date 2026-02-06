@@ -578,63 +578,80 @@ async function analyzeContextCommand(context: vscode.ExtensionContext) {
           workspaceFiles,
         });
 
+        // Calculate costs
+        const costPerMillion = 3; // $3 per million input tokens (approximate for Claude)
+        const beforeCost = (analysis.totalTokens / 1000000) * costPerMillion;
+        const afterCost = (analysis.relevantTokens / 1000000) * costPerMillion;
+        const savedCost = beforeCost - afterCost;
+
         // Show results in output channel
         outputChannel.appendLine("");
-        outputChannel.appendLine("═══════════════════════════════════════════════════════");
-        outputChannel.appendLine("  SMART CONTEXT ANALYSIS");
-        outputChannel.appendLine("═══════════════════════════════════════════════════════");
+        outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+        outputChannel.appendLine("║              🧠 PRUNE CONTEXT ANALYSIS                        ║");
+        outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
         outputChannel.appendLine("");
-        outputChannel.appendLine(`📝 Your task: "${prompt}"`);
-        outputChannel.appendLine(`📄 Active file: ${path.basename(activeFilePath)}`);
+        outputChannel.appendLine(`  📝 Task: "${prompt}"`);
+        outputChannel.appendLine(`  📄 Active file: ${path.basename(activeFilePath)}`);
         outputChannel.appendLine("");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine("  ✅ RELEVANT FILES (send these)");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
+
+        // BEFORE vs AFTER comparison
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│                    📊 BEFORE vs AFTER                          │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("│   ❌ WITHOUT PRUNE (naive approach):                           │");
+        outputChannel.appendLine(`│      Files:  ${(analysis.relevantFiles.length + analysis.excludedFiles.length).toString().padStart(4)} files (all workspace files)               │`);
+        outputChannel.appendLine(`│      Tokens: ${formatTokens(analysis.totalTokens).padStart(8)}                                       │`);
+        outputChannel.appendLine(`│      Cost:   $${beforeCost.toFixed(4).padStart(7)} per request                            │`);
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("│   ✅ WITH PRUNE (smart selection):                             │");
+        outputChannel.appendLine(`│      Files:  ${analysis.relevantFiles.length.toString().padStart(4)} files (only relevant)                    │`);
+        outputChannel.appendLine(`│      Tokens: ${formatTokens(analysis.relevantTokens).padStart(8)}                                       │`);
+        outputChannel.appendLine(`│      Cost:   $${afterCost.toFixed(4).padStart(7)} per request                            │`);
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine(`│   💰 YOU SAVE: ${formatTokens(analysis.excludedTokens).padStart(8)} tokens (${analysis.savingsPercent.toFixed(0)}%)                      │`);
+        outputChannel.appendLine(`│               $${savedCost.toFixed(4)} per request                               │`);
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  ✅ RECOMMENDED FILES (include these in your context)          │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
 
         for (const file of analysis.relevantFiles) {
           const score = file.relevanceScore.toString().padStart(3);
           const tokens = formatTokens(file.tokens).padStart(8);
           const reasons = file.relevanceReasons.slice(0, 2).join(", ");
-          outputChannel.appendLine(`  [${score}%] ${tokens}  ${file.fileName}`);
-          outputChannel.appendLine(`         └─ ${reasons}`);
+          outputChannel.appendLine(`│  [${score}%] ${tokens}  ${file.fileName.padEnd(35).substring(0, 35)} │`);
+          outputChannel.appendLine(`│         └─ ${reasons.substring(0, 50).padEnd(50)} │`);
         }
 
-        outputChannel.appendLine("");
-        outputChannel.appendLine(`  Subtotal: ${formatTokens(analysis.relevantTokens)} tokens`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
 
         outputChannel.appendLine("");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine("  ❌ EXCLUDED FILES (not relevant)");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  ❌ SKIP THESE FILES (not relevant to your task)               │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
 
-        for (const file of analysis.excludedFiles.slice(0, 10)) {
+        for (const file of analysis.excludedFiles.slice(0, 8)) {
           const tokens = formatTokens(file.tokens).padStart(8);
-          outputChannel.appendLine(`  ${tokens}  ${file.fileName}`);
-          outputChannel.appendLine(`         └─ ${file.relevanceReasons[0]}`);
+          const reason = file.relevanceReasons[0] || "Low relevance";
+          outputChannel.appendLine(`│  ${tokens}  ${file.fileName.padEnd(45).substring(0, 45)} │`);
+          outputChannel.appendLine(`│         └─ ${reason.substring(0, 50).padEnd(50)} │`);
         }
 
-        if (analysis.excludedFiles.length > 10) {
-          outputChannel.appendLine(`  ... and ${analysis.excludedFiles.length - 10} more files`);
+        if (analysis.excludedFiles.length > 8) {
+          outputChannel.appendLine(`│  ... and ${(analysis.excludedFiles.length - 8).toString().padStart(3)} more files                                          │`);
         }
 
-        outputChannel.appendLine("");
-        outputChannel.appendLine(`  Subtotal: ${formatTokens(analysis.excludedTokens)} tokens`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
 
         outputChannel.appendLine("");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine("  💰 SUMMARY");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine(`  Total tokens:     ${formatTokens(analysis.totalTokens)}`);
-        outputChannel.appendLine(`  Relevant tokens:  ${formatTokens(analysis.relevantTokens)}`);
-        outputChannel.appendLine(`  Excluded tokens:  ${formatTokens(analysis.excludedTokens)}`);
-        outputChannel.appendLine(`  Savings:          ${analysis.savingsPercent.toFixed(1)}%`);
-
-        const costPerMillion = 3; // $3 per million input tokens (approximate)
-        const savingsDollars = (analysis.excludedTokens / 1000000) * costPerMillion;
-        outputChannel.appendLine(`  Est. savings:     ~$${savingsDollars.toFixed(4)} per request`);
-
+        outputChannel.appendLine("  💡 TIP: Use Ctrl+Alt+A (Cmd+Alt+A on Mac) to quickly run this analysis");
         outputChannel.appendLine("");
-        outputChannel.appendLine("═══════════════════════════════════════════════════════");
         outputChannel.show();
 
       } catch (error) {

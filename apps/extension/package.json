@@ -119,7 +119,21 @@
           "command": "prune.checkCursorUsage"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "prune.analyzeContext",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "prune.analyzeFile",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
