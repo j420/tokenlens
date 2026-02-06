@@ -19,6 +19,7 @@ let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let squeezerInstance: SemanticSqueezer | null = null;
 let wasmDir: string | null = null;
+let sqliteWarningShown = false; // Only show sqlite warning once
 
 // ============================================================================
 // Logging
@@ -443,8 +444,18 @@ async function checkCursorUsage() {
         const status = await getCursorStatus();
 
         if (!status.available) {
-          vscode.window.showWarningMessage("Cursor Usage: " + (status.error || "Not available"));
-          logError("Cursor usage check failed:", status.error);
+          // Only show sqlite warning once to avoid spamming the output
+          const isSqliteError = status.error?.includes("sqlite3");
+          if (isSqliteError && sqliteWarningShown) {
+            return; // Skip duplicate sqlite warnings
+          }
+          if (isSqliteError) {
+            sqliteWarningShown = true;
+            log("Note: SQLite CLI not installed - Cursor usage tracking disabled (optional feature)");
+          } else {
+            vscode.window.showWarningMessage("Cursor Usage: " + (status.error || "Not available"));
+            logError("Cursor usage check failed:", status.error);
+          }
           return;
         }
 
