@@ -28,38 +28,32 @@
   "contributes": {
     "commands": [
       {
-        "command": "prune.analyzeSelection",
-        "title": "Prune: Analyze Token Count"
-      },
-      {
         "command": "prune.analyzeFile",
         "title": "Prune: Analyze Current File"
       },
       {
-        "command": "prune.copyTokenCount",
-        "title": "Prune: Copy Token Count"
+        "command": "prune.analyzeSelection",
+        "title": "Prune: Analyze Selection"
       },
       {
         "command": "prune.squeezeFile",
         "title": "Prune: Squeeze File (Compress for AI)"
       },
       {
-        "command": "prune.checkCursorUsage",
-        "title": "Prune: Check Cursor Usage"
-      },
-      {
         "command": "prune.analyzeContext",
-        "title": "Prune: Smart Context Analysis",
-        "shortTitle": "Analyze Context"
+        "title": "Prune: Smart Context Analysis"
       },
       {
         "command": "prune.smartContext",
-        "title": "Prune v2: Intelligent Context Selection",
-        "shortTitle": "Smart Context"
+        "title": "Prune: Intelligent Context Selection (v2)"
       },
       {
         "command": "prune.runTests",
-        "title": "Prune: Run Intelligence Engine Tests"
+        "title": "Prune: Run Intelligence Tests"
+      },
+      {
+        "command": "prune.checkCursorUsage",
+        "title": "Prune: Check Cursor Usage"
       }
     ],
     "configuration": {
@@ -80,13 +74,49 @@
     "menus": {
       "editor/context": [
         {
+          "command": "prune.analyzeFile",
+          "group": "prune@1"
+        },
+        {
           "command": "prune.analyzeSelection",
-          "group": "prune",
+          "group": "prune@2",
           "when": "editorHasSelection"
         },
         {
-          "command": "prune.copyTokenCount",
-          "group": "prune"
+          "command": "prune.analyzeContext",
+          "group": "prune@3"
+        },
+        {
+          "command": "prune.smartContext",
+          "group": "prune@4"
+        },
+        {
+          "command": "prune.squeezeFile",
+          "group": "prune@5"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "prune.analyzeFile"
+        },
+        {
+          "command": "prune.analyzeSelection",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "prune.analyzeContext"
+        },
+        {
+          "command": "prune.smartContext"
+        },
+        {
+          "command": "prune.squeezeFile"
+        },
+        {
+          "command": "prune.runTests"
+        },
+        {
+          "command": "prune.checkCursorUsage"
         }
       ]
     }

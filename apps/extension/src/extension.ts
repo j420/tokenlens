@@ -152,7 +152,6 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.analyzeFile", analyzeCurrentFile),
-    vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
     vscode.commands.registerCommand("prune.squeezeFile", () => squeezeCurrentFile(context)),
     vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage),
     vscode.commands.registerCommand("prune.analyzeContext", () => analyzeContextCommand(context)),
@@ -297,24 +296,6 @@ async function analyzeCurrentFile() {
   vscode.window.showInformationMessage(
     fileName + ": " + analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")"
   );
-}
-
-async function copyTokenCount() {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage("No active editor");
-    return;
-  }
-
-  const selection = editor.selection;
-  const text = selection.isEmpty
-    ? editor.document.getText()
-    : editor.document.getText(selection);
-
-  const { tokens } = countTokens(text, "gpt-4o");
-
-  await vscode.env.clipboard.writeText(tokens.toString());
-  vscode.window.showInformationMessage("Token count copied: " + formatTokens(tokens));
 }
 
 async function squeezeCurrentFile(context: vscode.ExtensionContext) {
@@ -656,16 +637,6 @@ async function analyzeContextCommand(context: vscode.ExtensionContext) {
         outputChannel.appendLine("═══════════════════════════════════════════════════════");
         outputChannel.show();
 
-        // Show summary notification
-        const action = await vscode.window.showInformationMessage(
-          `Context analysis: ${analysis.relevantFiles.length} relevant files (${formatTokens(analysis.relevantTokens)} tokens), ` +
-          `${analysis.excludedFiles.length} excluded (${analysis.savingsPercent.toFixed(0)}% savings)`,
-          "View Details"
-        );
-
-        if (action === "View Details") {
-          outputChannel.show();
-        }
       } catch (error) {
         logError("Context analysis error:", error);
         vscode.window.showErrorMessage(
@@ -674,6 +645,16 @@ async function analyzeContextCommand(context: vscode.ExtensionContext) {
       }
     }
   );
+
+  // Show summary notification AFTER progress completes
+  vscode.window.showInformationMessage(
+    "Context analysis complete. See output for details.",
+    "View Details"
+  ).then((action) => {
+    if (action === "View Details") {
+      outputChannel.show();
+    }
+  });
 }
 
 // ============================================================================
@@ -701,7 +682,7 @@ async function smartContextCommand(context: vscode.ExtensionContext) {
     return;
   }
 
-  await vscode.window.withProgress(
+  const result = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
       title: "Prune v2: Analyzing with Intelligence Engine...",
@@ -860,34 +841,39 @@ async function smartContextCommand(context: vscode.ExtensionContext) {
         outputChannel.appendLine("═══════════════════════════════════════════════════════════════════════");
         outputChannel.show();
 
-        // Show summary notification
-        const totalSelected = selection.selectedSymbols.length;
-        const compressionPct = ((1 - selection.compressionRatio) * 100).toFixed(0);
-
-        vscode.window.showInformationMessage(
-          `Prune v2: Selected ${totalSelected} symbols (${formatTokens(selection.totalTokens)} tokens), ${compressionPct}% reduction`,
-          "View Details",
-          "Copy Context"
-        ).then(async (action) => {
-          if (action === "View Details") {
-            outputChannel.show();
-          } else if (action === "Copy Context") {
-            // Generate concatenated context
-            const contextText = selection.selectedSymbols
-              .map(s => `// === ${s.symbol.filePath}:${s.symbol.startLine} ===\n${s.content}`)
-              .join("\n\n");
-            await vscode.env.clipboard.writeText(contextText);
-            vscode.window.showInformationMessage("Context copied to clipboard");
-          }
-        });
+        // Store results for notification handler
+        return { selection, compressionRatio: selection.compressionRatio };
       } catch (error) {
         logError("Smart context error:", error);
         vscode.window.showErrorMessage(
           "Failed to analyze: " + (error instanceof Error ? error.message : String(error))
         );
+        return null;
       }
     }
   );
+
+  // Show summary notification AFTER progress completes
+  if (result) {
+    const totalSelected = result.selection.selectedSymbols.length;
+    const compressionPct = ((1 - result.compressionRatio) * 100).toFixed(0);
+
+    vscode.window.showInformationMessage(
+      `Prune v2: Selected ${totalSelected} symbols (${formatTokens(result.selection.totalTokens)} tokens), ${compressionPct}% reduction`,
+      "View Details",
+      "Copy Context"
+    ).then(async (action) => {
+      if (action === "View Details") {
+        outputChannel.show();
+      } else if (action === "Copy Context") {
+        const contextText = result.selection.selectedSymbols
+          .map((s: any) => `// === ${s.symbol.filePath}:${s.symbol.startLine} ===\n${s.content}`)
+          .join("\n\n");
+        await vscode.env.clipboard.writeText(contextText);
+        vscode.window.showInformationMessage("Context copied to clipboard");
+      }
+    });
+  }
 }
 
 async function runTestsCommand() {
