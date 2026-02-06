@@ -525,14 +525,20 @@ export class SemanticSqueezer {
     const body = node.childForFieldName("body");
     if (!body || body.type !== "block") return;
 
-    let newBody = "...";
+    // Extract semantic summary from the body
+    const bodyText = body.text;
+    const summary = this.extractSemanticSummary(bodyText);
+
+    let newBody = `# ${summary.replace(/^\/\*\s*/, "").replace(/\s*\*\/$/, "")}\n        ...`;
+
+    // Check for docstring and preserve it
     const firstChild = body.child(0);
     if (firstChild && firstChild.type === "expression_statement") {
       const expr = firstChild.child(0);
       if (expr && expr.type === "string") {
         const docstring = this.compressDocstring(expr.text);
         if (docstring) {
-          newBody = docstring + "\n        ...";
+          newBody = docstring + "\n        # " + summary.replace(/^\/\*\s*/, "").replace(/\s*\*\/$/, "") + "\n        ...";
         }
       }
     }
@@ -659,10 +665,14 @@ export class SemanticSqueezer {
 
     if (!body) return;
 
+    // Extract semantic summary from the body before compressing
+    const bodyText = body.text;
+    const summary = this.extractSemanticSummary(bodyText);
+
     replacements.push({
       startIndex: body.startIndex,
       endIndex: body.endIndex,
-      replacement: "{ /* ... */ }",
+      replacement: `{ ${summary} }`,
     });
   }
 
@@ -679,10 +689,14 @@ export class SemanticSqueezer {
     if (!body) return;
 
     if (body.type === "statement_block") {
+      // Extract semantic summary from the body before compressing
+      const bodyText = body.text;
+      const summary = this.extractSemanticSummary(bodyText);
+
       replacements.push({
         startIndex: body.startIndex,
         endIndex: body.endIndex,
-        replacement: "{ /* ... */ }",
+        replacement: `{ ${summary} }`,
       });
     }
   }
@@ -720,6 +734,101 @@ export class SemanticSqueezer {
         }
       }
     }
+  }
+
+  // ==========================================================================
+  // Semantic Extraction - Extract meaning from function bodies
+  // ==========================================================================
+
+  /**
+   * Extract semantic summary from function body text
+   * Returns a compact description of what the function does
+   */
+  private extractSemanticSummary(bodyText: string): string {
+    const operations: string[] = [];
+
+    // File I/O
+    if (/fs\.(read|write|append|unlink|mkdir|rmdir|exists|stat)/i.test(bodyText) ||
+        /readFileSync|writeFileSync/i.test(bodyText)) {
+      operations.push("file I/O");
+    }
+    if (/open\s*\(|with\s+open/i.test(bodyText)) {
+      operations.push("file I/O");
+    }
+
+    // HTTP/Network
+    if (/fetch\s*\(|axios\.|request\s*\(|http\.|https\./i.test(bodyText)) {
+      operations.push("HTTP request");
+    }
+    if (/requests\.(get|post|put|delete|patch)/i.test(bodyText)) {
+      operations.push("HTTP request");
+    }
+
+    // Database
+    if (/\.query\s*\(|\.find\(|\.findOne\(|\.insert\(|\.update\(|\.delete\(/i.test(bodyText)) {
+      operations.push("database");
+    }
+    if (/SELECT|INSERT|UPDATE|DELETE|FROM/i.test(bodyText) && /sql|query/i.test(bodyText)) {
+      operations.push("SQL");
+    }
+
+    // Array transformations
+    if (/\.(map|filter|reduce|flatMap)\s*\(/i.test(bodyText)) {
+      operations.push("transforms data");
+    }
+    if (/\.(forEach|for\s+|while\s+)/i.test(bodyText) || /for\s+\w+\s+(in|of)/i.test(bodyText)) {
+      operations.push("iterates");
+    }
+
+    // Async operations
+    if (/await\s+/i.test(bodyText) || /Promise\.(all|race|resolve)/i.test(bodyText)) {
+      operations.push("async");
+    }
+
+    // Error handling
+    if (/throw\s+|raise\s+/i.test(bodyText)) {
+      operations.push("throws");
+    }
+    if (/try\s*\{|except\s+|catch\s*\(/i.test(bodyText)) {
+      operations.push("handles errors");
+    }
+
+    // Validation
+    if (/validate|check|verify|assert|ensure/i.test(bodyText)) {
+      operations.push("validates");
+    }
+
+    // Parsing/Formatting
+    if (/JSON\.(parse|stringify)|parse|serialize/i.test(bodyText)) {
+      operations.push("parses");
+    }
+    if (/\.match\(|\.replace\(|RegExp|regex/i.test(bodyText)) {
+      operations.push("regex");
+    }
+
+    // Logging
+    if (/console\.(log|error|warn)|print\s*\(|logging\./i.test(bodyText)) {
+      operations.push("logs");
+    }
+
+    // Return value extraction
+    const returnMatch = bodyText.match(/return\s+(\w+(?:\.\w+)?(?:\[\w*\])?)/);
+    if (returnMatch) {
+      const returnVal = returnMatch[1];
+      // Avoid generic returns like "return result" if we have operations
+      if (operations.length === 0 || !["result", "data", "response", "output", "value"].includes(returnVal.toLowerCase())) {
+        operations.push(`→ ${returnVal}`);
+      }
+    }
+
+    // If no operations detected, provide generic summary
+    if (operations.length === 0) {
+      return "/* ... */";
+    }
+
+    // Deduplicate and limit
+    const unique = [...new Set(operations)].slice(0, 4);
+    return `/* ${unique.join(", ")} */`;
   }
 
   // ==========================================================================
