@@ -9,7 +9,7 @@ import * as vscode from "vscode";
 import * as path from "path";
 import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/tokenizer";
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
-import { SemanticSqueezer, initParser, loadLanguage } from "./squeezer";
+import { SemanticSqueezer, initParser, loadLanguage, setDebugMode } from "./squeezer";
 
 // ============================================================================
 // State
@@ -50,6 +50,12 @@ async function initSqueezer(extensionPath: string): Promise<boolean> {
   }
 
   try {
+    // Enable debug logging for troubleshooting
+    setDebugMode(true);
+
+    log(`Extension path: ${extensionPath}`);
+    log(`Platform: ${process.platform}`);
+
     // Find WASM directory
     const possiblePaths = [
       // Installed: bundled with extension
@@ -60,27 +66,47 @@ async function initSqueezer(extensionPath: string): Promise<boolean> {
 
     const fs = require("fs");
     for (const p of possiblePaths) {
-      const wasmFile = path.join(p, "tree-sitter.wasm");
-      if (fs.existsSync(wasmFile)) {
+      log(`Checking WASM path: ${p}`);
+      // Look for either tree-sitter.wasm or web-tree-sitter.wasm
+      const wasmFile1 = path.join(p, "web-tree-sitter.wasm");
+      const wasmFile2 = path.join(p, "tree-sitter.wasm");
+      if (fs.existsSync(wasmFile1)) {
         wasmDir = p;
-        log(`Found WASM files at: ${p}`);
+        log(`Found WASM files at: ${p} (web-tree-sitter.wasm)`);
+        break;
+      }
+      if (fs.existsSync(wasmFile2)) {
+        wasmDir = p;
+        log(`Found WASM files at: ${p} (tree-sitter.wasm)`);
         break;
       }
     }
 
     if (!wasmDir) {
-      log("WASM files not found");
+      log("WASM files not found in any expected location");
+      log(`Searched paths: ${possiblePaths.join(", ")}`);
       return false;
     }
 
+    // List WASM directory contents
+    const wasmFiles = fs.readdirSync(wasmDir);
+    log(`WASM directory contents: ${wasmFiles.join(", ")}`);
+
     // Initialize parser
+    log("Initializing parser...");
     await initParser(wasmDir);
     squeezerInstance = new SemanticSqueezer();
 
     log("WASM Squeezer initialized successfully");
+
+    // Disable debug logging after successful init
+    setDebugMode(false);
     return true;
   } catch (error) {
-    logError("Failed to initialize WASM squeezer:", error);
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : "";
+    logError("Failed to initialize WASM squeezer:", errorMsg);
+    log(`Error stack: ${errorStack}`);
     return false;
   }
 }

@@ -17,38 +17,8 @@
  */
 
 import * as path from "path";
-import type { Parser as ParserType, Language, SyntaxNode, Tree } from "web-tree-sitter";
-
-// Dynamic import for web-tree-sitter (handles CommonJS/ESM compatibility)
-let ParserClass: typeof ParserType | null = null;
-let LanguageClass: any = null;
-
-async function loadTreeSitter(): Promise<{ Parser: typeof ParserType; Language: any }> {
-  if (ParserClass && LanguageClass) {
-    return { Parser: ParserClass, Language: LanguageClass };
-  }
-
-  // In CommonJS (bundled by esbuild), it's require('web-tree-sitter').Parser
-  const mod = await import("web-tree-sitter");
-
-  // Try different ways to get the Parser and Language classes
-  if ((mod as any).Parser && typeof (mod as any).Parser.init === 'function') {
-    ParserClass = (mod as any).Parser;
-    LanguageClass = (mod as any).Language;
-  } else if ((mod as any).default?.Parser && typeof (mod as any).default.Parser.init === 'function') {
-    ParserClass = (mod as any).default.Parser;
-    LanguageClass = (mod as any).default.Language;
-  } else {
-    throw new Error('Could not find Parser class in web-tree-sitter module');
-  }
-
-  return { Parser: ParserClass!, Language: LanguageClass };
-}
-
-async function loadParser(): Promise<typeof ParserType> {
-  const { Parser } = await loadTreeSitter();
-  return Parser;
-}
+import * as fs from "fs";
+import { pathToFileURL } from "url";
 
 // ============================================================================
 // Types
@@ -75,13 +45,35 @@ interface NodeRange {
   replacement: string;
 }
 
+// Simple interface for tree-sitter types
+interface TreeSitterNode {
+  type: string;
+  text: string;
+  startIndex: number;
+  endIndex: number;
+  childCount: number;
+  isMissing?: boolean;
+  child(index: number): TreeSitterNode | null;
+  childForFieldName(name: string): TreeSitterNode | null;
+  previousSibling: TreeSitterNode | null;
+}
+
+interface TreeSitterTree {
+  rootNode: TreeSitterNode;
+}
+
+interface TreeSitterParser {
+  parse(code: string): TreeSitterTree | null;
+  setLanguage(lang: any): void;
+  delete(): void;
+}
+
 // ============================================================================
 // Token Counter (simple approximation)
 // ============================================================================
 
 function countTokensApprox(text: string): number {
   if (!text || text.trim().length === 0) return 1;
-  // Simple approximation: ~4 chars per token on average for code
   return Math.max(1, Math.ceil(text.length / 4));
 }
 
@@ -109,47 +101,199 @@ const DEFAULT_CRITICAL_KEYWORDS = new Set([
 ]);
 
 // ============================================================================
-// WASM Initialization
+// WASM Initialization - Robust Version
 // ============================================================================
 
+let TreeSitterModule: any = null;
 let parserInitialized = false;
-let languageCache: Map<string, Language> = new Map();
+let languageCache: Map<string, any> = new Map();
+let cachedWasmDir: string | null = null;
+
+// Debug logging - enabled for troubleshooting
+let debugEnabled = true;
+
+function debugLog(message: string, ...args: any[]) {
+  if (debugEnabled) {
+    console.log(`[Squeezer] ${message}`, ...args);
+  }
+}
+
+/**
+ * Enable or disable debug logging
+ */
+export function setDebugMode(enabled: boolean) {
+  debugEnabled = enabled;
+}
+
+/**
+ * Convert a file path to a proper URL for WASM loading
+ * Works on both Windows and Unix
+ */
+function pathToWasmUrl(filePath: string): string {
+  // Normalize the path first
+  const normalizedPath = path.resolve(filePath);
+
+  // On Windows, convert backslashes to forward slashes and add file:// prefix
+  if (process.platform === "win32") {
+    // Convert C:\path\to\file to file:///C:/path/to/file
+    const fileUrl = pathToFileURL(normalizedPath).href;
+    debugLog("Windows path conversion:", normalizedPath, "->", fileUrl);
+    return fileUrl;
+  }
+
+  // On Unix, just use the absolute path (or file URL)
+  debugLog("Unix path:", normalizedPath);
+  return normalizedPath;
+}
+
+/**
+ * Load the web-tree-sitter module
+ */
+async function loadTreeSitterModule(): Promise<any> {
+  if (TreeSitterModule) return TreeSitterModule;
+
+  debugLog("Loading web-tree-sitter module...");
+
+  // Use require for CommonJS compatibility in bundled extension
+  const mod = require("web-tree-sitter");
+
+  debugLog("Module loaded:", Object.keys(mod));
+
+  // The module structure can vary based on how it's bundled
+  if (mod.Parser && typeof mod.Parser.init === "function") {
+    TreeSitterModule = mod;
+    debugLog("Found Parser at mod.Parser");
+  } else if (mod.default?.Parser && typeof mod.default.Parser.init === "function") {
+    TreeSitterModule = mod.default;
+    debugLog("Found Parser at mod.default.Parser");
+  } else if (typeof mod.init === "function") {
+    TreeSitterModule = { Parser: mod, Language: mod.Language };
+    debugLog("Found Parser as mod itself");
+  } else {
+    throw new Error(
+      `Could not find Parser in web-tree-sitter module. Keys: ${Object.keys(mod).join(", ")}`
+    );
+  }
+
+  return TreeSitterModule;
+}
 
 /**
  * Initialize the Tree-sitter parser with WASM
  */
 export async function initParser(wasmDir: string): Promise<void> {
-  if (parserInitialized) return;
+  if (parserInitialized && cachedWasmDir === wasmDir) {
+    debugLog("Parser already initialized");
+    return;
+  }
 
-  const P = await loadParser();
-  await P.init({
-    locateFile: (file: string) => {
-      // web-tree-sitter looks for web-tree-sitter.wasm
-      return path.join(wasmDir, file);
-    },
-  });
+  debugLog("Initializing parser with wasmDir:", wasmDir);
 
-  parserInitialized = true;
+  // Verify the WASM directory exists
+  if (!fs.existsSync(wasmDir)) {
+    throw new Error(`WASM directory does not exist: ${wasmDir}`);
+  }
+
+  // Check for required WASM file
+  const mainWasmPath = path.join(wasmDir, "web-tree-sitter.wasm");
+  const altWasmPath = path.join(wasmDir, "tree-sitter.wasm");
+
+  let wasmPath: string;
+  if (fs.existsSync(mainWasmPath)) {
+    wasmPath = mainWasmPath;
+  } else if (fs.existsSync(altWasmPath)) {
+    wasmPath = altWasmPath;
+  } else {
+    throw new Error(
+      `WASM file not found. Looked for:\n  - ${mainWasmPath}\n  - ${altWasmPath}`
+    );
+  }
+
+  debugLog("Found WASM file:", wasmPath);
+
+  // Load the module
+  const mod = await loadTreeSitterModule();
+  const Parser = mod.Parser;
+
+  // Convert to proper URL for loading
+  const wasmUrl = pathToWasmUrl(wasmPath);
+  debugLog("WASM URL:", wasmUrl);
+
+  // Initialize with explicit locateFile that returns file URLs
+  try {
+    await Parser.init({
+      locateFile: (file: string, scriptDirectory: string) => {
+        debugLog("locateFile called with:", file, scriptDirectory);
+
+        // Handle the main WASM file request
+        if (file === "tree-sitter.wasm" || file === "web-tree-sitter.wasm") {
+          const result = pathToWasmUrl(wasmPath);
+          debugLog("Returning WASM path:", result);
+          return result;
+        }
+
+        // For other files, try to locate in the wasm directory
+        const otherPath = path.join(wasmDir, file);
+        if (fs.existsSync(otherPath)) {
+          return pathToWasmUrl(otherPath);
+        }
+
+        // Fallback
+        debugLog("File not found, using default:", file);
+        return file;
+      },
+    });
+
+    parserInitialized = true;
+    cachedWasmDir = wasmDir;
+    debugLog("Parser initialized successfully");
+  } catch (initError) {
+    const error = initError instanceof Error ? initError : new Error(String(initError));
+    throw new Error(`Failed to initialize Parser: ${error.message}`);
+  }
 }
 
 /**
  * Load a language grammar
  */
-export async function loadLanguage(
-  language: string,
-  wasmDir: string
-): Promise<Language> {
+export async function loadLanguage(language: string, wasmDir: string): Promise<any> {
   const cached = languageCache.get(language);
-  if (cached) return cached;
+  if (cached) {
+    debugLog("Using cached language:", language);
+    return cached;
+  }
 
-  const { Language } = await loadTreeSitter();
+  debugLog("Loading language:", language);
+
+  const mod = await loadTreeSitterModule();
+  const Language = mod.Language;
+
+  if (!Language || typeof Language.load !== "function") {
+    throw new Error("Language.load not available on web-tree-sitter module");
+  }
+
   const langFile = `tree-sitter-${language}.wasm`;
   const langPath = path.join(wasmDir, langFile);
 
-  const lang = await Language.load(langPath);
-  languageCache.set(language, lang);
+  if (!fs.existsSync(langPath)) {
+    throw new Error(`Language WASM not found: ${langPath}`);
+  }
 
-  return lang;
+  debugLog("Loading language from:", langPath);
+
+  // Convert to URL for loading
+  const langUrl = pathToWasmUrl(langPath);
+  debugLog("Language URL:", langUrl);
+
+  try {
+    const lang = await Language.load(langUrl);
+    languageCache.set(language, lang);
+    debugLog("Language loaded successfully:", language);
+    return lang;
+  } catch (loadError) {
+    const error = loadError instanceof Error ? loadError : new Error(String(loadError));
+    throw new Error(`Failed to load language ${language}: ${error.message}`);
+  }
 }
 
 // ============================================================================
@@ -169,11 +313,7 @@ export class SemanticSqueezer {
   /**
    * Squeeze code using Telegraphic Semantic Compression
    */
-  async squeeze(
-    code: string,
-    language: string,
-    wasmDir: string
-  ): Promise<SqueezeResult> {
+  async squeeze(code: string, language: string, wasmDir: string): Promise<SqueezeResult> {
     // Handle empty input
     if (!code.trim()) {
       return {
@@ -213,9 +353,12 @@ export class SemanticSqueezer {
       const grammarLang = normalizedLang === "tsx" ? "tsx" : normalizedLang;
       const lang = await loadLanguage(grammarLang, wasmDir);
 
-      // Create parser and set language
-      const P = await loadParser();
-      const parser = new P();
+      // Get the Parser class
+      const mod = await loadTreeSitterModule();
+      const Parser = mod.Parser;
+
+      // Create parser instance and set language
+      const parser: TreeSitterParser = new Parser();
       parser.setLanguage(lang);
 
       // Parse code
@@ -227,13 +370,13 @@ export class SemanticSqueezer {
       // Squeeze based on language
       let squeezedCode: string;
       if (normalizedLang === "python") {
-        squeezedCode = this.squeezePython(code, tree as Tree);
+        squeezedCode = this.squeezePython(code, tree);
       } else {
-        squeezedCode = this.squeezeJavaScript(code, tree as Tree);
+        squeezedCode = this.squeezeJavaScript(code, tree);
       }
 
       // Validate output
-      const isValid = this.validateOutput(squeezedCode, parser as any);
+      const isValid = this.validateOutput(squeezedCode, parser);
 
       // If invalid, fallback to original
       if (!isValid) {
@@ -265,13 +408,14 @@ export class SemanticSqueezer {
         squeezedCode,
       };
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         originalTokens,
         squeezedTokens: originalTokens,
         savings: 0,
         savingsPercent: 0,
         isValid: true,
-        error: error instanceof Error ? error.message : String(error),
+        error: errorMessage,
         squeezedCode: code,
       };
     }
@@ -291,12 +435,10 @@ export class SemanticSqueezer {
     return langMap[language.toLowerCase()] || language.toLowerCase();
   }
 
-  private validateOutput(code: string, parser: Parser): boolean {
+  private validateOutput(code: string, parser: TreeSitterParser): boolean {
     try {
       const tree = parser.parse(code);
       if (!tree) return false;
-
-      // Check for syntax errors
       const hasError = this.hasParseError(tree.rootNode);
       return !hasError;
     } catch {
@@ -304,7 +446,7 @@ export class SemanticSqueezer {
     }
   }
 
-  private hasParseError(node: SyntaxNode): boolean {
+  private hasParseError(node: TreeSitterNode): boolean {
     if (node.type === "ERROR" || node.isMissing) {
       return true;
     }
@@ -321,19 +463,15 @@ export class SemanticSqueezer {
   // Python Squeezer
   // ==========================================================================
 
-  private squeezePython(code: string, tree: Tree): string {
+  private squeezePython(code: string, tree: TreeSitterTree): string {
     const replacements: NodeRange[] = [];
     const root = tree.rootNode;
-
-    // Process all nodes
     this.processPythonNode(root, code, replacements, false);
-
-    // Apply replacements in reverse order
     return this.applyReplacements(code, replacements);
   }
 
   private processPythonNode(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[],
     insideFunction: boolean
@@ -348,7 +486,6 @@ export class SemanticSqueezer {
         return;
 
       case "comment":
-        // Remove regular comments, preserve TODO/FIXME
         if (!insideFunction) {
           const text = node.text;
           if (!this.isTodoComment(text)) {
@@ -362,7 +499,6 @@ export class SemanticSqueezer {
         break;
 
       default:
-        // Recurse into children
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
           if (child) {
@@ -373,65 +509,51 @@ export class SemanticSqueezer {
   }
 
   private processPythonFunction(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[]
   ): void {
-    // Check for critical decorator
-    const hasCriticalDecorator = this.hasCriticalDecorator(node, code);
+    const hasCriticalDecorator = this.hasCriticalDecorator(node);
     const hasCriticalKeyword = this.containsCriticalKeyword(node.text);
 
     if (hasCriticalDecorator || hasCriticalKeyword) {
-      // Preserve entire function
       return;
     }
 
-    // Find the body (block node)
     const body = node.childForFieldName("body");
     if (!body || body.type !== "block") return;
 
-    // Get the body content
-    const bodyText = body.text;
-
-    // Extract and compress docstring if present
-    let newBody = "...\n";
+    let newBody = "...";
     const firstChild = body.child(0);
     if (firstChild && firstChild.type === "expression_statement") {
       const expr = firstChild.child(0);
       if (expr && expr.type === "string") {
         const docstring = this.compressDocstring(expr.text);
         if (docstring) {
-          newBody = docstring + "\n    ...\n";
+          newBody = docstring + "\n        ...";
         }
       }
     }
 
-    // Get proper indentation
     const funcLine = code.slice(0, node.startIndex).split("\n").pop() || "";
     const baseIndent = funcLine.match(/^(\s*)/)?.[1] || "";
     const bodyIndent = baseIndent + "    ";
 
-    // Create replacement for body
-    const colonIndex = code.lastIndexOf(":", body.startIndex);
-    if (colonIndex === -1) return;
-
     replacements.push({
       startIndex: body.startIndex,
       endIndex: body.endIndex,
-      replacement: "\n" + bodyIndent + newBody.trim(),
+      replacement: "\n" + bodyIndent + newBody,
     });
   }
 
   private processPythonClass(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[]
   ): void {
-    // Find the body
     const body = node.childForFieldName("body");
     if (!body || body.type !== "block") return;
 
-    // Process class body - squeeze methods but keep signatures
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
       if (!child) continue;
@@ -455,17 +577,15 @@ export class SemanticSqueezer {
   // JavaScript/TypeScript Squeezer
   // ==========================================================================
 
-  private squeezeJavaScript(code: string, tree: Tree): string {
+  private squeezeJavaScript(code: string, tree: TreeSitterTree): string {
     const replacements: NodeRange[] = [];
     const root = tree.rootNode;
-
     this.processJSNode(root, code, replacements, false);
-
     return this.applyReplacements(code, replacements);
   }
 
   private processJSNode(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[],
     insideFunction: boolean
@@ -488,7 +608,6 @@ export class SemanticSqueezer {
       case "comment":
         if (!insideFunction) {
           const text = node.text;
-          // Preserve JSDoc and TODO/FIXME comments
           if (!text.startsWith("/**") && !this.isTodoComment(text)) {
             replacements.push({
               startIndex: node.startIndex,
@@ -496,7 +615,6 @@ export class SemanticSqueezer {
               replacement: "",
             });
           } else if (text.startsWith("/**")) {
-            // Compress JSDoc
             const compressed = this.compressJSDoc(text);
             if (compressed !== text) {
               replacements.push({
@@ -510,7 +628,6 @@ export class SemanticSqueezer {
         break;
 
       default:
-        // Recurse into children
         for (let i = 0; i < node.childCount; i++) {
           const child = node.child(i);
           if (child) {
@@ -521,17 +638,15 @@ export class SemanticSqueezer {
   }
 
   private processJSFunction(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[]
   ): void {
-    // Check for critical keywords
     if (this.containsCriticalKeyword(node.text)) {
       return;
     }
 
-    // Find the body (statement_block)
-    let body: SyntaxNode | null = null;
+    let body: TreeSitterNode | null = null;
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i);
       if (child && child.type === "statement_block") {
@@ -542,7 +657,6 @@ export class SemanticSqueezer {
 
     if (!body) return;
 
-    // Replace body with { /* ... */ }
     replacements.push({
       startIndex: body.startIndex,
       endIndex: body.endIndex,
@@ -551,20 +665,17 @@ export class SemanticSqueezer {
   }
 
   private processJSArrowFunction(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[]
   ): void {
-    // Check for critical keywords
     if (this.containsCriticalKeyword(node.text)) {
       return;
     }
 
-    // Find the body
     const body = node.childForFieldName("body");
     if (!body) return;
 
-    // Only compress block bodies, not expression bodies
     if (body.type === "statement_block") {
       replacements.push({
         startIndex: body.startIndex,
@@ -575,12 +686,11 @@ export class SemanticSqueezer {
   }
 
   private processJSClass(
-    node: SyntaxNode,
+    node: TreeSitterNode,
     code: string,
     replacements: NodeRange[]
   ): void {
-    // Find class body
-    let body: SyntaxNode | null = null;
+    let body: TreeSitterNode | null = null;
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i);
       if (child && child.type === "class_body") {
@@ -591,7 +701,6 @@ export class SemanticSqueezer {
 
     if (!body) return;
 
-    // Process methods within class body
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
       if (!child) continue;
@@ -615,11 +724,7 @@ export class SemanticSqueezer {
   // Helpers
   // ==========================================================================
 
-  private hasCriticalDecorator(
-    node: SyntaxNode,
-    code: string
-  ): boolean {
-    // Check previous sibling for decorator
+  private hasCriticalDecorator(node: TreeSitterNode): boolean {
     let sibling = node.previousSibling;
     while (sibling) {
       if (sibling.type === "decorator") {
@@ -657,7 +762,6 @@ export class SemanticSqueezer {
   }
 
   private compressDocstring(docstring: string): string {
-    // Remove quotes
     let content = docstring;
     if (content.startsWith('"""') || content.startsWith("'''")) {
       content = content.slice(3, -3);
@@ -674,44 +778,29 @@ export class SemanticSqueezer {
     for (const line of lines) {
       const trimmed = line.trim();
 
-      // Detect sections
       if (trimmed.startsWith("Args:") || trimmed.startsWith("Arguments:")) {
         inArgsSection = true;
         inReturnsSection = false;
         result.push(line);
         continue;
       }
-      if (
-        trimmed.startsWith("Returns:") ||
-        trimmed.startsWith("Return:") ||
-        trimmed.startsWith("Yields:")
-      ) {
+      if (trimmed.startsWith("Returns:") || trimmed.startsWith("Return:") || trimmed.startsWith("Yields:")) {
         inArgsSection = false;
         inReturnsSection = true;
         result.push(line);
         continue;
       }
-      if (
-        trimmed.startsWith("Raises:") ||
-        trimmed.startsWith("Example:") ||
-        trimmed.startsWith("Note:") ||
-        trimmed.startsWith("Warning:")
-      ) {
+      if (trimmed.startsWith("Raises:") || trimmed.startsWith("Example:") || trimmed.startsWith("Note:") || trimmed.startsWith("Warning:")) {
         inArgsSection = false;
         inReturnsSection = false;
-        // Skip these sections
         continue;
       }
 
-      // Keep Args and Returns content
       if (inArgsSection || inReturnsSection) {
-        if (trimmed.length > 0) {
-          result.push(line);
-        }
+        if (trimmed.length > 0) result.push(line);
         continue;
       }
 
-      // Keep first non-empty line as summary
       if (!foundSummary && trimmed.length > 0) {
         foundSummary = true;
         result.push(line);
@@ -719,7 +808,6 @@ export class SemanticSqueezer {
     }
 
     if (result.length === 0) return "";
-
     const compressed = result.join("\n").trim();
     return `"""${compressed}"""`;
   }
@@ -732,7 +820,6 @@ export class SemanticSqueezer {
     for (const line of lines) {
       const trimmed = line.trim().replace(/^\*\s*/, "").trim();
 
-      // Keep @param, @returns, @return tags
       if (
         trimmed.startsWith("@param") ||
         trimmed.startsWith("@returns") ||
@@ -744,18 +831,15 @@ export class SemanticSqueezer {
         continue;
       }
 
-      // Skip other @ tags
       if (trimmed.startsWith("@")) {
         continue;
       }
 
-      // Keep opening/closing
       if (line.includes("/**") || line.includes("*/")) {
         result.push(line);
         continue;
       }
 
-      // Keep first content line as summary
       if (!foundSummary && trimmed.length > 0 && !trimmed.startsWith("*")) {
         foundSummary = true;
         result.push(line);
@@ -766,10 +850,8 @@ export class SemanticSqueezer {
   }
 
   private applyReplacements(code: string, replacements: NodeRange[]): string {
-    // Sort by start index descending
     replacements.sort((a, b) => b.startIndex - a.startIndex);
 
-    // Remove overlapping replacements
     const filtered: NodeRange[] = [];
     let lastStart = code.length;
 
@@ -780,13 +862,11 @@ export class SemanticSqueezer {
       }
     }
 
-    // Apply replacements
     let result = code;
     for (const r of filtered) {
       result = result.slice(0, r.startIndex) + r.replacement + result.slice(r.endIndex);
     }
 
-    // Clean up multiple blank lines
     result = result.replace(/\n{3,}/g, "\n\n");
 
     return result;
