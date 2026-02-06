@@ -7,6 +7,7 @@ src/**
 .gitignore
 **/.turbo/**
 **/node_modules/**
+!node_modules/@types/**
 *.log
 **/.env*
 **/.git/**
@@ -14,7 +15,18 @@ squeezer-py/**
 test-*.cjs
 test-*.mjs
 test-*.js
+run-tests.ts
+debug-test.ts
+
+# Exclude parent directories
+../**
+../../**
+../../../**
 
 # Explicitly include wasm files
 !wasm/**
 !wasm/*.wasm
+
+# Exclude test files
+**/*.test.ts
+**/*.spec.ts
