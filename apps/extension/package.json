@@ -46,6 +46,11 @@
       {
         "command": "prune.checkCursorUsage",
         "title": "Prune: Check Cursor Usage"
+      },
+      {
+        "command": "prune.analyzeContext",
+        "title": "Prune: Smart Context Analysis",
+        "shortTitle": "Analyze Context"
       }
     ],
     "configuration": {

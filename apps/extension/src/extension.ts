@@ -7,9 +7,11 @@
 
 import * as vscode from "vscode";
 import * as path from "path";
+import * as fs from "fs";
 import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/tokenizer";
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
 import { SemanticSqueezer, initParser, loadLanguage, setDebugMode } from "./squeezer";
+import { analyzeContext, type ContextAnalysis, type FileRelevance } from "./context-analyzer";
 
 // ============================================================================
 // State
@@ -145,7 +147,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.analyzeFile", analyzeCurrentFile),
     vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
     vscode.commands.registerCommand("prune.squeezeFile", () => squeezeCurrentFile(context)),
-    vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage)
+    vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage),
+    vscode.commands.registerCommand("prune.analyzeContext", () => analyzeContextCommand(context))
   );
 
   // Update status bar on selection change
@@ -513,6 +516,152 @@ async function checkCursorUsage() {
       } catch (error) {
         logError("Cursor usage error:", error);
         vscode.window.showErrorMessage("Failed to check Cursor usage: " + (error instanceof Error ? error.message : String(error)));
+      }
+    }
+  );
+}
+
+// ============================================================================
+// Smart Context Analysis
+// ============================================================================
+
+async function analyzeContextCommand(context: vscode.ExtensionContext) {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    vscode.window.showWarningMessage("No active file to analyze");
+    return;
+  }
+
+  // Get user's intent/prompt
+  const prompt = await vscode.window.showInputBox({
+    prompt: "What do you want to do? (e.g., 'fix the auth bug', 'add validation')",
+    placeHolder: "Describe your task...",
+  });
+
+  if (!prompt) {
+    return;
+  }
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: "Analyzing context relevance...",
+      cancellable: false,
+    },
+    async () => {
+      try {
+        const activeFilePath = editor.document.uri.fsPath;
+        const activeFileContent = editor.document.getText();
+
+        // Get all workspace files
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+          vscode.window.showWarningMessage("No workspace folder open");
+          return;
+        }
+
+        // Find all relevant files (exclude node_modules, dist, etc.)
+        const files = await vscode.workspace.findFiles(
+          "**/*.{js,jsx,ts,tsx,py,go,rs,java,kt,c,cpp,h,hpp,rb,php,json}",
+          "**/node_modules/**"
+        );
+
+        // Read file contents (limit to reasonable size)
+        const workspaceFiles: { path: string; content: string }[] = [];
+        for (const file of files.slice(0, 100)) { // Limit to 100 files
+          try {
+            const doc = await vscode.workspace.openTextDocument(file);
+            const content = doc.getText();
+            if (content.length < 500000) { // Skip very large files
+              workspaceFiles.push({ path: file.fsPath, content });
+            }
+          } catch {
+            // Skip files that can't be read
+          }
+        }
+
+        // Run analysis
+        const analysis = analyzeContext({
+          activeFilePath,
+          activeFileContent,
+          prompt,
+          workspaceFiles,
+        });
+
+        // Show results in output channel
+        outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════");
+        outputChannel.appendLine("  SMART CONTEXT ANALYSIS");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════");
+        outputChannel.appendLine("");
+        outputChannel.appendLine(`📝 Your task: "${prompt}"`);
+        outputChannel.appendLine(`📄 Active file: ${path.basename(activeFilePath)}`);
+        outputChannel.appendLine("");
+        outputChannel.appendLine("───────────────────────────────────────────────────────");
+        outputChannel.appendLine("  ✅ RELEVANT FILES (send these)");
+        outputChannel.appendLine("───────────────────────────────────────────────────────");
+
+        for (const file of analysis.relevantFiles) {
+          const score = file.relevanceScore.toString().padStart(3);
+          const tokens = formatTokens(file.tokens).padStart(8);
+          const reasons = file.relevanceReasons.slice(0, 2).join(", ");
+          outputChannel.appendLine(`  [${score}%] ${tokens}  ${file.fileName}`);
+          outputChannel.appendLine(`         └─ ${reasons}`);
+        }
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine(`  Subtotal: ${formatTokens(analysis.relevantTokens)} tokens`);
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("───────────────────────────────────────────────────────");
+        outputChannel.appendLine("  ❌ EXCLUDED FILES (not relevant)");
+        outputChannel.appendLine("───────────────────────────────────────────────────────");
+
+        for (const file of analysis.excludedFiles.slice(0, 10)) {
+          const tokens = formatTokens(file.tokens).padStart(8);
+          outputChannel.appendLine(`  ${tokens}  ${file.fileName}`);
+          outputChannel.appendLine(`         └─ ${file.relevanceReasons[0]}`);
+        }
+
+        if (analysis.excludedFiles.length > 10) {
+          outputChannel.appendLine(`  ... and ${analysis.excludedFiles.length - 10} more files`);
+        }
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine(`  Subtotal: ${formatTokens(analysis.excludedTokens)} tokens`);
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("───────────────────────────────────────────────────────");
+        outputChannel.appendLine("  💰 SUMMARY");
+        outputChannel.appendLine("───────────────────────────────────────────────────────");
+        outputChannel.appendLine(`  Total tokens:     ${formatTokens(analysis.totalTokens)}`);
+        outputChannel.appendLine(`  Relevant tokens:  ${formatTokens(analysis.relevantTokens)}`);
+        outputChannel.appendLine(`  Excluded tokens:  ${formatTokens(analysis.excludedTokens)}`);
+        outputChannel.appendLine(`  Savings:          ${analysis.savingsPercent.toFixed(1)}%`);
+
+        const costPerMillion = 3; // $3 per million input tokens (approximate)
+        const savingsDollars = (analysis.excludedTokens / 1000000) * costPerMillion;
+        outputChannel.appendLine(`  Est. savings:     ~$${savingsDollars.toFixed(4)} per request`);
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════");
+        outputChannel.show();
+
+        // Show summary notification
+        const action = await vscode.window.showInformationMessage(
+          `Context analysis: ${analysis.relevantFiles.length} relevant files (${formatTokens(analysis.relevantTokens)} tokens), ` +
+          `${analysis.excludedFiles.length} excluded (${analysis.savingsPercent.toFixed(0)}% savings)`,
+          "View Details"
+        );
+
+        if (action === "View Details") {
+          outputChannel.show();
+        }
+      } catch (error) {
+        logError("Context analysis error:", error);
+        vscode.window.showErrorMessage(
+          "Failed to analyze context: " + (error instanceof Error ? error.message : String(error))
+        );
       }
     }
   );
