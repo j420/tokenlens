@@ -331,6 +331,62 @@ function processJSNode(node, code, replacements) {
   }
 }
 
+function extractSemanticSummary(bodyText) {
+  const operations = [];
+
+  // File I/O
+  if (/fs\.(read|write|append|unlink|mkdir|rmdir|exists|stat)/i.test(bodyText) ||
+      /readFileSync|writeFileSync/i.test(bodyText)) {
+    operations.push("file I/O");
+  }
+
+  // HTTP/Network
+  if (/fetch\s*\(|axios\.|request\s*\(|http\.|https\./i.test(bodyText)) {
+    operations.push("HTTP");
+  }
+
+  // Database
+  if (/\.query\s*\(|\.find\(|\.findOne\(|\.insert\(|\.update\(|\.delete\(/i.test(bodyText)) {
+    operations.push("DB");
+  }
+
+  // Array transformations
+  if (/\.(map|filter|reduce|flatMap)\s*\(/i.test(bodyText)) {
+    operations.push("transforms");
+  }
+  if (/for\s+.*\s+(in|of)/i.test(bodyText)) {
+    operations.push("iterates");
+  }
+
+  // Async operations
+  if (/await\s+/i.test(bodyText)) {
+    operations.push("async");
+  }
+
+  // Error handling
+  if (/throw\s+/i.test(bodyText)) {
+    operations.push("throws");
+  }
+
+  // Caching
+  if (/cache|Cache|\.has\(|\.get\(|\.set\(/i.test(bodyText)) {
+    operations.push("caches");
+  }
+
+  // Return value extraction
+  const returnMatch = bodyText.match(/return\s+(\w+)/);
+  if (returnMatch && !["result", "data", "response"].includes(returnMatch[1].toLowerCase())) {
+    operations.push("→ " + returnMatch[1]);
+  }
+
+  if (operations.length === 0) {
+    return "/* ... */";
+  }
+
+  const unique = [...new Set(operations)].slice(0, 4);
+  return "/* " + unique.join(", ") + " */";
+}
+
 function processJSFunction(node, code, replacements) {
   let body = null;
   for (let i = 0; i < node.childCount; i++) {
@@ -341,10 +397,14 @@ function processJSFunction(node, code, replacements) {
     }
   }
   if (!body) return;
+
+  // Extract semantic summary before compressing
+  const summary = extractSemanticSummary(body.text);
+
   replacements.push({
     startIndex: body.startIndex,
     endIndex: body.endIndex,
-    replacement: '{ /* ... */ }'
+    replacement: '{ ' + summary + ' }'
   });
 }
 
@@ -352,10 +412,11 @@ function processJSArrowFunction(node, code, replacements) {
   const body = node.childForFieldName('body');
   if (!body) return;
   if (body.type === 'statement_block') {
+    const summary = extractSemanticSummary(body.text);
     replacements.push({
       startIndex: body.startIndex,
       endIndex: body.endIndex,
-      replacement: '{ /* ... */ }'
+      replacement: '{ ' + summary + ' }'
     });
   }
 }
