@@ -27,8 +27,13 @@ import {
   extractDecisionsFromText,
   incrementTurn,
   getSessionFiles,
+  getAllDecisions,
+  removeDecision,
+  isFileContentCurrent,
+  getCurrentTurn,
   type PreflightAnalysis,
   type TrackedDecision,
+  type DecisionPriority,
 } from "./token-saver";
 
 // ============================================================================
@@ -178,7 +183,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.preflight", () => preflightCommand(context)),
     vscode.commands.registerCommand("prune.sessionStats", sessionStatsCommand),
     vscode.commands.registerCommand("prune.resetSession", resetSessionCommand),
-    vscode.commands.registerCommand("prune.compactionCheck", compactionCheckCommand)
+    vscode.commands.registerCommand("prune.compactionCheck", compactionCheckCommand),
+    vscode.commands.registerCommand("prune.trackDecision", trackDecisionCommand)
   );
 
   // Update status bar on selection change
@@ -229,17 +235,21 @@ function updateStatusBar() {
 
   try {
     const analysis = analyzeContent(text, "gpt-4o", config.autoSqueezeThreshold);
+    const sessionStats = getSessionStats();
+    const sessionInfo = sessionStats.tokensSaved > 0
+      ? ` | Session: ${formatTokens(sessionStats.tokensSaved)} saved`
+      : "";
 
     if (analysis.isLarge) {
       statusBarItem.text = "$(warning) " + analysis.formatted.tokens + " tokens";
       statusBarItem.backgroundColor = new vscode.ThemeColor(
         "statusBarItem.warningBackground"
       );
-      statusBarItem.tooltip = "Large context: " + analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")";
+      statusBarItem.tooltip = `Large context: ${analysis.formatted.tokens} tokens (~${analysis.formatted.cost})${sessionInfo}`;
     } else {
       statusBarItem.text = "$(symbol-misc) " + analysis.formatted.tokens;
       statusBarItem.backgroundColor = undefined;
-      statusBarItem.tooltip = analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")";
+      statusBarItem.tooltip = `${analysis.formatted.tokens} tokens (~${analysis.formatted.cost})${sessionInfo}`;
     }
     statusBarItem.command = "prune.analyzeSelection";
   } catch (error) {
@@ -1031,6 +1041,11 @@ async function smartCopyCommand() {
     return;
   }
 
+  // Record files in session memory
+  for (const file of filesToCopy) {
+    recordFileRead(file.path, file.content);
+  }
+
   // Generate optimized copy
   const result = generateSmartCopy(filesToCopy, { signatureOnly: true });
 
@@ -1065,20 +1080,28 @@ async function smartCopyCommand() {
  * Pre-flight Optimizer - Shows optimization opportunity before sending
  */
 async function preflightCommand(context: vscode.ExtensionContext) {
+  // Get active file path (for relevance boosting)
+  const editor = vscode.window.activeTextEditor;
+  const activeFilePath = editor?.document.uri.fsPath;
+
   // Get user's prompt
   const prompt = await vscode.window.showInputBox({
     prompt: "What are you about to ask the AI?",
     placeHolder: "e.g., fix the header alignment",
+    value: "", // Start empty
   });
 
   if (!prompt) {
     return;
   }
 
+  // Increment turn for session tracking
+  incrementTurn();
+
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Analyzing context...",
+      title: `Analyzing: "${prompt.substring(0, 30)}${prompt.length > 30 ? "..." : ""}"`,
       cancellable: false,
     },
     async () => {
@@ -1115,7 +1138,7 @@ async function preflightCommand(context: vscode.ExtensionContext) {
         }
 
         // Analyze
-        const analysis = analyzePreFlight(prompt, workspaceFiles, 3);
+        const analysis = analyzePreFlight(prompt, workspaceFiles, 3, activeFilePath);
 
         // Show results
         outputChannel.appendLine("");
@@ -1205,44 +1228,71 @@ async function preflightCommand(context: vscode.ExtensionContext) {
  * Session Stats - Show session memory deduplication stats
  */
 async function sessionStatsCommand() {
-  const stats = getSessionStats();
-  const files = getSessionFiles();
+  try {
+    const stats = getSessionStats();
+    const files = getSessionFiles();
+    const decisions = getAllDecisions();
+    const turn = getCurrentTurn();
 
-  outputChannel.appendLine("");
-  outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
-  outputChannel.appendLine("║              📊 SESSION MEMORY STATS                          ║");
-  outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
-  outputChannel.appendLine("");
-  outputChannel.appendLine(`  Files in memory:      ${stats.filesRead}`);
-  outputChannel.appendLine(`  Total tokens cached:  ${formatTokens(stats.totalTokens)}`);
-  outputChannel.appendLine(`  Duplicates avoided:   ${stats.deduplicationCount}`);
-  outputChannel.appendLine(`  Tokens saved:         ${formatTokens(stats.tokensSaved)}`);
-  outputChannel.appendLine(`  Session duration:     ${Math.floor(stats.sessionDuration / 60000)} min`);
-  outputChannel.appendLine("");
+    outputChannel.appendLine("");
+    outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+    outputChannel.appendLine("║              📊 SESSION MEMORY STATS                          ║");
+    outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
+    outputChannel.appendLine("");
+    outputChannel.appendLine(`  Current turn:         ${turn}`);
+    outputChannel.appendLine(`  Files in memory:      ${stats.filesRead}`);
+    outputChannel.appendLine(`  Total tokens cached:  ${formatTokens(stats.totalTokens)}`);
+    outputChannel.appendLine(`  Duplicates avoided:   ${stats.deduplicationCount}`);
+    outputChannel.appendLine(`  Tokens saved:         ${formatTokens(stats.tokensSaved)}`);
+    outputChannel.appendLine(`  Files changed:        ${stats.changesDetected}`);
+    outputChannel.appendLine(`  Decisions tracked:    ${decisions.length}`);
+    outputChannel.appendLine(`  Session duration:     ${Math.floor(stats.sessionDuration / 60000)} min`);
+    outputChannel.appendLine("");
 
-  if (files.length > 0) {
-    outputChannel.appendLine("  📄 Files in session memory:");
-    for (const file of files.slice(0, 15)) {
-      const fileName = path.basename(file.path);
-      const tokens = formatTokens(file.tokens).padStart(6);
-      const turnInfo = `(turn ${file.turnNumber})`;
-      outputChannel.appendLine(`     ${tokens}  ${fileName} ${turnInfo}`);
+    if (files.length > 0) {
+      outputChannel.appendLine("  📄 Files in session memory:");
+      for (const file of files.slice(0, 15)) {
+        const fileName = path.basename(file.path);
+        const tokens = formatTokens(file.tokens).padStart(6);
+        const partialMark = file.isPartial ? " (partial)" : "";
+        const turnInfo = `(turn ${file.turnNumber})`;
+        outputChannel.appendLine(`     ${tokens}  ${fileName}${partialMark} ${turnInfo}`);
+      }
+      if (files.length > 15) {
+        outputChannel.appendLine(`     ... and ${files.length - 15} more files`);
+      }
     }
-    if (files.length > 15) {
-      outputChannel.appendLine(`     ... and ${files.length - 15} more files`);
+
+    if (decisions.length > 0) {
+      outputChannel.appendLine("");
+      outputChannel.appendLine("  📋 Tracked decisions:");
+      for (const decision of decisions.slice(0, 5)) {
+        const priorityIcon = decision.priority === "critical" ? "🔴" :
+                            decision.priority === "high" ? "🟠" :
+                            decision.priority === "medium" ? "🟡" : "🟢";
+        outputChannel.appendLine(`     ${priorityIcon} ${decision.description}`);
+      }
+      if (decisions.length > 5) {
+        outputChannel.appendLine(`     ... and ${decisions.length - 5} more decisions`);
+      }
     }
-  }
 
-  outputChannel.appendLine("");
-  outputChannel.show();
+    outputChannel.appendLine("");
+    outputChannel.show();
 
-  if (stats.tokensSaved > 0) {
-    vscode.window.showInformationMessage(
-      `Session saved ${formatTokens(stats.tokensSaved)} tokens via deduplication`
-    );
-  } else {
-    vscode.window.showInformationMessage(
-      `Session memory: ${stats.filesRead} files, ${formatTokens(stats.totalTokens)} tokens`
+    if (stats.tokensSaved > 0) {
+      vscode.window.showInformationMessage(
+        `Session saved ${formatTokens(stats.tokensSaved)} tokens via deduplication`
+      );
+    } else {
+      vscode.window.showInformationMessage(
+        `Session memory: ${stats.filesRead} files, ${formatTokens(stats.totalTokens)} tokens`
+      );
+    }
+  } catch (error) {
+    logError("Session stats error:", error);
+    vscode.window.showErrorMessage(
+      "Failed to get session stats: " + (error instanceof Error ? error.message : String(error))
     );
   }
 }
@@ -1287,11 +1337,14 @@ async function compactionCheckCommand() {
     outputChannel.appendLine("");
 
     for (const decision of atRisk) {
-      const icon = decision.category === "architectural" ? "🏗️" :
-                   decision.category === "configuration" ? "⚙️" :
-                   decision.category === "requirement" ? "📋" : "🔒";
-      outputChannel.appendLine(`  ${icon} ${decision.description}`);
-      outputChannel.appendLine(`     └─ Turn ${decision.turnNumber}, ${decision.category}`);
+      const categoryIcon = decision.category === "architectural" ? "🏗️" :
+                           decision.category === "configuration" ? "⚙️" :
+                           decision.category === "requirement" ? "📋" : "🔒";
+      const priorityIcon = decision.priority === "critical" ? "🔴" :
+                           decision.priority === "high" ? "🟠" :
+                           decision.priority === "medium" ? "🟡" : "🟢";
+      outputChannel.appendLine(`  ${priorityIcon} ${categoryIcon} ${decision.description}`);
+      outputChannel.appendLine(`     └─ Turn ${decision.turnNumber}, ${decision.category}, ${decision.priority}`);
     }
 
     outputChannel.appendLine("");
@@ -1322,6 +1375,72 @@ async function compactionCheckCommand() {
     }
   } else {
     vscode.window.showInformationMessage("No decisions at risk of being forgotten");
+  }
+}
+
+/**
+ * Track Decision - Manually add an important decision
+ */
+async function trackDecisionCommand() {
+  try {
+    // Get decision description
+    const description = await vscode.window.showInputBox({
+      prompt: "What decision should be remembered?",
+      placeHolder: "e.g., JWT expiry set to 15 minutes",
+    });
+
+    if (!description) {
+      return;
+    }
+
+    // Get category
+    const categoryPick = await vscode.window.showQuickPick(
+      [
+        { label: "🏗️ Architectural", value: "architectural" as const, description: "Design patterns, structure" },
+        { label: "⚙️ Configuration", value: "configuration" as const, description: "Settings, values, limits" },
+        { label: "📋 Requirement", value: "requirement" as const, description: "Must-haves, constraints" },
+        { label: "🔒 Constraint", value: "constraint" as const, description: "Order, dependencies" },
+      ],
+      {
+        placeHolder: "Select category",
+      }
+    );
+
+    if (!categoryPick) {
+      return;
+    }
+
+    // Get priority
+    const priorityPick = await vscode.window.showQuickPick(
+      [
+        { label: "🔴 Critical", value: "critical" as DecisionPriority, description: "Must not forget" },
+        { label: "🟠 High", value: "high" as DecisionPriority, description: "Very important" },
+        { label: "🟡 Medium", value: "medium" as DecisionPriority, description: "Important" },
+        { label: "🟢 Low", value: "low" as DecisionPriority, description: "Nice to remember" },
+      ],
+      {
+        placeHolder: "Select priority",
+      }
+    );
+
+    if (!priorityPick) {
+      return;
+    }
+
+    // Track the decision
+    const result = trackDecision(description, categoryPick.value, priorityPick.value, "manual");
+
+    if (result.added) {
+      vscode.window.showInformationMessage(`Decision tracked: "${description}"`);
+      log(`Decision tracked: ${description} [${categoryPick.value}/${priorityPick.value}]`);
+    } else {
+      vscode.window.showInformationMessage(`Decision already tracked (updated priority)`);
+    }
+  } catch (error) {
+    logError("Track decision error:", error);
+    vscode.window.showErrorMessage(
+      "Failed to track decision: " + (error instanceof Error ? error.message : String(error))
+    );
   }
 }
 

@@ -18,10 +18,12 @@ import { countTokens, formatTokens } from "@prune/tokenizer";
 
 interface FileReadRecord {
   path: string;
-  content: string;
+  contentHash: string; // Hash instead of full content (memory efficient)
   tokens: number;
   readAt: Date;
   turnNumber: number;
+  isPartial: boolean; // Whether this was a partial read (selection)
+  lineRange?: { start: number; end: number }; // For partial reads
 }
 
 interface SessionMemory {
@@ -29,33 +31,105 @@ interface SessionMemory {
   totalTokensSaved: number;
   deduplicationCount: number;
   sessionStart: Date;
+  changesDetected: number; // Files that changed since last read
 }
+
+// Memory limits
+const MAX_FILES_IN_MEMORY = 200;
+const MAX_SESSION_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 // Global session memory (persists during extension lifetime)
 let sessionMemory: SessionMemory = {
   filesRead: new Map(),
   totalTokensSaved: 0,
   deduplicationCount: 0,
+  changesDetected: 0,
   sessionStart: new Date(),
 };
 
 let currentTurnNumber = 0;
 
 /**
+ * Simple hash function for content comparison
+ * Uses djb2 algorithm - fast and good enough for our purposes
+ */
+function hashContent(content: string): string {
+  let hash = 5381;
+  for (let i = 0; i < content.length; i++) {
+    hash = ((hash << 5) + hash) ^ content.charCodeAt(i);
+  }
+  return hash.toString(36);
+}
+
+/**
+ * Clean up old entries if memory is getting large
+ */
+function pruneMemoryIfNeeded(): void {
+  // Check session duration
+  if (Date.now() - sessionMemory.sessionStart.getTime() > MAX_SESSION_DURATION_MS) {
+    resetSessionMemory();
+    return;
+  }
+
+  // Prune if too many files
+  if (sessionMemory.filesRead.size > MAX_FILES_IN_MEMORY) {
+    const files = Array.from(sessionMemory.filesRead.entries())
+      .sort((a, b) => a[1].readAt.getTime() - b[1].readAt.getTime());
+
+    // Remove oldest 20%
+    const toRemove = Math.floor(files.length * 0.2);
+    for (let i = 0; i < toRemove; i++) {
+      sessionMemory.filesRead.delete(files[i][0]);
+    }
+  }
+}
+
+/**
  * Record a file as read in the current session
  */
-export function recordFileRead(filePath: string, content: string): {
+export function recordFileRead(
+  filePath: string,
+  content: string,
+  options?: { isPartial?: boolean; lineRange?: { start: number; end: number } }
+): {
   isDuplicate: boolean;
   tokensSaved: number;
   originalTurn: number | null;
+  contentChanged: boolean;
 } {
+  pruneMemoryIfNeeded();
+
   const normalizedPath = path.normalize(filePath);
   const tokens = countTokens(content);
+  const contentHash = hashContent(content);
+  const isPartial = options?.isPartial ?? false;
 
   const existing = sessionMemory.filesRead.get(normalizedPath);
 
   if (existing) {
-    // File was already read - this is a duplicate
+    // Check if content has changed
+    if (existing.contentHash !== contentHash) {
+      // File was modified since last read - update our record
+      sessionMemory.changesDetected++;
+      sessionMemory.filesRead.set(normalizedPath, {
+        path: normalizedPath,
+        contentHash,
+        tokens,
+        readAt: new Date(),
+        turnNumber: currentTurnNumber,
+        isPartial,
+        lineRange: options?.lineRange,
+      });
+
+      return {
+        isDuplicate: false,
+        tokensSaved: 0,
+        originalTurn: existing.turnNumber,
+        contentChanged: true,
+      };
+    }
+
+    // Same content - this is a duplicate
     sessionMemory.totalTokensSaved += tokens;
     sessionMemory.deduplicationCount++;
 
@@ -63,22 +137,26 @@ export function recordFileRead(filePath: string, content: string): {
       isDuplicate: true,
       tokensSaved: tokens,
       originalTurn: existing.turnNumber,
+      contentChanged: false,
     };
   }
 
   // First time reading this file
   sessionMemory.filesRead.set(normalizedPath, {
     path: normalizedPath,
-    content,
+    contentHash,
     tokens,
     readAt: new Date(),
     turnNumber: currentTurnNumber,
+    isPartial,
+    lineRange: options?.lineRange,
   });
 
   return {
     isDuplicate: false,
     tokensSaved: 0,
     originalTurn: null,
+    contentChanged: false,
   };
 }
 
@@ -91,7 +169,17 @@ export function isFileInContext(filePath: string): boolean {
 }
 
 /**
- * Get the content of a file from session memory
+ * Check if file content matches what's in memory
+ */
+export function isFileContentCurrent(filePath: string, content: string): boolean {
+  const normalizedPath = path.normalize(filePath);
+  const existing = sessionMemory.filesRead.get(normalizedPath);
+  if (!existing) return false;
+  return existing.contentHash === hashContent(content);
+}
+
+/**
+ * Get the record of a file from session memory
  */
 export function getFileFromMemory(filePath: string): FileReadRecord | null {
   const normalizedPath = path.normalize(filePath);
@@ -106,6 +194,13 @@ export function incrementTurn(): number {
 }
 
 /**
+ * Get current turn number
+ */
+export function getCurrentTurn(): number {
+  return currentTurnNumber;
+}
+
+/**
  * Get session memory statistics
  */
 export function getSessionStats(): {
@@ -113,6 +208,7 @@ export function getSessionStats(): {
   totalTokens: number;
   tokensSaved: number;
   deduplicationCount: number;
+  changesDetected: number;
   sessionDuration: number;
 } {
   const totalTokens = Array.from(sessionMemory.filesRead.values())
@@ -123,6 +219,7 @@ export function getSessionStats(): {
     totalTokens,
     tokensSaved: sessionMemory.totalTokensSaved,
     deduplicationCount: sessionMemory.deduplicationCount,
+    changesDetected: sessionMemory.changesDetected,
     sessionDuration: Date.now() - sessionMemory.sessionStart.getTime(),
   };
 }
@@ -135,9 +232,12 @@ export function resetSessionMemory(): void {
     filesRead: new Map(),
     totalTokensSaved: 0,
     deduplicationCount: 0,
+    changesDetected: 0,
     sessionStart: new Date(),
   };
   currentTurnNumber = 0;
+  // Also reset compaction tracking
+  resetCompactionTracking();
 }
 
 /**
@@ -167,51 +267,131 @@ const DEFAULT_SMART_COPY_OPTIONS: SmartCopyOptions = {
 };
 
 /**
+ * Remove string literals and comments to avoid false brace matches
+ */
+function stripStringsAndComments(line: string): string {
+  // Remove string literals (handles escaped quotes)
+  let result = line
+    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
+    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
+    .replace(/`(?:[^`\\]|\\.)*`/g, '``');
+
+  // Remove single-line comments
+  const commentIndex = result.indexOf("//");
+  if (commentIndex !== -1) {
+    result = result.substring(0, commentIndex);
+  }
+
+  return result;
+}
+
+/**
+ * Count braces in a line, excluding those in strings/comments
+ */
+function countBraces(line: string): { open: number; close: number } {
+  const cleaned = stripStringsAndComments(line);
+  return {
+    open: (cleaned.match(/{/g) || []).length,
+    close: (cleaned.match(/}/g) || []).length,
+  };
+}
+
+// Reserved words that look like function calls but aren't
+const RESERVED_WORDS = new Set([
+  "if", "else", "for", "while", "do", "switch", "case", "try", "catch",
+  "finally", "throw", "new", "return", "typeof", "instanceof", "void",
+  "delete", "in", "of", "with", "yield", "await", "super", "this",
+]);
+
+// Performance limits
+const MAX_LINES_TO_PROCESS = 5000;
+const MAX_SIGNATURES = 100;
+const MAX_IMPORTS = 20;
+const MAX_TYPES = 30;
+
+/**
  * Extract function/method signatures from code
  * Uses regex-based extraction (fast, works without tree-sitter)
  */
 function extractSignatures(code: string, language: string): string {
   const lines = code.split("\n");
-  const result: string[] = [];
+
+  // Performance: skip very large files
+  if (lines.length > MAX_LINES_TO_PROCESS) {
+    return `// File too large (${lines.length} lines), showing first ${MAX_LINES_TO_PROCESS} lines\n` +
+           extractSignatures(lines.slice(0, MAX_LINES_TO_PROCESS).join("\n"), language);
+  }
+
   let inClass = false;
   let classIndent = 0;
   let currentClass = "";
   let braceDepth = 0;
-  let inFunction = false;
-  let functionStart = -1;
+  let inMultiLineComment = false;
 
-  // Track imports and types
+  // Track imports, types, decorators, and signatures
   const imports: string[] = [];
   const types: string[] = [];
   const signatures: string[] = [];
+  let pendingDecorators: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
+    // Performance: early exit if we have enough
+    if (signatures.length >= MAX_SIGNATURES) break;
+
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Track brace depth
-    braceDepth += (line.match(/{/g) || []).length;
-    braceDepth -= (line.match(/}/g) || []).length;
+    // Skip empty lines
+    if (!trimmed) continue;
 
-    // Imports
-    if (trimmed.startsWith("import ") || trimmed.startsWith("from ")) {
-      imports.push(trimmed);
+    // Handle multi-line comments
+    if (trimmed.startsWith("/*")) inMultiLineComment = true;
+    if (trimmed.endsWith("*/")) {
+      inMultiLineComment = false;
+      continue;
+    }
+    if (inMultiLineComment) continue;
+
+    // Skip single-line comments
+    if (trimmed.startsWith("//") || trimmed.startsWith("#")) continue;
+
+    // Track brace depth (excluding strings/comments)
+    const braces = countBraces(line);
+    braceDepth += braces.open - braces.close;
+
+    // Python/TypeScript decorators
+    if (trimmed.startsWith("@") && !trimmed.includes("(") || /^@\w+(\([^)]*\))?$/.test(trimmed)) {
+      pendingDecorators.push(trimmed);
       continue;
     }
 
-    // Types/Interfaces (TypeScript)
-    if (/^(export\s+)?(interface|type)\s+\w+/.test(trimmed)) {
-      // Get the full type definition (may span multiple lines)
+    // Imports (with limit)
+    if (trimmed.startsWith("import ") || trimmed.startsWith("from ") ||
+        (language === "go" && trimmed.startsWith("import"))) {
+      if (imports.length < MAX_IMPORTS) {
+        imports.push(trimmed);
+      }
+      continue;
+    }
+
+    // Types/Interfaces (TypeScript) with limit
+    if (/^(export\s+)?(interface|type)\s+\w+/.test(trimmed) && types.length < MAX_TYPES) {
       let typeDef = trimmed;
       let j = i + 1;
-      let typeDepth = (trimmed.match(/{/g) || []).length - (trimmed.match(/}/g) || []).length;
+      let typeDepth = countBraces(trimmed).open - countBraces(trimmed).close;
 
-      while (j < lines.length && typeDepth > 0) {
+      // Limit type definition size
+      let typeLines = 1;
+      while (j < lines.length && typeDepth > 0 && typeLines < 50) {
         const nextLine = lines[j].trim();
         typeDef += "\n  " + nextLine;
-        typeDepth += (nextLine.match(/{/g) || []).length;
-        typeDepth -= (nextLine.match(/}/g) || []).length;
+        const nextBraces = countBraces(nextLine);
+        typeDepth += nextBraces.open - nextBraces.close;
         j++;
+        typeLines++;
+      }
+      if (typeLines >= 50) {
+        typeDef += "\n  // ... (truncated)";
       }
       types.push(typeDef);
       continue;
@@ -222,48 +402,133 @@ function extractSignatures(code: string, language: string): string {
       inClass = true;
       classIndent = line.search(/\S/);
       currentClass = trimmed.match(/class\s+(\w+)/)?.[1] || "";
-      signatures.push(`\n${trimmed}`);
+      // Include decorators with class
+      const decoratorStr = pendingDecorators.length > 0
+        ? pendingDecorators.join("\n") + "\n"
+        : "";
+      signatures.push(`\n${decoratorStr}${trimmed}`);
+      pendingDecorators = [];
       continue;
     }
 
     // Function/method signatures
-    const funcPatterns = [
-      // TypeScript/JavaScript function
-      /^(export\s+)?(async\s+)?function\s+(\w+)\s*\([^)]*\)(\s*:\s*[^{]+)?/,
-      // Arrow function assigned to const
-      /^(export\s+)?const\s+(\w+)\s*=\s*(async\s+)?\([^)]*\)(\s*:\s*[^=]+)?\s*=>/,
-      // Method in class
-      /^(public|private|protected|static|async|\s)*(\w+)\s*\([^)]*\)(\s*:\s*[^{]+)?/,
-      // Python function
-      /^(async\s+)?def\s+(\w+)\s*\([^)]*\)(\s*->\s*[^:]+)?:/,
-      // Go function
-      /^func\s+(\([^)]*\)\s*)?\w+\s*\([^)]*\)(\s*[^{]+)?/,
-    ];
+    let matched = false;
 
-    for (const pattern of funcPatterns) {
-      if (pattern.test(trimmed)) {
-        // Get the signature line
+    // Export default function
+    if (/^export\s+default\s+(async\s+)?function/.test(trimmed)) {
+      const sig = trimmed.replace(/\{.*$/, "").trim();
+      signatures.push(`${sig} { /* ... */ }`);
+      matched = true;
+    }
+
+    // Regular function declaration
+    if (!matched && /^(export\s+)?(async\s+)?function\s+\w+/.test(trimmed)) {
+      let sig = trimmed;
+      if (!sig.includes("{")) {
+        // Multi-line signature
+        let j = i + 1;
+        while (j < lines.length && !lines[j].includes("{")) {
+          sig += " " + lines[j].trim();
+          j++;
+        }
+      }
+      sig = sig.replace(/\{.*$/, "").trim();
+      signatures.push(`${sig} { /* ... */ }`);
+      matched = true;
+    }
+
+    // Arrow function: const foo = (...) => or const foo = async (...) =>
+    if (!matched && /^(export\s+)?const\s+\w+\s*=\s*(async\s*)?\(/.test(trimmed)) {
+      let sig = trimmed;
+      // Handle multi-line
+      if (!sig.includes("=>")) {
+        let j = i + 1;
+        while (j < lines.length && !lines[j].includes("=>")) {
+          sig += " " + lines[j].trim();
+          j++;
+        }
+        if (j < lines.length) sig += " " + lines[j].trim().split("=>")[0] + "=>";
+      }
+      sig = sig.replace(/=>\s*\{.*$/, "=>").replace(/=>\s*[^{].*$/, "=>").trim();
+      signatures.push(`${sig} { /* ... */ }`);
+      matched = true;
+    }
+
+    // Arrow function without parens: const foo = x =>
+    if (!matched && /^(export\s+)?const\s+\w+\s*=\s*(async\s+)?\w+\s*=>/.test(trimmed)) {
+      const sig = trimmed.replace(/=>\s*.*$/, "=>").trim();
+      signatures.push(`${sig} { /* ... */ }`);
+      matched = true;
+    }
+
+    // Getter/Setter
+    if (!matched && /^(get|set)\s+\w+\s*\(/.test(trimmed)) {
+      const sig = trimmed.replace(/\{.*$/, "").trim();
+      const indent = inClass ? "  " : "";
+      signatures.push(`${indent}${sig} { /* ... */ }`);
+      matched = true;
+    }
+
+    // Class method (must be in class context and not a reserved word)
+    if (!matched && inClass) {
+      const methodMatch = trimmed.match(/^(public\s+|private\s+|protected\s+|static\s+|async\s+|readonly\s+)*(\w+)\s*\(/);
+      if (methodMatch && !RESERVED_WORDS.has(methodMatch[2])) {
         let sig = trimmed;
-
-        // If it ends with { or :, that's the full signature
-        if (!sig.endsWith("{") && !sig.endsWith(":") && !sig.endsWith("=>")) {
-          // Might be multi-line signature
+        if (!sig.includes("{") && !sig.endsWith(";")) {
           let j = i + 1;
-          while (j < lines.length && !lines[j].includes("{") && !lines[j].trim().endsWith(":")) {
+          while (j < lines.length && !lines[j].includes("{")) {
             sig += " " + lines[j].trim();
             j++;
           }
         }
-
-        // Clean up and add ellipsis
         sig = sig.replace(/\{.*$/, "").trim();
-        if (inClass && currentClass) {
-          signatures.push(`  ${sig} { /* ... */ }`);
-        } else {
-          signatures.push(`${sig} { /* ... */ }`);
-        }
-        break;
+        // Include decorators
+        const decoratorStr = pendingDecorators.length > 0
+          ? pendingDecorators.map(d => `  ${d}`).join("\n") + "\n"
+          : "";
+        signatures.push(`${decoratorStr}  ${sig} { /* ... */ }`);
+        pendingDecorators = [];
+        matched = true;
       }
+    }
+
+    // Python function
+    if (!matched && language === "python" && /^(async\s+)?def\s+\w+/.test(trimmed)) {
+      let sig = trimmed;
+      if (!sig.endsWith(":")) {
+        let j = i + 1;
+        while (j < lines.length && !lines[j].includes(":")) {
+          sig += " " + lines[j].trim();
+          j++;
+        }
+      }
+      sig = sig.replace(/:.*$/, "").trim();
+      const decoratorStr = pendingDecorators.length > 0
+        ? pendingDecorators.join("\n") + "\n"
+        : "";
+      signatures.push(`${decoratorStr}${sig}: ...`);
+      pendingDecorators = [];
+      matched = true;
+    }
+
+    // Go function
+    if (!matched && language === "go" && /^func\s+/.test(trimmed)) {
+      let sig = trimmed;
+      if (!sig.includes("{")) {
+        let j = i + 1;
+        while (j < lines.length && !lines[j].includes("{")) {
+          sig += " " + lines[j].trim();
+          j++;
+        }
+      }
+      sig = sig.replace(/\{.*$/, "").trim();
+      signatures.push(`${sig} { /* ... */ }`);
+      matched = true;
+    }
+
+    // Clear decorators if we didn't use them
+    if (!matched && pendingDecorators.length > 0) {
+      pendingDecorators = [];
     }
 
     // End of class
@@ -278,7 +543,7 @@ function extractSignatures(code: string, language: string): string {
   const parts: string[] = [];
 
   if (imports.length > 0) {
-    parts.push(imports.slice(0, 10).join("\n")); // Limit imports
+    parts.push(imports.join("\n"));
     if (imports.length > 10) {
       parts.push(`// ... ${imports.length - 10} more imports`);
     }
@@ -402,53 +667,161 @@ export interface PreflightAnalysis {
   recommendations: string[];
 }
 
+// Config/metadata files that are less relevant for code tasks
+const LOW_PRIORITY_FILES = new Set([
+  "package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+  "tsconfig.json", "jsconfig.json", ".eslintrc", ".prettierrc",
+  "webpack.config.js", "vite.config.js", "rollup.config.js",
+  ".gitignore", ".env.example", "dockerfile", "docker-compose.yml",
+]);
+
+// Intent keywords that indicate specific file types
+const INTENT_PATTERNS: Array<{
+  keywords: string[];
+  boostPatterns: RegExp[];
+  boost: number;
+}> = [
+  {
+    keywords: ["test", "testing", "spec", "unit", "integration"],
+    boostPatterns: [/\.test\.[jt]sx?$/, /\.spec\.[jt]sx?$/, /__tests__/],
+    boost: 25,
+  },
+  {
+    keywords: ["style", "css", "styling", "layout", "design"],
+    boostPatterns: [/\.(css|scss|sass|less|styl)$/, /styles?\//],
+    boost: 25,
+  },
+  {
+    keywords: ["api", "endpoint", "route", "handler", "controller"],
+    boostPatterns: [/api\//, /routes?\//, /controllers?\//, /handlers?\//],
+    boost: 20,
+  },
+  {
+    keywords: ["component", "ui", "view", "page", "screen"],
+    boostPatterns: [/components?\//, /views?\//, /pages?\//, /screens?\//],
+    boost: 15,
+  },
+  {
+    keywords: ["config", "configuration", "settings", "env"],
+    boostPatterns: [/config/, /\.env/, /settings/],
+    boost: 15,
+  },
+  {
+    keywords: ["auth", "authentication", "login", "session", "token"],
+    boostPatterns: [/auth/, /login/, /session/, /token/],
+    boost: 20,
+  },
+  {
+    keywords: ["database", "db", "model", "schema", "migration"],
+    boostPatterns: [/models?\//, /schemas?\//, /migrations?\//, /db\//],
+    boost: 20,
+  },
+];
+
+/**
+ * Check if word A is a prefix/substring match for word B
+ * "auth" matches "authentication", "authorize", etc.
+ */
+function fuzzyMatch(needle: string, haystack: string): boolean {
+  if (needle.length < 3) return needle === haystack;
+  return haystack.includes(needle) || needle.includes(haystack);
+}
+
 /**
  * Analyze a prompt and suggest optimal context
  */
 export function analyzePreFlight(
   prompt: string,
   workspaceFiles: Array<{ path: string; content: string; tokens: number }>,
-  modelCostPerMillion: number = 3 // $3 per 1M tokens for Claude Sonnet
+  modelCostPerMillion: number = 3, // $3 per 1M tokens for Claude Sonnet
+  activeFilePath?: string // Currently open file
 ): PreflightAnalysis {
-  // Simple keyword matching for relevance
-  const promptWords = new Set(
-    prompt.toLowerCase()
-      .split(/\W+/)
-      .filter(w => w.length > 2)
-  );
+  // Extract words, keeping short ones if they're meaningful
+  const promptLower = prompt.toLowerCase();
+  const promptWords = promptLower
+    .split(/\W+/)
+    .filter(w => w.length >= 2); // Keep 2-char words like "go", "ui", "db"
+
+  const promptWordSet = new Set(promptWords);
+
+  // Detect intent from prompt
+  const detectedIntents: typeof INTENT_PATTERNS = [];
+  for (const intent of INTENT_PATTERNS) {
+    if (intent.keywords.some(k => promptWords.some(pw => fuzzyMatch(pw, k)))) {
+      detectedIntents.push(intent);
+    }
+  }
 
   // Score each file
   const scoredFiles = workspaceFiles.map(file => {
+    const filePath = file.path.toLowerCase();
     const fileName = path.basename(file.path).toLowerCase();
+    const fileNameNoExt = fileName.replace(/\.[^.]+$/, "");
     const content = file.content.toLowerCase();
 
     let score = 0;
+    const matchReasons: string[] = [];
 
-    // File name matches prompt words
-    for (const word of promptWords) {
-      if (fileName.includes(word)) score += 10;
-      if (content.includes(word)) score += 1;
+    // Active file always gets high score
+    if (activeFilePath && path.normalize(file.path) === path.normalize(activeFilePath)) {
+      score += 100;
+      matchReasons.push("Currently open file");
     }
 
-    // Boost for certain patterns
-    if (promptWords.has("fix") || promptWords.has("bug") || promptWords.has("error")) {
-      if (content.includes("throw") || content.includes("catch") || content.includes("error")) {
-        score += 5;
+    // File name matches prompt words (with fuzzy matching)
+    for (const word of promptWords) {
+      if (word.length >= 3) {
+        // Fuzzy match on filename
+        if (fuzzyMatch(word, fileNameNoExt)) {
+          score += 15;
+          matchReasons.push(`Filename matches "${word}"`);
+        }
+        // Fuzzy match on path segments
+        if (filePath.includes(word)) {
+          score += 8;
+        }
+        // Content matches (limited to avoid false positives)
+        const contentMatches = (content.match(new RegExp(`\\b${word}`, "g")) || []).length;
+        if (contentMatches > 0) {
+          score += Math.min(contentMatches * 2, 10); // Cap at 10
+        }
       }
     }
 
-    if (promptWords.has("test")) {
-      if (fileName.includes("test") || fileName.includes("spec")) score += 20;
+    // Intent-based scoring
+    for (const intent of detectedIntents) {
+      for (const pattern of intent.boostPatterns) {
+        if (pattern.test(filePath)) {
+          score += intent.boost;
+          matchReasons.push(`Matches ${intent.keywords[0]} intent`);
+          break;
+        }
+      }
     }
 
-    if (promptWords.has("style") || promptWords.has("css")) {
-      if (fileName.endsWith(".css") || fileName.endsWith(".scss")) score += 20;
+    // Boost for certain prompt patterns
+    if (promptWordSet.has("fix") || promptWordSet.has("bug") || promptWordSet.has("error")) {
+      if (content.includes("throw ") || content.includes("catch ") ||
+          content.includes("error") || content.includes("exception")) {
+        score += 8;
+        matchReasons.push("Contains error handling");
+      }
     }
 
-    return { ...file, score };
+    // Penalize low-priority files for code tasks
+    if (LOW_PRIORITY_FILES.has(fileName)) {
+      score = Math.floor(score * 0.3);
+    }
+
+    // Penalize very large files slightly (prefer smaller focused files)
+    if (file.tokens > 5000) {
+      score = Math.floor(score * 0.8);
+    }
+
+    return { ...file, score, matchReasons };
   });
 
-  // Sort by score
+  // Sort by score (descending)
   scoredFiles.sort((a, b) => b.score - a.score);
 
   // Current context: all files
@@ -456,10 +829,18 @@ export function analyzePreFlight(
   const allTokens = workspaceFiles.reduce((sum, f) => sum + f.tokens, 0);
   const allCost = (allTokens / 1_000_000) * modelCostPerMillion;
 
-  // Recommended: only high-scoring files (score > 0), max 10 files
-  const relevantFiles = scoredFiles
-    .filter(f => f.score > 0)
-    .slice(0, 10);
+  // Recommended: high-scoring files (score > 5), max 15 files, max 50k tokens
+  let tokenBudget = 50000;
+  const relevantFiles: typeof scoredFiles = [];
+
+  for (const file of scoredFiles) {
+    if (file.score <= 5) break; // Stop at low-relevance files
+    if (relevantFiles.length >= 15) break; // Max files
+    if (tokenBudget - file.tokens < 0 && relevantFiles.length > 0) continue; // Skip if over budget
+
+    relevantFiles.push(file);
+    tokenBudget -= file.tokens;
+  }
 
   const recommendedPaths = relevantFiles.map(f => f.path);
   const recommendedTokens = relevantFiles.reduce((sum, f) => sum + f.tokens, 0);
@@ -479,10 +860,18 @@ export function analyzePreFlight(
     );
   }
 
-  const largeFiles = workspaceFiles.filter(f => f.tokens > 2000);
-  if (largeFiles.length > 0) {
+  const largeRelevantFiles = relevantFiles.filter(f => f.tokens > 2000);
+  if (largeRelevantFiles.length > 0) {
     recommendations.push(
-      `Consider using signatures-only for ${largeFiles.length} large files`
+      `Use signatures-only for ${largeRelevantFiles.length} large file${largeRelevantFiles.length > 1 ? "s" : ""} to save more`
+    );
+  }
+
+  // Show why files were selected
+  const topMatches = relevantFiles.slice(0, 3);
+  if (topMatches.length > 0 && topMatches[0].matchReasons?.length > 0) {
+    recommendations.push(
+      `Top matches: ${topMatches.map(f => path.basename(f.path)).join(", ")}`
     );
   }
 
@@ -511,38 +900,92 @@ export function analyzePreFlight(
 // Compaction Recovery
 // ============================================================================
 
+export type DecisionPriority = "critical" | "high" | "medium" | "low";
+
 export interface TrackedDecision {
+  id: string; // Unique ID for deduplication
   description: string;
   turnNumber: number;
   timestamp: Date;
   category: "architectural" | "configuration" | "requirement" | "constraint";
+  priority: DecisionPriority;
+  source: "manual" | "auto"; // How the decision was added
 }
 
 interface CompactionSession {
-  decisions: TrackedDecision[];
+  decisions: Map<string, TrackedDecision>; // Map for deduplication
   contextSizeHistory: number[];
   lastKnownSize: number;
+  compactionEvents: Array<{ turn: number; tokensLost: number; timestamp: Date }>;
 }
 
 let compactionSession: CompactionSession = {
-  decisions: [],
+  decisions: new Map(),
   contextSizeHistory: [],
   lastKnownSize: 0,
+  compactionEvents: [],
 };
+
+/**
+ * Generate a unique ID for a decision based on content
+ */
+function generateDecisionId(description: string, category: string): string {
+  const normalized = description.toLowerCase().replace(/\s+/g, " ").trim();
+  return `${category}:${hashContent(normalized)}`;
+}
 
 /**
  * Track an important decision made during the session
  */
 export function trackDecision(
   description: string,
-  category: TrackedDecision["category"] = "architectural"
-): void {
-  compactionSession.decisions.push({
-    description,
+  category: TrackedDecision["category"] = "architectural",
+  priority: DecisionPriority = "medium",
+  source: "manual" | "auto" = "manual"
+): { added: boolean; id: string } {
+  const id = generateDecisionId(description, category);
+
+  // Check for duplicate
+  if (compactionSession.decisions.has(id)) {
+    // Update turn number if it's from a later turn
+    const existing = compactionSession.decisions.get(id)!;
+    if (currentTurnNumber > existing.turnNumber) {
+      existing.turnNumber = currentTurnNumber;
+      existing.timestamp = new Date();
+    }
+    // Upgrade priority if new one is higher
+    const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+    if (priorityOrder[priority] > priorityOrder[existing.priority]) {
+      existing.priority = priority;
+    }
+    return { added: false, id };
+  }
+
+  compactionSession.decisions.set(id, {
+    id,
+    description: description.trim(),
     turnNumber: currentTurnNumber,
     timestamp: new Date(),
     category,
+    priority,
+    source,
   });
+
+  return { added: true, id };
+}
+
+/**
+ * Remove a tracked decision
+ */
+export function removeDecision(id: string): boolean {
+  return compactionSession.decisions.delete(id);
+}
+
+/**
+ * Get all tracked decisions
+ */
+export function getAllDecisions(): TrackedDecision[] {
+  return Array.from(compactionSession.decisions.values());
 }
 
 /**
@@ -560,6 +1003,12 @@ export function recordContextSize(size: number): {
 
   // Detect significant reduction (>50% drop suggests compaction)
   if (lastSize > 0 && size < lastSize * 0.5) {
+    compactionSession.compactionEvents.push({
+      turn: currentTurnNumber,
+      tokensLost: lastSize - size,
+      timestamp: new Date(),
+    });
+
     return {
       compactionDetected: true,
       tokensLost: lastSize - size,
@@ -578,11 +1027,16 @@ export function recordContextSize(size: number): {
  * Get decisions that may have been lost due to compaction
  */
 export function getDecisionsAtRisk(): TrackedDecision[] {
-  // Return all decisions from older turns
-  // (more likely to be lost in compaction)
-  return compactionSession.decisions
+  const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 };
+
+  return Array.from(compactionSession.decisions.values())
     .filter(d => d.turnNumber < currentTurnNumber - 2)
-    .sort((a, b) => b.turnNumber - a.turnNumber);
+    .sort((a, b) => {
+      // Sort by priority first, then by turn number
+      const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+      if (priorityDiff !== 0) return priorityDiff;
+      return b.turnNumber - a.turnNumber;
+    });
 }
 
 /**
@@ -597,15 +1051,34 @@ export function generateCompactionReminder(): string {
 
   const lines = ["Remember these decisions:"];
 
-  for (const decision of atRisk.slice(0, 5)) {
-    lines.push(`• ${decision.description} (turn ${decision.turnNumber})`);
+  // Group by category
+  const byCategory = new Map<string, TrackedDecision[]>();
+  for (const d of atRisk.slice(0, 8)) {
+    const cat = d.category;
+    if (!byCategory.has(cat)) byCategory.set(cat, []);
+    byCategory.get(cat)!.push(d);
   }
 
-  if (atRisk.length > 5) {
-    lines.push(`• ... and ${atRisk.length - 5} more`);
+  for (const [category, decisions] of byCategory) {
+    for (const decision of decisions) {
+      const priorityMarker = decision.priority === "critical" ? "🔴 " :
+                             decision.priority === "high" ? "🟠 " : "";
+      lines.push(`• ${priorityMarker}${decision.description}`);
+    }
+  }
+
+  if (atRisk.length > 8) {
+    lines.push(`• ... and ${atRisk.length - 8} more decisions`);
   }
 
   return lines.join("\n");
+}
+
+/**
+ * Get compaction history
+ */
+export function getCompactionHistory(): Array<{ turn: number; tokensLost: number; timestamp: Date }> {
+  return [...compactionSession.compactionEvents];
 }
 
 /**
@@ -613,42 +1086,92 @@ export function generateCompactionReminder(): string {
  */
 export function resetCompactionTracking(): void {
   compactionSession = {
-    decisions: [],
+    decisions: new Map(),
     contextSizeHistory: [],
     lastKnownSize: 0,
+    compactionEvents: [],
   };
 }
 
 /**
  * Auto-detect decisions from text (for assistant responses)
+ * More conservative patterns to reduce noise
  */
 export function extractDecisionsFromText(text: string): TrackedDecision[] {
   const decisions: TrackedDecision[] = [];
-  const patterns = [
-    // Configuration decisions
-    { regex: /set\s+(\w+)\s+to\s+([^.,]+)/gi, category: "configuration" as const },
-    { regex: /(\w+)\s*[:=]\s*(\d+\s*(?:ms|s|min|minutes?|hours?)?)/gi, category: "configuration" as const },
-    { regex: /use\s+(\w+)\s+(?:for|as|instead of)/gi, category: "architectural" as const },
+  const seen = new Set<string>();
 
-    // Architectural decisions
-    { regex: /(?:must|should|need to|have to)\s+([^.,!?]{10,80})/gi, category: "requirement" as const },
-    { regex: /(?:before|after)\s+(\w+)/gi, category: "constraint" as const },
-    { regex: /implement(?:ed|ing)?\s+(\w+\s+(?:pattern|approach|strategy))/gi, category: "architectural" as const },
+  // More specific patterns that are less likely to produce noise
+  const patterns: Array<{
+    regex: RegExp;
+    category: TrackedDecision["category"];
+    priority: DecisionPriority;
+    extractor: (match: RegExpExecArray) => string | null;
+  }> = [
+    // Configuration with specific values
+    {
+      regex: /(?:set|configure|use)\s+(\w+(?:\s+\w+)?)\s+(?:to|as|=)\s*["']?(\d+\s*(?:ms|s|sec|min|minutes?|hours?|days?|MB|GB|KB)?)["']?/gi,
+      category: "configuration",
+      priority: "high",
+      extractor: (m) => `${m[1]} = ${m[2]}`,
+    },
+    // JWT/token/session expiry
+    {
+      regex: /(?:jwt|token|session|cache)\s+(?:expir(?:y|es?|ation)|ttl|timeout)[:\s]+(\d+\s*\w+)/gi,
+      category: "configuration",
+      priority: "high",
+      extractor: (m) => `${m[0]}`,
+    },
+    // Order/sequence constraints
+    {
+      regex: /(\w+(?:\s+\w+)?)\s+(?:must|should)\s+(?:run|execute|happen|come)\s+(before|after)\s+(\w+(?:\s+\w+)?)/gi,
+      category: "constraint",
+      priority: "high",
+      extractor: (m) => `${m[1]} ${m[2]} ${m[3]}`,
+    },
+    // Use X instead of Y
+    {
+      regex: /use\s+(\w+)\s+(?:instead of|not|rather than)\s+(\w+)/gi,
+      category: "architectural",
+      priority: "medium",
+      extractor: (m) => `Use ${m[1]} instead of ${m[2]}`,
+    },
+    // Implement pattern/approach
+    {
+      regex: /implement(?:ed|ing)?\s+((?:the\s+)?(?:\w+\s+){1,3}(?:pattern|approach|strategy|design))/gi,
+      category: "architectural",
+      priority: "medium",
+      extractor: (m) => `Implement ${m[1]}`,
+    },
+    // Critical security decisions
+    {
+      regex: /(?:must|always|never)\s+(encrypt|hash|validate|sanitize|escape|authenticate)\s+([^.,!?]{5,40})/gi,
+      category: "requirement",
+      priority: "critical",
+      extractor: (m) => `${m[0].trim()}`,
+    },
   ];
 
-  for (const { regex, category } of patterns) {
+  for (const { regex, category, priority, extractor } of patterns) {
     regex.lastIndex = 0;
     let match;
     while ((match = regex.exec(text)) !== null) {
-      const description = match[1]?.trim() || match[0].trim();
-      if (description.length > 5 && description.length < 100) {
-        decisions.push({
-          description,
-          turnNumber: currentTurnNumber,
-          timestamp: new Date(),
-          category,
-        });
-      }
+      const description = extractor(match);
+      if (!description || description.length < 8 || description.length > 100) continue;
+
+      const id = generateDecisionId(description, category);
+      if (seen.has(id)) continue;
+      seen.add(id);
+
+      decisions.push({
+        id,
+        description,
+        turnNumber: currentTurnNumber,
+        timestamp: new Date(),
+        category,
+        priority,
+        source: "auto",
+      });
     }
   }
 

@@ -74,6 +74,10 @@
       {
         "command": "prune.compactionCheck",
         "title": "Prune: Compaction Recovery Check"
+      },
+      {
+        "command": "prune.trackDecision",
+        "title": "Prune: Track Important Decision"
       }
     ],
     "configuration": {
@@ -145,6 +149,9 @@
         },
         {
           "command": "prune.compactionCheck"
+        },
+        {
+          "command": "prune.trackDecision"
         },
         {
           "command": "prune.analyzeFile"
