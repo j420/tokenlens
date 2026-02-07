@@ -539,7 +539,7 @@ function extractSignaturesFromLines(
       if (!sig.includes("{")) {
         // Multi-line signature
         let j = i + 1;
-        while (j < lines.length && !lines[j].includes("{")) {
+        while (j < lines.length && lines[j] && !lines[j].includes("{")) {
           sig += " " + lines[j].trim();
           j++;
         }
@@ -555,11 +555,11 @@ function extractSignaturesFromLines(
       // Handle multi-line
       if (!sig.includes("=>")) {
         let j = i + 1;
-        while (j < lines.length && !lines[j].includes("=>")) {
+        while (j < lines.length && lines[j] && !lines[j].includes("=>")) {
           sig += " " + lines[j].trim();
           j++;
         }
-        if (j < lines.length) sig += " " + lines[j].trim().split("=>")[0] + "=>";
+        if (j < lines.length && lines[j]) sig += " " + lines[j].trim().split("=>")[0] + "=>";
       }
       sig = sig.replace(/=>\s*\{.*$/, "=>").replace(/=>\s*[^{].*$/, "=>").trim();
       signatures.push(`${sig} { /* ... */ }`);
@@ -588,7 +588,7 @@ function extractSignaturesFromLines(
         let sig = trimmed;
         if (!sig.includes("{") && !sig.endsWith(";")) {
           let j = i + 1;
-          while (j < lines.length && !lines[j].includes("{")) {
+          while (j < lines.length && lines[j] && !lines[j].includes("{")) {
             sig += " " + lines[j].trim();
             j++;
           }
@@ -609,7 +609,7 @@ function extractSignaturesFromLines(
       let sig = trimmed;
       if (!sig.endsWith(":")) {
         let j = i + 1;
-        while (j < lines.length && !lines[j].includes(":")) {
+        while (j < lines.length && lines[j] && !lines[j].includes(":")) {
           sig += " " + lines[j].trim();
           j++;
         }
@@ -628,7 +628,7 @@ function extractSignaturesFromLines(
       let sig = trimmed;
       if (!sig.includes("{")) {
         let j = i + 1;
-        while (j < lines.length && !lines[j].includes("{")) {
+        while (j < lines.length && lines[j] && !lines[j].includes("{")) {
           sig += " " + lines[j].trim();
           j++;
         }
@@ -981,7 +981,7 @@ export function analyzePreFlight(
 
   // Show why files were selected
   const topMatches = relevantFiles.slice(0, 3);
-  if (topMatches.length > 0 && topMatches[0].matchReasons?.length > 0) {
+  if (topMatches.length > 0 && topMatches[0]?.matchReasons && topMatches[0].matchReasons.length > 0) {
     recommendations.push(
       `Top matches: ${topMatches.map(f => path.basename(f.path)).join(", ")}`
     );
