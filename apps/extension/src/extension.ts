@@ -12,7 +12,7 @@ import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/token
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
 import { SemanticSqueezer, initParser, loadLanguage, setDebugMode } from "./squeezer";
 import { analyzeContext, type ContextAnalysis, type FileRelevance } from "./context-analyzer";
-import { PruneIntelligenceEngine, runTests as runIntelligenceTests } from "./prune-intelligence";
+import { PruneIntelligenceEngine } from "./prune-intelligence";
 import { testSamples } from "./prune-intelligence.test";
 import {
   generateSmartCopy,
@@ -35,6 +35,7 @@ import {
   type TrackedDecision,
   type DecisionPriority,
 } from "./token-saver";
+import { runAllTokenSaverTests } from "./token-saver.test";
 
 // ============================================================================
 // State
@@ -928,12 +929,37 @@ async function runTestsCommand() {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Running Prune Intelligence Engine tests...",
+      title: "Running Prune tests...",
       cancellable: false,
     },
     async () => {
       try {
         outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("                    PRUNE TEST SUITE");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("");
+
+        // =====================================================================
+        // Run Token Saver Tests
+        // =====================================================================
+        outputChannel.appendLine("Running Token Saver Tests...");
+        outputChannel.appendLine("");
+
+        try {
+          const tokenSaverResults = runAllTokenSaverTests();
+          for (const line of tokenSaverResults.summary) {
+            outputChannel.appendLine(line);
+          }
+          outputChannel.appendLine("");
+        } catch (error) {
+          outputChannel.appendLine(`❌ Token Saver tests failed: ${error}`);
+          outputChannel.appendLine("");
+        }
+
+        // =====================================================================
+        // Run Intelligence Engine Tests
+        // =====================================================================
         outputChannel.appendLine("Running Prune Intelligence Engine Tests...");
         outputChannel.appendLine("");
 
@@ -957,10 +983,14 @@ async function runTestsCommand() {
           originalError.apply(console, args);
         };
 
-        // Import and run tests
-        const { TestRunner } = await import("./prune-intelligence.test");
-        const runner = new TestRunner();
-        await runner.runAllTests();
+        try {
+          // Import and run tests
+          const { TestRunner } = await import("./prune-intelligence.test");
+          const runner = new TestRunner();
+          await runner.runAllTests();
+        } catch (error) {
+          logLines.push(`❌ Intelligence Engine tests failed: ${error}`);
+        }
 
         // Restore console
         console.log = originalLog;
@@ -970,6 +1000,11 @@ async function runTestsCommand() {
         for (const line of logLines) {
           outputChannel.appendLine(line);
         }
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("                    TEST RUN COMPLETE");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
 
         outputChannel.show();
         vscode.window.showInformationMessage("Test run complete. See output for results.");
@@ -1129,7 +1164,7 @@ async function preflightCommand(context: vscode.ExtensionContext) {
               workspaceFiles.push({
                 path: file.fsPath,
                 content,
-                tokens: countTokens(content),
+                tokens: countTokens(content).tokens,
               });
             }
           } catch {

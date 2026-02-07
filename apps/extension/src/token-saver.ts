@@ -100,7 +100,7 @@ export function recordFileRead(
   pruneMemoryIfNeeded();
 
   const normalizedPath = path.normalize(filePath);
-  const tokens = countTokens(content);
+  const tokens = countTokens(content).tokens;
   const contentHash = hashContent(content);
   const isPartial = options?.isPartial ?? false;
 
@@ -705,7 +705,7 @@ export function generateSmartCopy(
     const language = langMap[ext] || "unknown";
     const fileName = path.basename(file.path);
 
-    originalTokens += countTokens(file.content);
+    originalTokens += countTokens(file.content).tokens;
 
     if (opts.signatureOnly && language !== "unknown") {
       // Extract signatures only
@@ -713,19 +713,19 @@ export function generateSmartCopy(
       const header = `// === ${fileName} ===`;
       const fileOutput = `${header}\n${signatures}`;
       parts.push(fileOutput);
-      optimizedTokens += countTokens(fileOutput);
+      optimizedTokens += countTokens(fileOutput).tokens;
     } else {
       // Include full file (but might truncate if too large)
       const header = `// === ${fileName} ===`;
       let content = file.content;
 
-      if (countTokens(content) > opts.maxTokensPerFile) {
+      if (countTokens(content).tokens > opts.maxTokensPerFile) {
         // Truncate with note
         const lines = content.split("\n");
         let truncated = "";
         let tokens = 0;
         for (const line of lines) {
-          const lineTokens = countTokens(line);
+          const lineTokens = countTokens(line).tokens;
           if (tokens + lineTokens > opts.maxTokensPerFile - 20) {
             truncated += "\n// ... (truncated for brevity)";
             break;
@@ -738,7 +738,7 @@ export function generateSmartCopy(
 
       const fileOutput = `${header}\n${content}`;
       parts.push(fileOutput);
-      optimizedTokens += countTokens(fileOutput);
+      optimizedTokens += countTokens(fileOutput).tokens;
     }
   }
 
@@ -1311,7 +1311,30 @@ export function exportSessionState(): SessionState {
       tokensSaved: sessionMemory.totalTokensSaved,
       deduplicationCount: sessionMemory.deduplicationCount,
     },
-    decisions: compactionSession.decisions,
+    decisions: Array.from(compactionSession.decisions.values()),
     turnNumber: currentTurnNumber,
   };
 }
+
+// ============================================================================
+// Test Exports (for unit testing)
+// ============================================================================
+
+/**
+ * Export internal functions for testing
+ * Only use these in test files
+ */
+export const _testing = {
+  extractSignatures,
+  extractSignaturesFromLines,
+  extractSignaturesInChunks,
+  stripStringsAndComments,
+  countBraces,
+  hashContent,
+  fuzzyMatch,
+  generateDecisionId,
+  MAX_LINES_PER_CHUNK,
+  MAX_SIGNATURES,
+  MAX_IMPORTS,
+  MAX_TYPES,
+};
