@@ -813,5 +813,485 @@ export function runAllTokenSaverTests(): {
   return { suites, totalPassed, totalFailed, summary };
 }
 
+// ============================================================================
+// Edge Case Tests
+// ============================================================================
+
+function runEdgeCaseTests(): TestResult[] {
+  const results: TestResult[] = [];
+
+  // Test 1: Empty file
+  {
+    const output = extractSignatures("", "typescript");
+    results.push({
+      name: "Empty file returns empty output",
+      passed: output.trim() === "",
+      error: output.trim() !== "" ? `Got: "${output}"` : undefined,
+    });
+  }
+
+  // Test 2: File with only comments
+  {
+    const code = `
+// This is a comment
+/* Multi-line
+   comment */
+# Python style comment
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Comment-only file returns empty signatures",
+      passed: !output.includes("function") && !output.includes("class"),
+      error: undefined,
+    });
+  }
+
+  // Test 3: File with special characters in strings
+  {
+    const code = `
+function handleSpecialChars(input: string): string {
+  const regex = /[{}()\\[\\]]/g;
+  const template = \`{ "key": "value with {braces}" }\`;
+  return input.replace(regex, "");
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Special characters in strings don't break parsing",
+      passed: output.includes("handleSpecialChars"),
+      error: !output.includes("handleSpecialChars") ? "Function not captured" : undefined,
+    });
+  }
+
+  // Test 4: Deeply nested code
+  {
+    const code = `
+class DeepNesting {
+  method() {
+    if (true) {
+      while (true) {
+        for (let i = 0; i < 10; i++) {
+          switch (i) {
+            case 0:
+              break;
+          }
+        }
+      }
+    }
+  }
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Deeply nested code handles brace counting",
+      passed: output.includes("DeepNesting") && output.includes("method"),
+      error: !output.includes("method") ? "Method not captured" : undefined,
+    });
+  }
+
+  // Test 5: Unicode in code
+  {
+    const code = `
+function greet(name: string): string {
+  return \`こんにちは, \${name}! 🎉\`;
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Unicode characters don't break parsing",
+      passed: output.includes("greet"),
+      error: !output.includes("greet") ? "Function not captured" : undefined,
+    });
+  }
+
+  // Test 6: Very long single line
+  {
+    const longParams = Array(50).fill("param: string").join(", ");
+    const code = `function veryLongFunction(${longParams}): void { console.log("done"); }`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Very long single line is handled",
+      passed: output.includes("veryLongFunction"),
+      error: !output.includes("veryLongFunction") ? "Function not captured" : undefined,
+    });
+  }
+
+  // Test 7: Mixed language indicators (should not crash)
+  {
+    const code = `
+// TypeScript file with Python-like syntax in comments
+# This looks like Python
+def not_python():
+    pass
+
+function actualTS(): void {
+  console.log("hello");
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Mixed syntax doesn't crash",
+      passed: output.includes("actualTS"),
+      error: !output.includes("actualTS") ? "TS function not captured" : undefined,
+    });
+  }
+
+  // Test 8: Abstract class
+  {
+    const code = `
+export abstract class BaseService {
+  abstract process(data: unknown): Promise<void>;
+
+  protected log(message: string): void {
+    console.log(message);
+  }
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Abstract class captured correctly",
+      passed: output.includes("abstract class BaseService"),
+      error: !output.includes("abstract class") ? "Abstract not captured" : undefined,
+    });
+  }
+
+  // Test 9: Async generators
+  {
+    const code = `
+async function* asyncGenerator(): AsyncGenerator<number> {
+  yield 1;
+  yield 2;
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Async generator function captured",
+      passed: output.includes("asyncGenerator"),
+      error: !output.includes("asyncGenerator") ? "Async generator not captured" : undefined,
+    });
+  }
+
+  // Test 10: Overloaded functions
+  {
+    const code = `
+function overloaded(x: string): string;
+function overloaded(x: number): number;
+function overloaded(x: string | number): string | number {
+  return x;
+}
+`;
+    const output = extractSignatures(code, "typescript");
+    results.push({
+      name: "Overloaded functions captured",
+      passed: output.includes("overloaded"),
+      error: !output.includes("overloaded") ? "Overload not captured" : undefined,
+    });
+  }
+
+  return results;
+}
+
+function runFileTypeTests(): TestResult[] {
+  const results: TestResult[] = [];
+
+  // JavaScript
+  {
+    const jsCode = `
+const express = require('express');
+
+function createServer(port) {
+  const app = express();
+  app.listen(port);
+  return app;
+}
+
+module.exports = { createServer };
+`;
+    const output = extractSignatures(jsCode, "javascript");
+    results.push({
+      name: "JavaScript: CommonJS module captured",
+      passed: output.includes("createServer"),
+      error: !output.includes("createServer") ? "JS function not captured" : undefined,
+    });
+  }
+
+  // Python with async
+  {
+    const pyCode = `
+import asyncio
+from typing import List
+
+async def fetch_data(url: str) -> dict:
+    async with aiohttp.ClientSession() as session:
+        response = await session.get(url)
+        return await response.json()
+
+class DataProcessor:
+    def __init__(self, config):
+        self.config = config
+
+    def process(self, data: List[dict]) -> List[dict]:
+        return [self._transform(d) for d in data]
+`;
+    const output = extractSignatures(pyCode, "python");
+    results.push({
+      name: "Python: Async function captured",
+      passed: output.includes("fetch_data"),
+      error: !output.includes("fetch_data") ? "Python async not captured" : undefined,
+    });
+    results.push({
+      name: "Python: Class method captured",
+      passed: output.includes("process"),
+      error: !output.includes("process") ? "Python method not captured" : undefined,
+    });
+  }
+
+  // Go
+  {
+    const goCode = `
+package main
+
+import "fmt"
+
+type Server struct {
+    Port int
+    Host string
+}
+
+func (s *Server) Start() error {
+    return nil
+}
+
+func NewServer(host string, port int) *Server {
+    return &Server{Host: host, Port: port}
+}
+`;
+    const output = extractSignatures(goCode, "go");
+    results.push({
+      name: "Go: Method receiver captured",
+      passed: output.includes("Start"),
+      error: !output.includes("Start") ? "Go method not captured" : undefined,
+    });
+    results.push({
+      name: "Go: Constructor function captured",
+      passed: output.includes("NewServer"),
+      error: !output.includes("NewServer") ? "Go function not captured" : undefined,
+    });
+  }
+
+  // TypeScript with decorators
+  {
+    const tsCode = `
+import { Controller, Get, Post } from '@nestjs/common';
+
+@Controller('users')
+export class UserController {
+  @Get()
+  findAll(): User[] {
+    return [];
+  }
+
+  @Post()
+  create(@Body() dto: CreateUserDto): User {
+    return {} as User;
+  }
+}
+`;
+    const output = extractSignatures(tsCode, "typescript");
+    results.push({
+      name: "TypeScript: NestJS decorators captured",
+      passed: output.includes("@Controller") || output.includes("UserController"),
+      error: !output.includes("UserController") ? "Decorated class not captured" : undefined,
+    });
+  }
+
+  // React TSX
+  {
+    const tsxCode = `
+import React, { useState, useEffect } from 'react';
+
+interface Props {
+  title: string;
+  onClose: () => void;
+}
+
+export const Modal: React.FC<Props> = ({ title, onClose }) => {
+  const [isOpen, setIsOpen] = useState(true);
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, []);
+
+  return (
+    <div className="modal">
+      <h1>{title}</h1>
+      <button onClick={onClose}>Close</button>
+    </div>
+  );
+};
+`;
+    const output = extractSignatures(tsxCode, "typescript");
+    results.push({
+      name: "TSX: React component captured",
+      passed: output.includes("Modal"),
+      error: !output.includes("Modal") ? "React component not captured" : undefined,
+    });
+    results.push({
+      name: "TSX: Interface captured",
+      passed: output.includes("Props"),
+      error: !output.includes("Props") ? "Interface not captured" : undefined,
+    });
+  }
+
+  return results;
+}
+
+function runLargeFileTests(): TestResult[] {
+  const results: TestResult[] = [];
+
+  // Test with 10,000 lines
+  {
+    const lines: string[] = [];
+    lines.push('import { utils } from "./utils";');
+    lines.push("");
+
+    for (let i = 0; i < 100; i++) {
+      lines.push(`export function func_${i}(param: string): number {`);
+      for (let j = 0; j < 95; j++) {
+        lines.push(`  const line_${j} = ${j}; // filler`);
+      }
+      lines.push("  return 0;");
+      lines.push("}");
+      lines.push("");
+    }
+
+    const code = lines.join("\n");
+    const lineCount = code.split("\n").length;
+    const output = extractSignatures(code, "typescript");
+
+    results.push({
+      name: `Large file (${lineCount} lines) processed`,
+      passed: output.length > 0,
+      error: output.length === 0 ? "No output generated" : undefined,
+    });
+
+    // Check that functions from different parts are captured
+    const hasFunc0 = output.includes("func_0");
+    const hasFunc50 = output.includes("func_50");
+    const hasFunc99 = output.includes("func_99");
+
+    results.push({
+      name: "Large file: Functions from start captured",
+      passed: hasFunc0,
+      error: !hasFunc0 ? "func_0 not found" : undefined,
+    });
+
+    results.push({
+      name: "Large file: Functions from middle captured",
+      passed: hasFunc50,
+      error: !hasFunc50 ? "func_50 not found" : undefined,
+    });
+
+    results.push({
+      name: "Large file: Functions from end captured",
+      passed: hasFunc99,
+      error: !hasFunc99 ? "func_99 not found" : undefined,
+    });
+  }
+
+  // Test Smart Copy with large file
+  {
+    const lines: string[] = [];
+    for (let i = 0; i < 5000; i++) {
+      if (i % 100 === 0) {
+        lines.push(`function bigFunc${i}(x: number): number { return x * ${i}; }`);
+      } else {
+        lines.push(`// Comment line ${i}`);
+      }
+    }
+    const code = lines.join("\n");
+
+    const result = generateSmartCopy([{ path: "/large.ts", content: code }], { signatureOnly: true });
+
+    results.push({
+      name: "Smart Copy: Large file has savings > 50%",
+      passed: result.savingsPercent > 50,
+      error: result.savingsPercent <= 50 ? `Only ${result.savingsPercent.toFixed(1)}% savings` : undefined,
+    });
+
+    results.push({
+      name: "Smart Copy: Large file output is reasonable size",
+      passed: result.optimizedTokens < result.originalTokens * 0.5,
+      error: undefined,
+    });
+  }
+
+  return results;
+}
+
+// ============================================================================
+// Extended Main Test Runner
+// ============================================================================
+
+export function runAllTokenSaverTestsExtended(): {
+  suites: TestSuite[];
+  totalPassed: number;
+  totalFailed: number;
+  summary: string[];
+} {
+  const suites: TestSuite[] = [
+    { name: "Signature Extraction", results: runSignatureTests() },
+    { name: "Chunk Processing", results: runChunkProcessingTests() },
+    { name: "Session Memory", results: runSessionMemoryTests() },
+    { name: "Pre-flight Optimizer", results: runPreflightTests() },
+    { name: "Compaction Recovery", results: runCompactionTests() },
+    { name: "Helper Functions", results: runHelperTests() },
+    { name: "Smart Copy Integration", results: runSmartCopyIntegrationTests() },
+    { name: "Edge Cases", results: runEdgeCaseTests() },
+    { name: "File Type Support", results: runFileTypeTests() },
+    { name: "Large File Handling", results: runLargeFileTests() },
+  ];
+
+  let totalPassed = 0;
+  let totalFailed = 0;
+  const summary: string[] = [];
+
+  summary.push("╔═══════════════════════════════════════════════════════════════╗");
+  summary.push("║         🧪 TOKEN SAVER COMPREHENSIVE TEST RESULTS             ║");
+  summary.push("╚═══════════════════════════════════════════════════════════════╝");
+  summary.push("");
+
+  for (const suite of suites) {
+    const passed = suite.results.filter((r) => r.passed).length;
+    const failed = suite.results.filter((r) => !r.passed).length;
+    totalPassed += passed;
+    totalFailed += failed;
+
+    const icon = failed === 0 ? "✅" : "❌";
+    summary.push(`${icon} ${suite.name}: ${passed}/${suite.results.length} passed`);
+
+    for (const result of suite.results) {
+      if (!result.passed) {
+        summary.push(`   ✗ ${result.name}`);
+        if (result.error) {
+          summary.push(`     └─ ${result.error}`);
+        }
+      }
+    }
+  }
+
+  summary.push("");
+  summary.push("─────────────────────────────────────────────────────────────────");
+  const overallIcon = totalFailed === 0 ? "✅" : "❌";
+  summary.push(
+    `${overallIcon} Total: ${totalPassed} passed, ${totalFailed} failed`
+  );
+
+  return { suites, totalPassed, totalFailed, summary };
+}
+
 // Export for VS Code command
-export { signatureTestCases };
+export { signatureTestCases, runEdgeCaseTests, runFileTypeTests, runLargeFileTests };

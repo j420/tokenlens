@@ -339,23 +339,26 @@ function extractSignaturesInChunks(lines: string[], language: string): string {
   const seenSignatures = new Set<string>(); // Dedupe
 
   for (let chunkIndex = 0; chunkIndex < numChunks; chunkIndex++) {
-    // Early exit if we have enough
-    if (allSignatures.length >= MAX_SIGNATURES) break;
+    // Early exit if we have enough (don't count markers, only actual signatures)
+    const actualSignatureCount = allSignatures.filter(s => !s.startsWith("// ---")).length;
+    if (actualSignatureCount >= MAX_SIGNATURES) break;
 
     const start = chunkIndex * chunkSize;
     const end = Math.min(start + chunkSize, lines.length);
     const chunkLines = lines.slice(start, end);
 
-    // Add chunk marker for context
+    // Add chunk marker for context (will be added once at start of this chunk's signatures)
     const chunkMarker = numChunks > 1
       ? `// --- Chunk ${chunkIndex + 1}/${numChunks} (lines ${start + 1}-${end}) ---`
       : "";
+    let chunkMarkerAdded = false;
 
-    // Process this chunk
+    // Process this chunk - calculate remaining based on actual signatures only
+    const remainingSignatures = MAX_SIGNATURES - actualSignatureCount;
     const result = extractSignaturesFromLines(chunkLines, language, {
       maxImports: MAX_IMPORTS - allImports.length,
       maxTypes: MAX_TYPES - allTypes.length,
-      maxSignatures: MAX_SIGNATURES - allSignatures.length,
+      maxSignatures: remainingSignatures,
     });
 
     // Parse and merge results
@@ -385,14 +388,18 @@ function extractSignaturesInChunks(lines: string[], language: string): string {
           allTypes.push(line);
         }
       } else if (section === "signatures") {
+        // Count actual signatures (not markers)
+        const currentActualCount = allSignatures.filter(s => !s.startsWith("// ---")).length;
+        if (currentActualCount >= MAX_SIGNATURES) break;
+
         // Dedupe signatures by their core content
         const sigKey = line.trim().replace(/\s+/g, " ");
-        if (!seenSignatures.has(sigKey) && allSignatures.length < MAX_SIGNATURES) {
+        if (!seenSignatures.has(sigKey)) {
           seenSignatures.add(sigKey);
-          // Add chunk marker before first signature in each chunk (after first)
-          if (chunkIndex > 0 && allSignatures.length > 0 &&
-              !allSignatures[allSignatures.length - 1].startsWith("// ---")) {
+          // Add chunk marker once at start of each chunk (after first chunk)
+          if (chunkIndex > 0 && !chunkMarkerAdded && allSignatures.length > 0) {
             allSignatures.push(chunkMarker);
+            chunkMarkerAdded = true;
           }
           allSignatures.push(line);
         }

@@ -35,7 +35,7 @@ import {
   type TrackedDecision,
   type DecisionPriority,
 } from "./token-saver";
-import { runAllTokenSaverTests } from "./token-saver.test";
+import { runAllTokenSaverTestsExtended } from "./token-saver.test";
 
 // ============================================================================
 // State
@@ -947,7 +947,7 @@ async function runTestsCommand() {
         outputChannel.appendLine("");
 
         try {
-          const tokenSaverResults = runAllTokenSaverTests();
+          const tokenSaverResults = runAllTokenSaverTestsExtended();
           for (const line of tokenSaverResults.summary) {
             outputChannel.appendLine(line);
           }
