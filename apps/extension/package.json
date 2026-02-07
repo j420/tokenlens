@@ -28,38 +28,56 @@
   "contributes": {
     "commands": [
       {
-        "command": "prune.analyzeSelection",
-        "title": "Prune: Analyze Token Count"
-      },
-      {
         "command": "prune.analyzeFile",
         "title": "Prune: Analyze Current File"
       },
       {
-        "command": "prune.copyTokenCount",
-        "title": "Prune: Copy Token Count"
+        "command": "prune.analyzeSelection",
+        "title": "Prune: Analyze Selection"
       },
       {
         "command": "prune.squeezeFile",
         "title": "Prune: Squeeze File (Compress for AI)"
       },
       {
+        "command": "prune.analyzeContext",
+        "title": "Prune: Smart Context Analysis"
+      },
+      {
+        "command": "prune.smartContext",
+        "title": "Prune: Intelligent Context Selection (v2)"
+      },
+      {
+        "command": "prune.runTests",
+        "title": "Prune: Run Intelligence Tests"
+      },
+      {
         "command": "prune.checkCursorUsage",
         "title": "Prune: Check Cursor Usage"
       },
       {
-        "command": "prune.analyzeContext",
-        "title": "Prune: Smart Context Analysis",
-        "shortTitle": "Analyze Context"
+        "command": "prune.smartCopy",
+        "title": "Prune: Copy for AI (Optimized)"
       },
       {
-        "command": "prune.smartContext",
-        "title": "Prune v2: Intelligent Context Selection",
-        "shortTitle": "Smart Context"
+        "command": "prune.preflight",
+        "title": "Prune: Pre-flight Optimizer"
       },
       {
-        "command": "prune.runTests",
-        "title": "Prune: Run Intelligence Engine Tests"
+        "command": "prune.sessionStats",
+        "title": "Prune: Session Memory Stats"
+      },
+      {
+        "command": "prune.resetSession",
+        "title": "Prune: Reset Session Memory"
+      },
+      {
+        "command": "prune.compactionCheck",
+        "title": "Prune: Compaction Recovery Check"
+      },
+      {
+        "command": "prune.trackDecision",
+        "title": "Prune: Track Important Decision"
       }
     ],
     "configuration": {
@@ -80,16 +98,111 @@
     "menus": {
       "editor/context": [
         {
+          "command": "prune.smartCopy",
+          "group": "prune@1"
+        },
+        {
+          "command": "prune.preflight",
+          "group": "prune@2"
+        },
+        {
+          "command": "prune.analyzeFile",
+          "group": "prune@3"
+        },
+        {
           "command": "prune.analyzeSelection",
-          "group": "prune",
+          "group": "prune@4",
           "when": "editorHasSelection"
         },
         {
-          "command": "prune.copyTokenCount",
-          "group": "prune"
+          "command": "prune.analyzeContext",
+          "group": "prune@5"
+        },
+        {
+          "command": "prune.smartContext",
+          "group": "prune@6"
+        },
+        {
+          "command": "prune.squeezeFile",
+          "group": "prune@7"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "prune.smartCopy",
+          "group": "prune@1",
+          "when": "resourceScheme == file"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "prune.smartCopy"
+        },
+        {
+          "command": "prune.preflight"
+        },
+        {
+          "command": "prune.sessionStats"
+        },
+        {
+          "command": "prune.resetSession"
+        },
+        {
+          "command": "prune.compactionCheck"
+        },
+        {
+          "command": "prune.trackDecision"
+        },
+        {
+          "command": "prune.analyzeFile"
+        },
+        {
+          "command": "prune.analyzeSelection",
+          "when": "editorHasSelection"
+        },
+        {
+          "command": "prune.analyzeContext"
+        },
+        {
+          "command": "prune.smartContext"
+        },
+        {
+          "command": "prune.squeezeFile"
+        },
+        {
+          "command": "prune.runTests"
+        },
+        {
+          "command": "prune.checkCursorUsage"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "prune.smartCopy",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "prune.preflight",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "prune.analyzeContext",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "prune.analyzeFile",
+        "key": "ctrl+alt+t",
+        "mac": "cmd+alt+t",
+        "when": "editorTextFocus"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",

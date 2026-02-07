@@ -12,8 +12,30 @@ import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/token
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
 import { SemanticSqueezer, initParser, loadLanguage, setDebugMode } from "./squeezer";
 import { analyzeContext, type ContextAnalysis, type FileRelevance } from "./context-analyzer";
-import { PruneIntelligenceEngine, runTests as runIntelligenceTests } from "./prune-intelligence";
+import { PruneIntelligenceEngine } from "./prune-intelligence";
 import { testSamples } from "./prune-intelligence.test";
+import {
+  generateSmartCopy,
+  analyzePreFlight,
+  recordFileRead,
+  getSessionStats,
+  resetSessionMemory,
+  trackDecision,
+  recordContextSize,
+  getDecisionsAtRisk,
+  generateCompactionReminder,
+  extractDecisionsFromText,
+  incrementTurn,
+  getSessionFiles,
+  getAllDecisions,
+  removeDecision,
+  isFileContentCurrent,
+  getCurrentTurn,
+  type PreflightAnalysis,
+  type TrackedDecision,
+  type DecisionPriority,
+} from "./token-saver";
+import { runAllTokenSaverTests } from "./token-saver.test";
 
 // ============================================================================
 // State
@@ -23,7 +45,7 @@ let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let squeezerInstance: SemanticSqueezer | null = null;
 let wasmDir: string | null = null;
-let sqliteWarningShown = false; // Only show sqlite warning once
+// sql.js WASM is bundled, no external sqlite3 CLI needed
 let intelligenceEngine: PruneIntelligenceEngine | null = null;
 
 // ============================================================================
@@ -152,12 +174,18 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
     vscode.commands.registerCommand("prune.analyzeFile", analyzeCurrentFile),
-    vscode.commands.registerCommand("prune.copyTokenCount", copyTokenCount),
     vscode.commands.registerCommand("prune.squeezeFile", () => squeezeCurrentFile(context)),
     vscode.commands.registerCommand("prune.checkCursorUsage", checkCursorUsage),
     vscode.commands.registerCommand("prune.analyzeContext", () => analyzeContextCommand(context)),
     vscode.commands.registerCommand("prune.smartContext", () => smartContextCommand(context)),
-    vscode.commands.registerCommand("prune.runTests", runTestsCommand)
+    vscode.commands.registerCommand("prune.runTests", runTestsCommand),
+    // Token Saver Features
+    vscode.commands.registerCommand("prune.smartCopy", smartCopyCommand),
+    vscode.commands.registerCommand("prune.preflight", () => preflightCommand(context)),
+    vscode.commands.registerCommand("prune.sessionStats", sessionStatsCommand),
+    vscode.commands.registerCommand("prune.resetSession", resetSessionCommand),
+    vscode.commands.registerCommand("prune.compactionCheck", compactionCheckCommand),
+    vscode.commands.registerCommand("prune.trackDecision", trackDecisionCommand)
   );
 
   // Update status bar on selection change
@@ -208,17 +236,21 @@ function updateStatusBar() {
 
   try {
     const analysis = analyzeContent(text, "gpt-4o", config.autoSqueezeThreshold);
+    const sessionStats = getSessionStats();
+    const sessionInfo = sessionStats.tokensSaved > 0
+      ? ` | Session: ${formatTokens(sessionStats.tokensSaved)} saved`
+      : "";
 
     if (analysis.isLarge) {
       statusBarItem.text = "$(warning) " + analysis.formatted.tokens + " tokens";
       statusBarItem.backgroundColor = new vscode.ThemeColor(
         "statusBarItem.warningBackground"
       );
-      statusBarItem.tooltip = "Large context: " + analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")";
+      statusBarItem.tooltip = `Large context: ${analysis.formatted.tokens} tokens (~${analysis.formatted.cost})${sessionInfo}`;
     } else {
       statusBarItem.text = "$(symbol-misc) " + analysis.formatted.tokens;
       statusBarItem.backgroundColor = undefined;
-      statusBarItem.tooltip = analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")";
+      statusBarItem.tooltip = `${analysis.formatted.tokens} tokens (~${analysis.formatted.cost})${sessionInfo}`;
     }
     statusBarItem.command = "prune.analyzeSelection";
   } catch (error) {
@@ -297,24 +329,6 @@ async function analyzeCurrentFile() {
   vscode.window.showInformationMessage(
     fileName + ": " + analysis.formatted.tokens + " tokens (~" + analysis.formatted.cost + ")"
   );
-}
-
-async function copyTokenCount() {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    vscode.window.showWarningMessage("No active editor");
-    return;
-  }
-
-  const selection = editor.selection;
-  const text = selection.isEmpty
-    ? editor.document.getText()
-    : editor.document.getText(selection);
-
-  const { tokens } = countTokens(text, "gpt-4o");
-
-  await vscode.env.clipboard.writeText(tokens.toString());
-  vscode.window.showInformationMessage("Token count copied: " + formatTokens(tokens));
 }
 
 async function squeezeCurrentFile(context: vscode.ExtensionContext) {
@@ -456,17 +470,16 @@ async function checkCursorUsage() {
         const status = await getCursorStatus();
 
         if (!status.available) {
-          // Only show sqlite warning once to avoid spamming the output
-          const isSqliteError = status.error?.includes("sqlite3");
-          if (isSqliteError && sqliteWarningShown) {
-            return; // Skip duplicate sqlite warnings
-          }
-          if (isSqliteError) {
-            sqliteWarningShown = true;
-            log("Note: SQLite CLI not installed - Cursor usage tracking disabled (optional feature)");
+          // Show user-friendly error message
+          const errorMsg = status.error || "Not available";
+
+          // Don't spam for "Cursor not installed" - this is expected for non-Cursor users
+          if (errorMsg.includes("not installed") || errorMsg.includes("not found")) {
+            log("Cursor not detected: " + errorMsg);
+            vscode.window.showInformationMessage("Cursor is not installed or not logged in.");
           } else {
-            vscode.window.showWarningMessage("Cursor Usage: " + (status.error || "Not available"));
-            logError("Cursor usage check failed:", status.error);
+            vscode.window.showWarningMessage("Cursor Usage: " + errorMsg);
+            logError("Cursor usage check failed:", errorMsg);
           }
           return;
         }
@@ -597,75 +610,82 @@ async function analyzeContextCommand(context: vscode.ExtensionContext) {
           workspaceFiles,
         });
 
+        // Calculate costs
+        const costPerMillion = 3; // $3 per million input tokens (approximate for Claude)
+        const beforeCost = (analysis.totalTokens / 1000000) * costPerMillion;
+        const afterCost = (analysis.relevantTokens / 1000000) * costPerMillion;
+        const savedCost = beforeCost - afterCost;
+
         // Show results in output channel
         outputChannel.appendLine("");
-        outputChannel.appendLine("═══════════════════════════════════════════════════════");
-        outputChannel.appendLine("  SMART CONTEXT ANALYSIS");
-        outputChannel.appendLine("═══════════════════════════════════════════════════════");
+        outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+        outputChannel.appendLine("║              🧠 PRUNE CONTEXT ANALYSIS                        ║");
+        outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
         outputChannel.appendLine("");
-        outputChannel.appendLine(`📝 Your task: "${prompt}"`);
-        outputChannel.appendLine(`📄 Active file: ${path.basename(activeFilePath)}`);
+        outputChannel.appendLine(`  📝 Task: "${prompt}"`);
+        outputChannel.appendLine(`  📄 Active file: ${path.basename(activeFilePath)}`);
         outputChannel.appendLine("");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine("  ✅ RELEVANT FILES (send these)");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
+
+        // BEFORE vs AFTER comparison
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│                    📊 BEFORE vs AFTER                          │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("│   ❌ WITHOUT PRUNE (naive approach):                           │");
+        outputChannel.appendLine(`│      Files:  ${(analysis.relevantFiles.length + analysis.excludedFiles.length).toString().padStart(4)} files (all workspace files)               │`);
+        outputChannel.appendLine(`│      Tokens: ${formatTokens(analysis.totalTokens).padStart(8)}                                       │`);
+        outputChannel.appendLine(`│      Cost:   $${beforeCost.toFixed(4).padStart(7)} per request                            │`);
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("│   ✅ WITH PRUNE (smart selection):                             │");
+        outputChannel.appendLine(`│      Files:  ${analysis.relevantFiles.length.toString().padStart(4)} files (only relevant)                    │`);
+        outputChannel.appendLine(`│      Tokens: ${formatTokens(analysis.relevantTokens).padStart(8)}                                       │`);
+        outputChannel.appendLine(`│      Cost:   $${afterCost.toFixed(4).padStart(7)} per request                            │`);
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine(`│   💰 YOU SAVE: ${formatTokens(analysis.excludedTokens).padStart(8)} tokens (${analysis.savingsPercent.toFixed(0)}%)                      │`);
+        outputChannel.appendLine(`│               $${savedCost.toFixed(4)} per request                               │`);
+        outputChannel.appendLine("│                                                                 │");
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  ✅ RECOMMENDED FILES (include these in your context)          │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
 
         for (const file of analysis.relevantFiles) {
           const score = file.relevanceScore.toString().padStart(3);
           const tokens = formatTokens(file.tokens).padStart(8);
           const reasons = file.relevanceReasons.slice(0, 2).join(", ");
-          outputChannel.appendLine(`  [${score}%] ${tokens}  ${file.fileName}`);
-          outputChannel.appendLine(`         └─ ${reasons}`);
+          outputChannel.appendLine(`│  [${score}%] ${tokens}  ${file.fileName.padEnd(35).substring(0, 35)} │`);
+          outputChannel.appendLine(`│         └─ ${reasons.substring(0, 50).padEnd(50)} │`);
         }
 
-        outputChannel.appendLine("");
-        outputChannel.appendLine(`  Subtotal: ${formatTokens(analysis.relevantTokens)} tokens`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
 
         outputChannel.appendLine("");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine("  ❌ EXCLUDED FILES (not relevant)");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  ❌ SKIP THESE FILES (not relevant to your task)               │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
 
-        for (const file of analysis.excludedFiles.slice(0, 10)) {
+        for (const file of analysis.excludedFiles.slice(0, 8)) {
           const tokens = formatTokens(file.tokens).padStart(8);
-          outputChannel.appendLine(`  ${tokens}  ${file.fileName}`);
-          outputChannel.appendLine(`         └─ ${file.relevanceReasons[0]}`);
+          const reason = file.relevanceReasons[0] || "Low relevance";
+          outputChannel.appendLine(`│  ${tokens}  ${file.fileName.padEnd(45).substring(0, 45)} │`);
+          outputChannel.appendLine(`│         └─ ${reason.substring(0, 50).padEnd(50)} │`);
         }
 
-        if (analysis.excludedFiles.length > 10) {
-          outputChannel.appendLine(`  ... and ${analysis.excludedFiles.length - 10} more files`);
+        if (analysis.excludedFiles.length > 8) {
+          outputChannel.appendLine(`│  ... and ${(analysis.excludedFiles.length - 8).toString().padStart(3)} more files                                          │`);
         }
 
-        outputChannel.appendLine("");
-        outputChannel.appendLine(`  Subtotal: ${formatTokens(analysis.excludedTokens)} tokens`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
 
         outputChannel.appendLine("");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine("  💰 SUMMARY");
-        outputChannel.appendLine("───────────────────────────────────────────────────────");
-        outputChannel.appendLine(`  Total tokens:     ${formatTokens(analysis.totalTokens)}`);
-        outputChannel.appendLine(`  Relevant tokens:  ${formatTokens(analysis.relevantTokens)}`);
-        outputChannel.appendLine(`  Excluded tokens:  ${formatTokens(analysis.excludedTokens)}`);
-        outputChannel.appendLine(`  Savings:          ${analysis.savingsPercent.toFixed(1)}%`);
-
-        const costPerMillion = 3; // $3 per million input tokens (approximate)
-        const savingsDollars = (analysis.excludedTokens / 1000000) * costPerMillion;
-        outputChannel.appendLine(`  Est. savings:     ~$${savingsDollars.toFixed(4)} per request`);
-
+        outputChannel.appendLine("  💡 TIP: Use Ctrl+Alt+A (Cmd+Alt+A on Mac) to quickly run this analysis");
         outputChannel.appendLine("");
-        outputChannel.appendLine("═══════════════════════════════════════════════════════");
         outputChannel.show();
 
-        // Show summary notification
-        const action = await vscode.window.showInformationMessage(
-          `Context analysis: ${analysis.relevantFiles.length} relevant files (${formatTokens(analysis.relevantTokens)} tokens), ` +
-          `${analysis.excludedFiles.length} excluded (${analysis.savingsPercent.toFixed(0)}% savings)`,
-          "View Details"
-        );
-
-        if (action === "View Details") {
-          outputChannel.show();
-        }
       } catch (error) {
         logError("Context analysis error:", error);
         vscode.window.showErrorMessage(
@@ -674,6 +694,16 @@ async function analyzeContextCommand(context: vscode.ExtensionContext) {
       }
     }
   );
+
+  // Show summary notification AFTER progress completes
+  vscode.window.showInformationMessage(
+    "Context analysis complete. See output for details.",
+    "View Details"
+  ).then((action) => {
+    if (action === "View Details") {
+      outputChannel.show();
+    }
+  });
 }
 
 // ============================================================================
@@ -701,7 +731,7 @@ async function smartContextCommand(context: vscode.ExtensionContext) {
     return;
   }
 
-  await vscode.window.withProgress(
+  const result = await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
       title: "Prune v2: Analyzing with Intelligence Engine...",
@@ -860,46 +890,76 @@ async function smartContextCommand(context: vscode.ExtensionContext) {
         outputChannel.appendLine("═══════════════════════════════════════════════════════════════════════");
         outputChannel.show();
 
-        // Show summary notification
-        const totalSelected = selection.selectedSymbols.length;
-        const compressionPct = ((1 - selection.compressionRatio) * 100).toFixed(0);
-
-        vscode.window.showInformationMessage(
-          `Prune v2: Selected ${totalSelected} symbols (${formatTokens(selection.totalTokens)} tokens), ${compressionPct}% reduction`,
-          "View Details",
-          "Copy Context"
-        ).then(async (action) => {
-          if (action === "View Details") {
-            outputChannel.show();
-          } else if (action === "Copy Context") {
-            // Generate concatenated context
-            const contextText = selection.selectedSymbols
-              .map(s => `// === ${s.symbol.filePath}:${s.symbol.startLine} ===\n${s.content}`)
-              .join("\n\n");
-            await vscode.env.clipboard.writeText(contextText);
-            vscode.window.showInformationMessage("Context copied to clipboard");
-          }
-        });
+        // Store results for notification handler
+        return { selection, compressionRatio: selection.compressionRatio };
       } catch (error) {
         logError("Smart context error:", error);
         vscode.window.showErrorMessage(
           "Failed to analyze: " + (error instanceof Error ? error.message : String(error))
         );
+        return null;
       }
     }
   );
+
+  // Show summary notification AFTER progress completes
+  if (result) {
+    const totalSelected = result.selection.selectedSymbols.length;
+    const compressionPct = ((1 - result.compressionRatio) * 100).toFixed(0);
+
+    vscode.window.showInformationMessage(
+      `Prune v2: Selected ${totalSelected} symbols (${formatTokens(result.selection.totalTokens)} tokens), ${compressionPct}% reduction`,
+      "View Details",
+      "Copy Context"
+    ).then(async (action) => {
+      if (action === "View Details") {
+        outputChannel.show();
+      } else if (action === "Copy Context") {
+        const contextText = result.selection.selectedSymbols
+          .map((s: any) => `// === ${s.symbol.filePath}:${s.symbol.startLine} ===\n${s.content}`)
+          .join("\n\n");
+        await vscode.env.clipboard.writeText(contextText);
+        vscode.window.showInformationMessage("Context copied to clipboard");
+      }
+    });
+  }
 }
 
 async function runTestsCommand() {
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: "Running Prune Intelligence Engine tests...",
+      title: "Running Prune tests...",
       cancellable: false,
     },
     async () => {
       try {
         outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("                    PRUNE TEST SUITE");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("");
+
+        // =====================================================================
+        // Run Token Saver Tests
+        // =====================================================================
+        outputChannel.appendLine("Running Token Saver Tests...");
+        outputChannel.appendLine("");
+
+        try {
+          const tokenSaverResults = runAllTokenSaverTests();
+          for (const line of tokenSaverResults.summary) {
+            outputChannel.appendLine(line);
+          }
+          outputChannel.appendLine("");
+        } catch (error) {
+          outputChannel.appendLine(`❌ Token Saver tests failed: ${error}`);
+          outputChannel.appendLine("");
+        }
+
+        // =====================================================================
+        // Run Intelligence Engine Tests
+        // =====================================================================
         outputChannel.appendLine("Running Prune Intelligence Engine Tests...");
         outputChannel.appendLine("");
 
@@ -923,10 +983,14 @@ async function runTestsCommand() {
           originalError.apply(console, args);
         };
 
-        // Import and run tests
-        const { TestRunner } = await import("./prune-intelligence.test");
-        const runner = new TestRunner();
-        await runner.runAllTests();
+        try {
+          // Import and run tests
+          const { TestRunner } = await import("./prune-intelligence.test");
+          const runner = new TestRunner();
+          await runner.runAllTests();
+        } catch (error) {
+          logLines.push(`❌ Intelligence Engine tests failed: ${error}`);
+        }
 
         // Restore console
         console.log = originalLog;
@@ -936,6 +1000,11 @@ async function runTestsCommand() {
         for (const line of logLines) {
           outputChannel.appendLine(line);
         }
+
+        outputChannel.appendLine("");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
+        outputChannel.appendLine("                    TEST RUN COMPLETE");
+        outputChannel.appendLine("═══════════════════════════════════════════════════════════════");
 
         outputChannel.show();
         vscode.window.showInformationMessage("Test run complete. See output for results.");
@@ -947,6 +1016,467 @@ async function runTestsCommand() {
       }
     }
   );
+}
+
+// ============================================================================
+// Token Saver Commands
+// ============================================================================
+
+/**
+ * Smart Copy - Right-click → "Copy for AI (optimized)"
+ * Copies selected files as optimized signatures
+ */
+async function smartCopyCommand() {
+  const editor = vscode.window.activeTextEditor;
+
+  // Get files to copy
+  let filesToCopy: Array<{ path: string; content: string }> = [];
+
+  // Check if there's a selection in the explorer (multiple files)
+  const selectedUris = await vscode.commands.executeCommand<vscode.Uri[]>(
+    "explorer.getSelection"
+  );
+
+  if (selectedUris && selectedUris.length > 0) {
+    // Multiple files selected in explorer
+    for (const uri of selectedUris) {
+      try {
+        const stat = await vscode.workspace.fs.stat(uri);
+        if (stat.type === vscode.FileType.File) {
+          const doc = await vscode.workspace.openTextDocument(uri);
+          filesToCopy.push({
+            path: uri.fsPath,
+            content: doc.getText(),
+          });
+        }
+      } catch {
+        // Skip files that can't be read
+      }
+    }
+  } else if (editor) {
+    // Single file - current editor
+    const selection = editor.selection;
+    if (!selection.isEmpty) {
+      // Use selected text
+      filesToCopy.push({
+        path: editor.document.uri.fsPath,
+        content: editor.document.getText(selection),
+      });
+    } else {
+      // Use entire file
+      filesToCopy.push({
+        path: editor.document.uri.fsPath,
+        content: editor.document.getText(),
+      });
+    }
+  }
+
+  if (filesToCopy.length === 0) {
+    vscode.window.showWarningMessage("No files selected to copy");
+    return;
+  }
+
+  // Record files in session memory
+  for (const file of filesToCopy) {
+    recordFileRead(file.path, file.content);
+  }
+
+  // Generate optimized copy
+  const result = generateSmartCopy(filesToCopy, { signatureOnly: true });
+
+  // Copy to clipboard
+  await vscode.env.clipboard.writeText(result.optimizedCode);
+
+  // Show results
+  const fileCount = filesToCopy.length;
+  const message = `Copied ${fileCount} file${fileCount > 1 ? "s" : ""} for AI: ${formatTokens(result.optimizedTokens)} tokens (saved ${result.savingsPercent.toFixed(0)}%)`;
+
+  outputChannel.appendLine("");
+  outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+  outputChannel.appendLine("║              📋 SMART COPY FOR AI                             ║");
+  outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
+  outputChannel.appendLine("");
+  outputChannel.appendLine(`  Files:     ${fileCount}`);
+  outputChannel.appendLine(`  Original:  ${formatTokens(result.originalTokens)} tokens`);
+  outputChannel.appendLine(`  Optimized: ${formatTokens(result.optimizedTokens)} tokens`);
+  outputChannel.appendLine(`  Savings:   ${formatTokens(result.savings)} tokens (${result.savingsPercent.toFixed(0)}%)`);
+  outputChannel.appendLine("");
+  outputChannel.appendLine("  ✅ Copied to clipboard!");
+  outputChannel.appendLine("");
+
+  vscode.window.showInformationMessage(message, "View Output").then((action) => {
+    if (action === "View Output") {
+      outputChannel.show();
+    }
+  });
+}
+
+/**
+ * Pre-flight Optimizer - Shows optimization opportunity before sending
+ */
+async function preflightCommand(context: vscode.ExtensionContext) {
+  // Get active file path (for relevance boosting)
+  const editor = vscode.window.activeTextEditor;
+  const activeFilePath = editor?.document.uri.fsPath;
+
+  // Get user's prompt
+  const prompt = await vscode.window.showInputBox({
+    prompt: "What are you about to ask the AI?",
+    placeHolder: "e.g., fix the header alignment",
+    value: "", // Start empty
+  });
+
+  if (!prompt) {
+    return;
+  }
+
+  // Increment turn for session tracking
+  incrementTurn();
+
+  await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `Analyzing: "${prompt.substring(0, 30)}${prompt.length > 30 ? "..." : ""}"`,
+      cancellable: false,
+    },
+    async () => {
+      try {
+        // Get workspace files
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+          vscode.window.showWarningMessage("No workspace folder open");
+          return;
+        }
+
+        // Find relevant files
+        const files = await vscode.workspace.findFiles(
+          "**/*.{js,jsx,ts,tsx,py,go,rs,java,css,scss,html,json}",
+          "**/node_modules/**"
+        );
+
+        // Read file contents
+        const workspaceFiles: Array<{ path: string; content: string; tokens: number }> = [];
+        for (const file of files.slice(0, 50)) {
+          try {
+            const doc = await vscode.workspace.openTextDocument(file);
+            const content = doc.getText();
+            if (content.length < 200000) {
+              workspaceFiles.push({
+                path: file.fsPath,
+                content,
+                tokens: countTokens(content).tokens,
+              });
+            }
+          } catch {
+            // Skip files that can't be read
+          }
+        }
+
+        // Analyze
+        const analysis = analyzePreFlight(prompt, workspaceFiles, 3, activeFilePath);
+
+        // Show results
+        outputChannel.appendLine("");
+        outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+        outputChannel.appendLine("║              ⚡ PRE-FLIGHT OPTIMIZER                          ║");
+        outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
+        outputChannel.appendLine("");
+        outputChannel.appendLine(`  📝 Your prompt: "${prompt}"`);
+        outputChannel.appendLine("");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  CURRENT CONTEXT (what you'd send):                            │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine(`│  Files:   ${analysis.currentContext.files.length.toString().padStart(4)} files                                          │`);
+        outputChannel.appendLine(`│  Tokens:  ${formatTokens(analysis.currentContext.tokens).padStart(8)}                                       │`);
+        outputChannel.appendLine(`│  Cost:    $${analysis.currentContext.cost.toFixed(4).padStart(7)} per request                            │`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
+        outputChannel.appendLine("");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  ✅ RECOMMENDED (optimized):                                   │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine(`│  Files:   ${analysis.recommendedContext.files.length.toString().padStart(4)} files                                          │`);
+        outputChannel.appendLine(`│  Tokens:  ${formatTokens(analysis.recommendedContext.tokens).padStart(8)}                                       │`);
+        outputChannel.appendLine(`│  Cost:    $${analysis.recommendedContext.cost.toFixed(4).padStart(7)} per request                            │`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
+        outputChannel.appendLine("");
+        outputChannel.appendLine("┌─────────────────────────────────────────────────────────────────┐");
+        outputChannel.appendLine("│  💰 SAVINGS:                                                   │");
+        outputChannel.appendLine("├─────────────────────────────────────────────────────────────────┤");
+        outputChannel.appendLine(`│  Tokens: ${formatTokens(analysis.savings.tokens).padStart(8)} (${analysis.savings.percent.toFixed(0)}% reduction)                     │`);
+        outputChannel.appendLine(`│  Cost:   $${analysis.savings.cost.toFixed(4).padStart(7)} per request                               │`);
+        outputChannel.appendLine("└─────────────────────────────────────────────────────────────────┘");
+        outputChannel.appendLine("");
+
+        if (analysis.recommendations.length > 0) {
+          outputChannel.appendLine("  💡 Recommendations:");
+          for (const rec of analysis.recommendations) {
+            outputChannel.appendLine(`     • ${rec}`);
+          }
+          outputChannel.appendLine("");
+        }
+
+        if (analysis.recommendedContext.files.length > 0) {
+          outputChannel.appendLine("  📄 Recommended files:");
+          for (const file of analysis.recommendedContext.files.slice(0, 10)) {
+            outputChannel.appendLine(`     • ${path.basename(file)}`);
+          }
+          if (analysis.recommendedContext.files.length > 10) {
+            outputChannel.appendLine(`     ... and ${analysis.recommendedContext.files.length - 10} more`);
+          }
+        }
+
+        outputChannel.appendLine("");
+        outputChannel.show();
+
+        // Show quick pick for action
+        const action = await vscode.window.showInformationMessage(
+          `Pre-flight: Save ${analysis.savings.percent.toFixed(0)}% (${formatTokens(analysis.savings.tokens)} tokens)`,
+          "Copy Optimized Context",
+          "View Details"
+        );
+
+        if (action === "Copy Optimized Context") {
+          // Generate optimized copy for recommended files
+          const filesToCopy = workspaceFiles
+            .filter(f => analysis.recommendedContext.files.includes(f.path))
+            .map(f => ({ path: f.path, content: f.content }));
+
+          const result = generateSmartCopy(filesToCopy, { signatureOnly: true });
+          await vscode.env.clipboard.writeText(result.optimizedCode);
+          vscode.window.showInformationMessage(
+            `Copied ${filesToCopy.length} files (${formatTokens(result.optimizedTokens)} tokens)`
+          );
+        } else if (action === "View Details") {
+          outputChannel.show();
+        }
+      } catch (error) {
+        logError("Pre-flight error:", error);
+        vscode.window.showErrorMessage(
+          "Pre-flight analysis failed: " + (error instanceof Error ? error.message : String(error))
+        );
+      }
+    }
+  );
+}
+
+/**
+ * Session Stats - Show session memory deduplication stats
+ */
+async function sessionStatsCommand() {
+  try {
+    const stats = getSessionStats();
+    const files = getSessionFiles();
+    const decisions = getAllDecisions();
+    const turn = getCurrentTurn();
+
+    outputChannel.appendLine("");
+    outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+    outputChannel.appendLine("║              📊 SESSION MEMORY STATS                          ║");
+    outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
+    outputChannel.appendLine("");
+    outputChannel.appendLine(`  Current turn:         ${turn}`);
+    outputChannel.appendLine(`  Files in memory:      ${stats.filesRead}`);
+    outputChannel.appendLine(`  Total tokens cached:  ${formatTokens(stats.totalTokens)}`);
+    outputChannel.appendLine(`  Duplicates avoided:   ${stats.deduplicationCount}`);
+    outputChannel.appendLine(`  Tokens saved:         ${formatTokens(stats.tokensSaved)}`);
+    outputChannel.appendLine(`  Files changed:        ${stats.changesDetected}`);
+    outputChannel.appendLine(`  Decisions tracked:    ${decisions.length}`);
+    outputChannel.appendLine(`  Session duration:     ${Math.floor(stats.sessionDuration / 60000)} min`);
+    outputChannel.appendLine("");
+
+    if (files.length > 0) {
+      outputChannel.appendLine("  📄 Files in session memory:");
+      for (const file of files.slice(0, 15)) {
+        const fileName = path.basename(file.path);
+        const tokens = formatTokens(file.tokens).padStart(6);
+        const partialMark = file.isPartial ? " (partial)" : "";
+        const turnInfo = `(turn ${file.turnNumber})`;
+        outputChannel.appendLine(`     ${tokens}  ${fileName}${partialMark} ${turnInfo}`);
+      }
+      if (files.length > 15) {
+        outputChannel.appendLine(`     ... and ${files.length - 15} more files`);
+      }
+    }
+
+    if (decisions.length > 0) {
+      outputChannel.appendLine("");
+      outputChannel.appendLine("  📋 Tracked decisions:");
+      for (const decision of decisions.slice(0, 5)) {
+        const priorityIcon = decision.priority === "critical" ? "🔴" :
+                            decision.priority === "high" ? "🟠" :
+                            decision.priority === "medium" ? "🟡" : "🟢";
+        outputChannel.appendLine(`     ${priorityIcon} ${decision.description}`);
+      }
+      if (decisions.length > 5) {
+        outputChannel.appendLine(`     ... and ${decisions.length - 5} more decisions`);
+      }
+    }
+
+    outputChannel.appendLine("");
+    outputChannel.show();
+
+    if (stats.tokensSaved > 0) {
+      vscode.window.showInformationMessage(
+        `Session saved ${formatTokens(stats.tokensSaved)} tokens via deduplication`
+      );
+    } else {
+      vscode.window.showInformationMessage(
+        `Session memory: ${stats.filesRead} files, ${formatTokens(stats.totalTokens)} tokens`
+      );
+    }
+  } catch (error) {
+    logError("Session stats error:", error);
+    vscode.window.showErrorMessage(
+      "Failed to get session stats: " + (error instanceof Error ? error.message : String(error))
+    );
+  }
+}
+
+/**
+ * Reset Session - Clear session memory
+ */
+async function resetSessionCommand() {
+  const confirm = await vscode.window.showWarningMessage(
+    "Reset session memory? This will clear file tracking and decision history.",
+    "Reset",
+    "Cancel"
+  );
+
+  if (confirm === "Reset") {
+    resetSessionMemory();
+    log("Session memory reset");
+    vscode.window.showInformationMessage("Session memory cleared");
+  }
+}
+
+/**
+ * Compaction Check - Show decisions that may be at risk
+ */
+async function compactionCheckCommand() {
+  const atRisk = getDecisionsAtRisk();
+  const reminder = generateCompactionReminder();
+
+  outputChannel.appendLine("");
+  outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
+  outputChannel.appendLine("║              📋 COMPACTION RECOVERY                           ║");
+  outputChannel.appendLine("╚═══════════════════════════════════════════════════════════════╝");
+  outputChannel.appendLine("");
+
+  if (atRisk.length === 0) {
+    outputChannel.appendLine("  ✅ No decisions at risk of being forgotten.");
+    outputChannel.appendLine("");
+    outputChannel.appendLine("  Tip: Use 'Track Decision' to record important architectural");
+    outputChannel.appendLine("  decisions during your session.");
+  } else {
+    outputChannel.appendLine("  ⚠️  These decisions may be forgotten if context compacts:");
+    outputChannel.appendLine("");
+
+    for (const decision of atRisk) {
+      const categoryIcon = decision.category === "architectural" ? "🏗️" :
+                           decision.category === "configuration" ? "⚙️" :
+                           decision.category === "requirement" ? "📋" : "🔒";
+      const priorityIcon = decision.priority === "critical" ? "🔴" :
+                           decision.priority === "high" ? "🟠" :
+                           decision.priority === "medium" ? "🟡" : "🟢";
+      outputChannel.appendLine(`  ${priorityIcon} ${categoryIcon} ${decision.description}`);
+      outputChannel.appendLine(`     └─ Turn ${decision.turnNumber}, ${decision.category}, ${decision.priority}`);
+    }
+
+    outputChannel.appendLine("");
+    outputChannel.appendLine("  📋 Copy this reminder to your next prompt:");
+    outputChannel.appendLine("");
+    outputChannel.appendLine("  ─────────────────────────────────────────────");
+    for (const line of reminder.split("\n")) {
+      outputChannel.appendLine(`  ${line}`);
+    }
+    outputChannel.appendLine("  ─────────────────────────────────────────────");
+  }
+
+  outputChannel.appendLine("");
+  outputChannel.show();
+
+  if (atRisk.length > 0) {
+    const action = await vscode.window.showWarningMessage(
+      `${atRisk.length} decisions may be at risk`,
+      "Copy Reminder",
+      "View Details"
+    );
+
+    if (action === "Copy Reminder") {
+      await vscode.env.clipboard.writeText(reminder);
+      vscode.window.showInformationMessage("Reminder copied to clipboard");
+    } else if (action === "View Details") {
+      outputChannel.show();
+    }
+  } else {
+    vscode.window.showInformationMessage("No decisions at risk of being forgotten");
+  }
+}
+
+/**
+ * Track Decision - Manually add an important decision
+ */
+async function trackDecisionCommand() {
+  try {
+    // Get decision description
+    const description = await vscode.window.showInputBox({
+      prompt: "What decision should be remembered?",
+      placeHolder: "e.g., JWT expiry set to 15 minutes",
+    });
+
+    if (!description) {
+      return;
+    }
+
+    // Get category
+    const categoryPick = await vscode.window.showQuickPick(
+      [
+        { label: "🏗️ Architectural", value: "architectural" as const, description: "Design patterns, structure" },
+        { label: "⚙️ Configuration", value: "configuration" as const, description: "Settings, values, limits" },
+        { label: "📋 Requirement", value: "requirement" as const, description: "Must-haves, constraints" },
+        { label: "🔒 Constraint", value: "constraint" as const, description: "Order, dependencies" },
+      ],
+      {
+        placeHolder: "Select category",
+      }
+    );
+
+    if (!categoryPick) {
+      return;
+    }
+
+    // Get priority
+    const priorityPick = await vscode.window.showQuickPick(
+      [
+        { label: "🔴 Critical", value: "critical" as DecisionPriority, description: "Must not forget" },
+        { label: "🟠 High", value: "high" as DecisionPriority, description: "Very important" },
+        { label: "🟡 Medium", value: "medium" as DecisionPriority, description: "Important" },
+        { label: "🟢 Low", value: "low" as DecisionPriority, description: "Nice to remember" },
+      ],
+      {
+        placeHolder: "Select priority",
+      }
+    );
+
+    if (!priorityPick) {
+      return;
+    }
+
+    // Track the decision
+    const result = trackDecision(description, categoryPick.value, priorityPick.value, "manual");
+
+    if (result.added) {
+      vscode.window.showInformationMessage(`Decision tracked: "${description}"`);
+      log(`Decision tracked: ${description} [${categoryPick.value}/${priorityPick.value}]`);
+    } else {
+      vscode.window.showInformationMessage(`Decision already tracked (updated priority)`);
+    }
+  } catch (error) {
+    logError("Track decision error:", error);
+    vscode.window.showErrorMessage(
+      "Failed to track decision: " + (error instanceof Error ? error.message : String(error))
+    );
+  }
 }
 
 // ============================================================================
