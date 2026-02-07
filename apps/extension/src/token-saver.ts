@@ -304,7 +304,7 @@ const RESERVED_WORDS = new Set([
 ]);
 
 // Performance limits
-const MAX_LINES_TO_PROCESS = 5000;
+const MAX_LINES_PER_CHUNK = 2500;
 const MAX_SIGNATURES = 100;
 const MAX_IMPORTS = 20;
 const MAX_TYPES = 30;
@@ -312,15 +312,127 @@ const MAX_TYPES = 30;
 /**
  * Extract function/method signatures from code
  * Uses regex-based extraction (fast, works without tree-sitter)
+ * For large files, processes in chunks to capture signatures throughout
  */
 function extractSignatures(code: string, language: string): string {
   const lines = code.split("\n");
 
-  // Performance: skip very large files
-  if (lines.length > MAX_LINES_TO_PROCESS) {
-    return `// File too large (${lines.length} lines), showing first ${MAX_LINES_TO_PROCESS} lines\n` +
-           extractSignatures(lines.slice(0, MAX_LINES_TO_PROCESS).join("\n"), language);
+  // For large files, process in chunks and merge results
+  if (lines.length > MAX_LINES_PER_CHUNK) {
+    return extractSignaturesInChunks(lines, language);
   }
+
+  return extractSignaturesFromLines(lines, language);
+}
+
+/**
+ * Process large files in chunks to capture signatures throughout
+ */
+function extractSignaturesInChunks(lines: string[], language: string): string {
+  const chunkSize = MAX_LINES_PER_CHUNK;
+  const numChunks = Math.ceil(lines.length / chunkSize);
+
+  // Collect results from all chunks
+  const allImports: string[] = [];
+  const allTypes: string[] = [];
+  const allSignatures: string[] = [];
+  const seenSignatures = new Set<string>(); // Dedupe
+
+  for (let chunkIndex = 0; chunkIndex < numChunks; chunkIndex++) {
+    // Early exit if we have enough
+    if (allSignatures.length >= MAX_SIGNATURES) break;
+
+    const start = chunkIndex * chunkSize;
+    const end = Math.min(start + chunkSize, lines.length);
+    const chunkLines = lines.slice(start, end);
+
+    // Add chunk marker for context
+    const chunkMarker = numChunks > 1
+      ? `// --- Chunk ${chunkIndex + 1}/${numChunks} (lines ${start + 1}-${end}) ---`
+      : "";
+
+    // Process this chunk
+    const result = extractSignaturesFromLines(chunkLines, language, {
+      maxImports: MAX_IMPORTS - allImports.length,
+      maxTypes: MAX_TYPES - allTypes.length,
+      maxSignatures: MAX_SIGNATURES - allSignatures.length,
+    });
+
+    // Parse and merge results
+    const resultLines = result.split("\n");
+    let section: "imports" | "types" | "signatures" = "imports";
+
+    for (const line of resultLines) {
+      if (!line.trim()) continue;
+
+      // Detect section changes
+      if (line.startsWith("interface ") || line.startsWith("export interface ") ||
+          line.startsWith("type ") || line.startsWith("export type ")) {
+        section = "types";
+      } else if (line.includes("function ") || line.includes("class ") ||
+                 line.includes("const ") || line.includes("async ") ||
+                 line.startsWith("  ") || line.includes("{ /* ... */ }")) {
+        section = "signatures";
+      }
+
+      // Add to appropriate collection (with deduplication)
+      if (section === "imports" && line.startsWith("import ")) {
+        if (allImports.length < MAX_IMPORTS && !allImports.includes(line)) {
+          allImports.push(line);
+        }
+      } else if (section === "types") {
+        if (allTypes.length < MAX_TYPES) {
+          allTypes.push(line);
+        }
+      } else if (section === "signatures") {
+        // Dedupe signatures by their core content
+        const sigKey = line.trim().replace(/\s+/g, " ");
+        if (!seenSignatures.has(sigKey) && allSignatures.length < MAX_SIGNATURES) {
+          seenSignatures.add(sigKey);
+          // Add chunk marker before first signature in each chunk (after first)
+          if (chunkIndex > 0 && allSignatures.length > 0 &&
+              !allSignatures[allSignatures.length - 1].startsWith("// ---")) {
+            allSignatures.push(chunkMarker);
+          }
+          allSignatures.push(line);
+        }
+      }
+    }
+  }
+
+  // Build final result
+  const parts: string[] = [];
+
+  if (lines.length > MAX_LINES_PER_CHUNK) {
+    parts.push(`// File: ${lines.length} lines, processed in ${numChunks} chunks`);
+  }
+
+  if (allImports.length > 0) {
+    parts.push(allImports.join("\n"));
+  }
+
+  if (allTypes.length > 0) {
+    parts.push("\n" + allTypes.join("\n"));
+  }
+
+  if (allSignatures.length > 0) {
+    parts.push("\n" + allSignatures.join("\n"));
+  }
+
+  return parts.join("\n").trim();
+}
+
+/**
+ * Core signature extraction logic for a set of lines
+ */
+function extractSignaturesFromLines(
+  lines: string[],
+  language: string,
+  limits?: { maxImports?: number; maxTypes?: number; maxSignatures?: number }
+): string {
+  const maxImports = limits?.maxImports ?? MAX_IMPORTS;
+  const maxTypes = limits?.maxTypes ?? MAX_TYPES;
+  const maxSignatures = limits?.maxSignatures ?? MAX_SIGNATURES;
 
   let inClass = false;
   let classIndent = 0;
@@ -336,7 +448,7 @@ function extractSignatures(code: string, language: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     // Performance: early exit if we have enough
-    if (signatures.length >= MAX_SIGNATURES) break;
+    if (signatures.length >= maxSignatures) break;
 
     const line = lines[i];
     const trimmed = line.trim();
