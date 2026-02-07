@@ -54,6 +54,26 @@
       {
         "command": "prune.checkCursorUsage",
         "title": "Prune: Check Cursor Usage"
+      },
+      {
+        "command": "prune.smartCopy",
+        "title": "Prune: Copy for AI (Optimized)"
+      },
+      {
+        "command": "prune.preflight",
+        "title": "Prune: Pre-flight Optimizer"
+      },
+      {
+        "command": "prune.sessionStats",
+        "title": "Prune: Session Memory Stats"
+      },
+      {
+        "command": "prune.resetSession",
+        "title": "Prune: Reset Session Memory"
+      },
+      {
+        "command": "prune.compactionCheck",
+        "title": "Prune: Compaction Recovery Check"
       }
     ],
     "configuration": {
@@ -74,28 +94,58 @@
     "menus": {
       "editor/context": [
         {
-          "command": "prune.analyzeFile",
+          "command": "prune.smartCopy",
           "group": "prune@1"
         },
         {
+          "command": "prune.preflight",
+          "group": "prune@2"
+        },
+        {
+          "command": "prune.analyzeFile",
+          "group": "prune@3"
+        },
+        {
           "command": "prune.analyzeSelection",
-          "group": "prune@2",
+          "group": "prune@4",
           "when": "editorHasSelection"
         },
         {
           "command": "prune.analyzeContext",
-          "group": "prune@3"
+          "group": "prune@5"
         },
         {
           "command": "prune.smartContext",
-          "group": "prune@4"
+          "group": "prune@6"
         },
         {
           "command": "prune.squeezeFile",
-          "group": "prune@5"
+          "group": "prune@7"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "prune.smartCopy",
+          "group": "prune@1",
+          "when": "resourceScheme == file"
         }
       ],
       "commandPalette": [
+        {
+          "command": "prune.smartCopy"
+        },
+        {
+          "command": "prune.preflight"
+        },
+        {
+          "command": "prune.sessionStats"
+        },
+        {
+          "command": "prune.resetSession"
+        },
+        {
+          "command": "prune.compactionCheck"
+        },
         {
           "command": "prune.analyzeFile"
         },
@@ -121,6 +171,18 @@
       ]
     },
     "keybindings": [
+      {
+        "command": "prune.smartCopy",
+        "key": "ctrl+alt+c",
+        "mac": "cmd+alt+c",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "prune.preflight",
+        "key": "ctrl+alt+p",
+        "mac": "cmd+alt+p",
+        "when": "editorTextFocus"
+      },
       {
         "command": "prune.analyzeContext",
         "key": "ctrl+alt+a",
