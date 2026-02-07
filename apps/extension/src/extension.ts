@@ -1133,6 +1133,10 @@ async function preflightCommand(context: vscode.ExtensionContext) {
   // Increment turn for session tracking
   incrementTurn();
 
+  // Store analysis result and workspace files for use after progress completes
+  let analysisResult: PreflightAnalysis | null = null;
+  let workspaceFilesCache: Array<{ path: string; content: string; tokens: number }> = [];
+
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
@@ -1172,10 +1176,14 @@ async function preflightCommand(context: vscode.ExtensionContext) {
           }
         }
 
+        // Cache for use after progress
+        workspaceFilesCache = workspaceFiles;
+
         // Analyze
         const analysis = analyzePreFlight(prompt, workspaceFiles, 3, activeFilePath);
+        analysisResult = analysis;
 
-        // Show results
+        // Show results in output channel
         outputChannel.appendLine("");
         outputChannel.appendLine("╔═══════════════════════════════════════════════════════════════╗");
         outputChannel.appendLine("║              ⚡ PRE-FLIGHT OPTIMIZER                          ║");
@@ -1227,28 +1235,6 @@ async function preflightCommand(context: vscode.ExtensionContext) {
 
         outputChannel.appendLine("");
         outputChannel.show();
-
-        // Show quick pick for action
-        const action = await vscode.window.showInformationMessage(
-          `Pre-flight: Save ${analysis.savings.percent.toFixed(0)}% (${formatTokens(analysis.savings.tokens)} tokens)`,
-          "Copy Optimized Context",
-          "View Details"
-        );
-
-        if (action === "Copy Optimized Context") {
-          // Generate optimized copy for recommended files
-          const filesToCopy = workspaceFiles
-            .filter(f => analysis.recommendedContext.files.includes(f.path))
-            .map(f => ({ path: f.path, content: f.content }));
-
-          const result = generateSmartCopy(filesToCopy, { signatureOnly: true });
-          await vscode.env.clipboard.writeText(result.optimizedCode);
-          vscode.window.showInformationMessage(
-            `Copied ${filesToCopy.length} files (${formatTokens(result.optimizedTokens)} tokens)`
-          );
-        } else if (action === "View Details") {
-          outputChannel.show();
-        }
       } catch (error) {
         logError("Pre-flight error:", error);
         vscode.window.showErrorMessage(
@@ -1257,6 +1243,31 @@ async function preflightCommand(context: vscode.ExtensionContext) {
       }
     }
   );
+
+  // Show notification AFTER progress completes (not inside the progress callback)
+  if (analysisResult) {
+    const analysis = analysisResult;
+    const action = await vscode.window.showInformationMessage(
+      `Pre-flight: Save ${analysis.savings.percent.toFixed(0)}% (${formatTokens(analysis.savings.tokens)} tokens)`,
+      "Copy Optimized Context",
+      "View Details"
+    );
+
+    if (action === "Copy Optimized Context") {
+      // Generate optimized copy for recommended files
+      const filesToCopy = workspaceFilesCache
+        .filter(f => analysis.recommendedContext.files.includes(f.path))
+        .map(f => ({ path: f.path, content: f.content }));
+
+      const result = generateSmartCopy(filesToCopy, { signatureOnly: true });
+      await vscode.env.clipboard.writeText(result.optimizedCode);
+      vscode.window.showInformationMessage(
+        `Copied ${filesToCopy.length} files (${formatTokens(result.optimizedTokens)} tokens)`
+      );
+    } else if (action === "View Details") {
+      outputChannel.show();
+    }
+  }
 }
 
 /**
