@@ -540,8 +540,8 @@ function extractSignaturesFromLines(
       matched = true;
     }
 
-    // Regular function declaration
-    if (!matched && /^(export\s+)?(async\s+)?function\s+\w+/.test(trimmed)) {
+    // Regular function declaration (including generators: function* and async function*)
+    if (!matched && /^(export\s+)?(async\s+)?function\*?\s+\w+/.test(trimmed)) {
       let sig = trimmed;
       if (!sig.includes("{")) {
         // Multi-line signature
@@ -557,7 +557,8 @@ function extractSignaturesFromLines(
     }
 
     // Arrow function: const foo = (...) => or const foo = async (...) =>
-    if (!matched && /^(export\s+)?const\s+\w+\s*=\s*(async\s*)?\(/.test(trimmed)) {
+    // Also handles React components: const Component = () => <JSX> or const Component: FC = () =>
+    if (!matched && /^(export\s+)?(const|let)\s+\w+\s*(:\s*\w+(\<[^>]+\>)?\s*)?=\s*(async\s*)?\(/.test(trimmed)) {
       let sig = trimmed;
       // Handle multi-line
       if (!sig.includes("=>")) {
@@ -568,7 +569,8 @@ function extractSignaturesFromLines(
         }
         if (j < lines.length && lines[j]) sig += " " + lines[j].trim().split("=>")[0] + "=>";
       }
-      sig = sig.replace(/=>\s*\{.*$/, "=>").replace(/=>\s*[^{].*$/, "=>").trim();
+      // Remove body: handles {}, <JSX>, or expression
+      sig = sig.replace(/=>\s*\{.*$/, "=>").replace(/=>\s*\(.*$/, "=>").replace(/=>\s*<.*$/, "=>").replace(/=>\s*[^{(<].*$/, "=>").trim();
       signatures.push(`${sig} { /* ... */ }`);
       matched = true;
     }
