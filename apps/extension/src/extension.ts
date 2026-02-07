@@ -23,7 +23,7 @@ let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let squeezerInstance: SemanticSqueezer | null = null;
 let wasmDir: string | null = null;
-let sqliteWarningShown = false; // Only show sqlite warning once
+// sql.js WASM is bundled, no external sqlite3 CLI needed
 let intelligenceEngine: PruneIntelligenceEngine | null = null;
 
 // ============================================================================
@@ -437,17 +437,16 @@ async function checkCursorUsage() {
         const status = await getCursorStatus();
 
         if (!status.available) {
-          // Only show sqlite warning once to avoid spamming the output
-          const isSqliteError = status.error?.includes("sqlite3");
-          if (isSqliteError && sqliteWarningShown) {
-            return; // Skip duplicate sqlite warnings
-          }
-          if (isSqliteError) {
-            sqliteWarningShown = true;
-            log("Note: SQLite CLI not installed - Cursor usage tracking disabled (optional feature)");
+          // Show user-friendly error message
+          const errorMsg = status.error || "Not available";
+
+          // Don't spam for "Cursor not installed" - this is expected for non-Cursor users
+          if (errorMsg.includes("not installed") || errorMsg.includes("not found")) {
+            log("Cursor not detected: " + errorMsg);
+            vscode.window.showInformationMessage("Cursor is not installed or not logged in.");
           } else {
-            vscode.window.showWarningMessage("Cursor Usage: " + (status.error || "Not available"));
-            logError("Cursor usage check failed:", status.error);
+            vscode.window.showWarningMessage("Cursor Usage: " + errorMsg);
+            logError("Cursor usage check failed:", errorMsg);
           }
           return;
         }

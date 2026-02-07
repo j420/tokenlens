@@ -1,7 +1,7 @@
 {
   "name": "@prune/state-scraper",
   "version": "0.1.0",
-  "description": "Read Cursor's local state for zero-key usage tracking (uses sqlite3 CLI)",
+  "description": "Read Cursor's local state for zero-key usage tracking (uses sql.js WASM)",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -11,11 +11,13 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@prune/shared": "0.1.0"
+    "@prune/shared": "0.1.0",
+    "sql.js": "^1.10.3"
   },
   "devDependencies": {
-    "typescript": "^5.3.3",
     "@types/node": "^20.10.0",
+    "@types/sql.js": "^1.4.9",
+    "typescript": "^5.3.3",
     "vitest": "^1.2.0"
   }
 }

@@ -2,24 +2,34 @@
  * @prune/state-scraper
  * Read Cursor's local state for zero-key usage tracking
  *
- * Uses sqlite3 CLI via child_process - no WASM, no native bindings.
- * This approach avoids extension activation issues entirely.
+ * Uses sql.js (SQLite compiled to WebAssembly) - no native bindings, works everywhere.
+ * This approach works in VS Code extensions without any external dependencies.
  *
  * Flow:
- * 1. Copy state.vscdb to temp file (avoids locking issues)
- * 2. Run sqlite3 CLI to extract session token
- * 3. Call Cursor API with token to get usage stats
- * 4. Clean up temp file
+ * 1. Read state.vscdb as binary buffer
+ * 2. Load into sql.js in-memory database
+ * 3. Query for session token
+ * 4. Call Cursor API with token to get usage stats
  */
 
 import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
-import { exec } from "child_process";
-import { promisify } from "util";
+import initSqlJs, { type Database } from "sql.js";
 import { type CursorUsage } from "@prune/shared";
 
-const execAsync = promisify(exec);
+// Cache the SQL.js instance
+let sqlPromise: Promise<Awaited<ReturnType<typeof initSqlJs>>> | null = null;
+
+/**
+ * Initialize sql.js (cached)
+ */
+async function getSql(): Promise<Awaited<ReturnType<typeof initSqlJs>>> {
+  if (!sqlPromise) {
+    sqlPromise = initSqlJs();
+  }
+  return sqlPromise;
+}
 
 // ============================================================================
 // Path Detection
@@ -110,71 +120,45 @@ export function getVSCodeStatePath(): string | null {
 }
 
 // ============================================================================
-// SQLite CLI Operations
+// SQL.js Operations
 // ============================================================================
 
 /**
- * Check if sqlite3 CLI is available
+ * Open a SQLite database using sql.js
  */
-export async function isSqliteAvailable(): Promise<boolean> {
-  try {
-    await execAsync("sqlite3 --version");
-    return true;
-  } catch {
-    return false;
-  }
+async function openDatabase(dbPath: string): Promise<Database> {
+  const SQL = await getSql();
+  const buffer = fs.readFileSync(dbPath);
+  return new SQL.Database(buffer);
 }
 
 /**
- * Copy database to temp file to avoid locking issues
- */
-function copyToTemp(dbPath: string): string {
-  const tempDir = os.tmpdir();
-  const tempFile = path.join(tempDir, `cursor_state_${Date.now()}.db`);
-  fs.copyFileSync(dbPath, tempFile);
-  return tempFile;
-}
-
-/**
- * Clean up temp file
- */
-function cleanupTemp(tempFile: string): void {
-  try {
-    if (fs.existsSync(tempFile)) {
-      fs.unlinkSync(tempFile);
-    }
-  } catch {
-    // Ignore cleanup errors
-  }
-}
-
-/**
- * Read a value from the state database using sqlite3 CLI
+ * Read a value from the state database using sql.js
  */
 export async function readStateValue(dbPath: string, key: string): Promise<string | null> {
-  let tempFile: string | null = null;
+  let db: Database | null = null;
 
   try {
-    // Copy to temp to avoid locking the IDE's database
-    tempFile = copyToTemp(dbPath);
+    db = await openDatabase(dbPath);
 
-    // Escape the key for SQL
-    const escapedKey = key.replace(/'/g, "''");
+    // Query for the value
+    const stmt = db.prepare("SELECT value FROM ItemTable WHERE key = ?");
+    stmt.bind([key]);
 
-    // Run sqlite3 query
-    const { stdout } = await execAsync(
-      `sqlite3 "${tempFile}" "SELECT value FROM ItemTable WHERE key = '${escapedKey}';"`,
-      { timeout: 5000 }
-    );
+    if (stmt.step()) {
+      const row = stmt.get();
+      stmt.free();
+      return row[0] as string | null;
+    }
 
-    const value = stdout.trim();
-    return value || null;
+    stmt.free();
+    return null;
   } catch (error) {
     console.error("Failed to read state value:", error);
     return null;
   } finally {
-    if (tempFile) {
-      cleanupTemp(tempFile);
+    if (db) {
+      db.close();
     }
   }
 }
@@ -183,24 +167,41 @@ export async function readStateValue(dbPath: string, key: string): Promise<strin
  * Read all state keys (for debugging/exploration)
  */
 export async function readAllStateKeys(dbPath: string): Promise<string[]> {
-  let tempFile: string | null = null;
+  let db: Database | null = null;
 
   try {
-    tempFile = copyToTemp(dbPath);
+    db = await openDatabase(dbPath);
+    const keys: string[] = [];
 
-    const { stdout } = await execAsync(
-      `sqlite3 "${tempFile}" "SELECT key FROM ItemTable;"`,
-      { timeout: 5000 }
-    );
+    const stmt = db.prepare("SELECT key FROM ItemTable");
+    while (stmt.step()) {
+      const row = stmt.get();
+      if (row[0]) {
+        keys.push(row[0] as string);
+      }
+    }
+    stmt.free();
 
-    return stdout.trim().split("\n").filter(Boolean);
+    return keys;
   } catch (error) {
     console.error("Failed to read state keys:", error);
     return [];
   } finally {
-    if (tempFile) {
-      cleanupTemp(tempFile);
+    if (db) {
+      db.close();
     }
+  }
+}
+
+/**
+ * Check if sql.js is available (always true since it's bundled)
+ */
+export async function isSqliteAvailable(): Promise<boolean> {
+  try {
+    await getSql();
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -429,12 +430,12 @@ export interface CursorStatus {
  * This is the main function for the VS Code extension to use
  */
 export async function getCursorStatus(): Promise<CursorStatus> {
-  // Check if sqlite3 is available
+  // Check if sql.js is available (should always be true)
   const sqliteOk = await isSqliteAvailable();
   if (!sqliteOk) {
     return {
       available: false,
-      error: "sqlite3 CLI not found. Install SQLite to enable Cursor usage tracking.",
+      error: "sql.js WASM failed to initialize.",
     };
   }
 
