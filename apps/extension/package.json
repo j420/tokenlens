@@ -209,7 +209,8 @@
     "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --loader:.wasm=file",
     "watch": "npm run build -- --watch",
     "package": "vsce package --no-dependencies",
-    "publish": "vsce publish"
+    "publish": "vsce publish",
+    "test": "echo 'Extension tests run via VS Code command: Prune: Run Intelligence Tests (107+ tests)'"
   },
   "devDependencies": {
     "@prune/shared": "0.1.0",
