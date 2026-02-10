@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",
-    "start": "next start",
+    "build:deps": "cd ../.. && npx turbo build --filter=@prune/dashboard^...",
+    "start": "next start -p 3001",
     "lint": "next lint"
   },
   "dependencies": {

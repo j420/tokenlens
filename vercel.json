@@ -1,6 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "npm run build --workspace=@prune/dashboard",
-  "outputDirectory": ".next",
-  "framework": "nextjs"
+  "git": {
+    "deploymentEnabled": {
+      "main": true
+    }
+  }
 }
