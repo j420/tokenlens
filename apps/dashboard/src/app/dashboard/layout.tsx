@@ -67,8 +67,11 @@ export default function DashboardLayout({
       <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-8">
-            <Link href="/dashboard" className="text-xl font-bold text-gray-900">
-              Prune
+            <Link href="/" className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded bg-gray-900 text-white text-sm font-bold">
+                TL
+              </div>
+              <span className="font-semibold text-gray-900">TokenLens</span>
             </Link>
             <nav className="flex gap-1">
               <Link
@@ -92,17 +95,6 @@ export default function DashboardLayout({
                 )}
               >
                 Sessions
-              </Link>
-              <Link
-                href="/dashboard/team"
-                className={cn(
-                  "rounded-lg px-4 py-2 text-sm font-medium transition",
-                  pathname === "/dashboard/team"
-                    ? "bg-gray-100 text-gray-900"
-                    : "text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                )}
-              >
-                Team
               </Link>
             </nav>
           </div>
