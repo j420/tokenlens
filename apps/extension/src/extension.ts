@@ -188,6 +188,57 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.trackDecision", trackDecisionCommand)
   );
 
+  // Register URI handler for dashboard -> IDE interaction
+  // Handles URIs like: vscode://delimit.prune/run/smartCopy
+  context.subscriptions.push(
+    vscode.window.registerUriHandler({
+      handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+        log(`URI handler invoked: ${uri.toString()}`);
+
+        const pathParts = uri.path.split("/").filter(Boolean);
+        if (pathParts[0] !== "run" || !pathParts[1]) {
+          log(`Invalid URI path: ${uri.path}`);
+          vscode.window.showErrorMessage(`Prune: Invalid command URI`);
+          return;
+        }
+
+        const featureId = pathParts[1];
+        const commandMap: Record<string, string> = {
+          smartCopy: "prune.smartCopy",
+          preflight: "prune.preflight",
+          sessionStats: "prune.sessionStats",
+          compactionCheck: "prune.compactionCheck",
+          trackDecision: "prune.trackDecision",
+          resetSession: "prune.resetSession",
+          analyzeFile: "prune.analyzeFile",
+          analyzeSelection: "prune.analyzeSelection",
+          analyzeContext: "prune.analyzeContext",
+          smartContext: "prune.smartContext",
+          squeezeFile: "prune.squeezeFile",
+          checkCursorUsage: "prune.checkCursorUsage",
+          runTests: "prune.runTests",
+        };
+
+        const command = commandMap[featureId];
+        if (!command) {
+          log(`Unknown feature ID: ${featureId}`);
+          vscode.window.showErrorMessage(`Prune: Unknown command "${featureId}"`);
+          return;
+        }
+
+        log(`Executing command via URI: ${command}`);
+        vscode.commands.executeCommand(command).then(
+          () => log(`Command ${command} executed successfully`),
+          (err) => {
+            logError(`Command ${command} failed:`, err);
+            vscode.window.showErrorMessage(`Prune: Command failed - ${err.message || err}`);
+          }
+        );
+      },
+    })
+  );
+  log("URI handler registered for dashboard integration");
+
   // Update status bar on selection change
   context.subscriptions.push(
     vscode.window.onDidChangeTextEditorSelection(updateStatusBar)

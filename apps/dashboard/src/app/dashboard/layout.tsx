@@ -81,6 +81,17 @@ export default function DashboardLayout({
                 Overview
               </Link>
               <Link
+                href="/dashboard/features"
+                className={cn(
+                  "text-sm font-medium transition",
+                  pathname === "/dashboard/features"
+                    ? "text-gray-900"
+                    : "text-gray-500 hover:text-gray-700"
+                )}
+              >
+                Features
+              </Link>
+              <Link
                 href="/dashboard/settings"
                 className={cn(
                   "text-sm font-medium transition",
