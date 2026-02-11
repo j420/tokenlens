@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
 
 interface Feature {
   id: string;
@@ -188,8 +189,9 @@ function KeybindingBadge({ keybinding }: { keybinding: Feature["keybinding"] }) 
   );
 }
 
-function FeatureCard({ feature }: { feature: Feature }) {
-  const vscodeUri = `vscode://delimit.prune/run/${feature.id}`;
+function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
+  const uri = getIDEUri(ide, feature.id);
+  const ideName = ide === "cursor" ? "Cursor" : ide === "vscode" ? "Claude Code" : "Codex";
 
   return (
     <div className="group rounded-lg border border-gray-200 bg-white p-6 transition hover:border-gray-300 hover:shadow-sm">
@@ -210,7 +212,7 @@ function FeatureCard({ feature }: { feature: Feature }) {
         <KeybindingBadge keybinding={feature.keybinding} />
 
         <a
-          href={vscodeUri}
+          href={uri}
           className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200 group-hover:bg-prune-green group-hover:text-white"
         >
           <svg
@@ -226,7 +228,7 @@ function FeatureCard({ feature }: { feature: Feature }) {
               d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
             />
           </svg>
-          Open in VS Code
+          Open in {ideName}
         </a>
       </div>
     </div>
@@ -235,6 +237,7 @@ function FeatureCard({ feature }: { feature: Feature }) {
 
 export default function FeaturesPage() {
   const [filter, setFilter] = useState<CategoryFilter>("all");
+  const [preferredIDE] = usePreferredIDE();
 
   const filteredFeatures =
     filter === "all"
@@ -248,13 +251,15 @@ export default function FeaturesPage() {
     utility: FEATURES.filter((f) => f.category === "utility").length,
   };
 
+  const ideName = preferredIDE === "cursor" ? "Cursor" : preferredIDE === "vscode" ? "Claude Code" : "Codex";
+
   return (
     <div className="space-y-8">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Extension Features</h1>
         <p className="mt-1 text-gray-600">
-          All Prune commands available in VS Code. Click &quot;Open in VS Code&quot; to run
+          All Prune commands available in your editor. Click &quot;Open in {ideName}&quot; to run
           any command directly from here.
         </p>
       </div>
@@ -299,9 +304,8 @@ export default function FeaturesPage() {
           <div>
             <h3 className="font-medium text-blue-900">Dashboard → IDE Integration</h3>
             <p className="mt-1 text-sm text-blue-800">
-              Clicking &quot;Open in VS Code&quot; will launch VS Code and execute the
-              command. Make sure the Prune extension is installed and VS Code is
-              your default handler for <code className="rounded bg-blue-100 px-1">vscode://</code> URLs.
+              Clicking &quot;Open in {ideName}&quot; will launch your editor and execute the
+              command. Make sure the Prune extension is installed. You can change your preferred IDE using the selector in the header.
             </p>
           </div>
         </div>
@@ -310,7 +314,7 @@ export default function FeaturesPage() {
       {/* Feature grid */}
       <div className="grid gap-4 md:grid-cols-2">
         {filteredFeatures.map((feature) => (
-          <FeatureCard key={feature.id} feature={feature} />
+          <FeatureCard key={feature.id} feature={feature} ide={preferredIDE} />
         ))}
       </div>
 
@@ -321,25 +325,25 @@ export default function FeaturesPage() {
         </h2>
         <div className="flex flex-wrap gap-3">
           <a
-            href="vscode://delimit.prune/run/smartCopy"
+            href={getIDEUri(preferredIDE, "smartCopy")}
             className="inline-flex items-center gap-2 rounded-lg bg-prune-green px-4 py-2 font-medium text-white transition hover:bg-emerald-600"
           >
             📋 Smart Copy
           </a>
           <a
-            href="vscode://delimit.prune/run/preflight"
+            href={getIDEUri(preferredIDE, "preflight")}
             className="inline-flex items-center gap-2 rounded-lg bg-prune-green px-4 py-2 font-medium text-white transition hover:bg-emerald-600"
           >
             ⚡ Pre-flight
           </a>
           <a
-            href="vscode://delimit.prune/run/compactionCheck"
+            href={getIDEUri(preferredIDE, "compactionCheck")}
             className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 font-medium text-white transition hover:bg-amber-600"
           >
             🔄 Check Compaction
           </a>
           <a
-            href="vscode://delimit.prune/run/sessionStats"
+            href={getIDEUri(preferredIDE, "sessionStats")}
             className="inline-flex items-center gap-2 rounded-lg bg-gray-600 px-4 py-2 font-medium text-white transition hover:bg-gray-700"
           >
             📊 Session Stats
