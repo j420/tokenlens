@@ -99,9 +99,9 @@ function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        impact === "high" && "bg-emerald-100 text-emerald-700",
-        impact === "medium" && "bg-blue-100 text-blue-700",
-        impact === "low" && "bg-gray-100 text-gray-600"
+        impact === "high" && "bg-status-green/10 text-status-green",
+        impact === "medium" && "bg-status-amber/10 text-status-amber",
+        impact === "low" && "bg-card-hover text-secondary"
       )}
     >
       {impact === "high" && "High Impact"}
@@ -118,25 +118,25 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   return (
     <a
       href={uri}
-      className="group block rounded-lg border border-gray-200 bg-white p-5 transition hover:border-gray-300 hover:shadow-md"
+      className="group block rounded-lg border border-border bg-card p-5 transition hover:border-secondary hover:shadow-md"
     >
       <div className="mb-3 flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition group-hover:bg-prune-green/10 group-hover:text-prune-green">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-card-hover text-secondary transition group-hover:bg-prune-green/10 group-hover:text-prune-green">
           {feature.icon}
         </div>
         <ImpactBadge impact={feature.impact} />
       </div>
-      <h3 className="font-semibold text-gray-900">{feature.title}</h3>
-      <p className="mt-2 text-sm text-gray-600">{feature.description}</p>
+      <h3 className="font-semibold text-foreground">{feature.title}</h3>
+      <p className="mt-2 text-sm text-secondary">{feature.description}</p>
       <div className="mt-4 flex items-center justify-between">
         {feature.keybinding ? (
-          <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600">
+          <kbd className="rounded border border-border bg-background px-2 py-1 font-mono text-xs text-secondary">
             {feature.keybinding.mac}
           </kbd>
         ) : (
           <span />
         )}
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition group-hover:text-prune-green">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-secondary transition group-hover:text-prune-green">
           Open in {ideName}
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -180,40 +180,40 @@ export default function Home() {
   const ideName = preferredIDE === "cursor" ? "Cursor" : preferredIDE === "vscode" ? "Claude Code" : "Codex";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white">
+      <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-gray-900 text-white text-sm font-bold">
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-foreground text-background text-sm font-bold">
               TL
             </div>
-            <span className="font-semibold text-gray-900">TokenLens</span>
+            <span className="font-semibold text-foreground">TokenLens</span>
           </div>
           <nav className="flex items-center gap-6 text-sm">
-            <a href="#features" className="text-gray-500 hover:text-gray-900 transition">Features</a>
-            <a href="#setup" className="text-gray-500 hover:text-gray-900 transition">Setup</a>
+            <a href="#features" className="text-secondary hover:text-foreground transition">Features</a>
+            <a href="#setup" className="text-secondary hover:text-foreground transition">Setup</a>
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
-            <a href="/dashboard" className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition">Dashboard</a>
+            <a href="/dashboard" className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-secondary transition">Dashboard</a>
           </nav>
         </div>
       </header>
 
       {/* Hero + Signup Section */}
-      <section className="border-b border-gray-200 py-16">
+      <section className="border-b border-border py-16">
         <div className="mx-auto max-w-5xl px-4">
           <div className="grid gap-12 md:grid-cols-2 md:items-center">
             {/* Left: Value Prop */}
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-gray-900 md:text-4xl">
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                 Token intelligence for AI coding assistants
               </h1>
-              <p className="mt-4 text-lg text-gray-600">
+              <p className="mt-4 text-lg text-secondary">
                 See what you spend, where the waste is, and what you're about to spend.
                 Zero API keys. All processing happens locally.
               </p>
 
-              <div className="mt-8 space-y-3 text-sm text-gray-600">
+              <div className="mt-8 space-y-3 text-sm text-secondary">
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>Real-time token counting in your status bar</span>
@@ -234,16 +234,16 @@ export default function Home() {
             </div>
 
             {/* Right: Signup Form */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="rounded-lg border border-border bg-card p-6">
               {!showOnboard ? (
                 <>
-                  <h2 className="text-xl font-semibold text-gray-900">Get started</h2>
-                  <p className="mt-2 text-sm text-gray-600">
+                  <h2 className="text-xl font-semibold text-foreground">Get started</h2>
+                  <p className="mt-2 text-sm text-secondary">
                     Enter your email to begin setup. We'll guide you through installation.
                   </p>
 
                   <form onSubmit={handleSignup} className="mt-6">
-                    <label className="block text-sm font-medium text-gray-900">
+                    <label className="block text-sm font-medium text-foreground">
                       Email
                     </label>
                     <input
@@ -251,7 +251,7 @@ export default function Home() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@company.com"
-                      className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-400 focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
+                      className="mt-2 w-full rounded border border-border bg-card px-3 py-2 text-foreground placeholder:text-muted focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
                       required
                     />
 
@@ -264,7 +264,7 @@ export default function Home() {
                     </button>
                   </form>
 
-                  <p className="mt-4 text-center text-xs text-gray-500">
+                  <p className="mt-4 text-center text-xs text-muted">
                     No credit card required. Free forever for individuals.
                   </p>
                 </>
@@ -279,7 +279,7 @@ export default function Home() {
                           className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition ${
                             onboardStep >= s
                               ? "bg-prune-green text-white"
-                              : "border border-gray-300 text-gray-500"
+                              : "border border-border text-muted"
                           }`}
                         >
                           {onboardStep > s ? (
@@ -291,7 +291,7 @@ export default function Home() {
                           )}
                         </div>
                         {s < 3 && (
-                          <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-gray-200"}`} />
+                          <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-border"}`} />
                         )}
                       </div>
                     ))}
@@ -299,43 +299,43 @@ export default function Home() {
 
                   {onboardStep === 1 && (
                     <>
-                      <h2 className="text-lg font-semibold text-gray-900">Install the extension</h2>
-                      <p className="mt-2 text-sm text-gray-600">
+                      <h2 className="text-lg font-semibold text-foreground">Install the extension</h2>
+                      <p className="mt-2 text-sm text-secondary">
                         TokenLens runs locally in your editor. No cloud required.
                       </p>
 
                       <div className="mt-5 space-y-4 text-sm">
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">1</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">1</span>
                           <div>
-                            <p className="text-gray-900">Open Extensions</p>
-                            <p className="text-gray-600">
-                              <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
+                            <p className="text-foreground">Open Extensions</p>
+                            <p className="text-secondary">
+                              <kbd className="rounded border border-border bg-card-hover px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">2</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">2</span>
                           <div>
-                            <p className="text-gray-900">Search "Prune"</p>
+                            <p className="text-foreground">Search "Prune"</p>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">3</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">3</span>
                           <div>
-                            <p className="text-gray-900">Click Install</p>
+                            <p className="text-foreground">Click Install</p>
                           </div>
                         </div>
                       </div>
 
                       {/* CLI alternative */}
-                      <div className="mt-5 border-t border-gray-200 pt-5">
-                        <p className="text-xs text-gray-500">Or via terminal:</p>
-                        <div className="mt-2 flex items-center gap-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                          <code className="flex-1 text-xs text-gray-900">code --install-extension prune-0.1.0.vsix</code>
+                      <div className="mt-5 border-t border-border pt-5">
+                        <p className="text-xs text-muted">Or via terminal:</p>
+                        <div className="mt-2 flex items-center gap-2 rounded border border-border bg-card-hover px-3 py-2">
+                          <code className="flex-1 text-xs text-foreground">code --install-extension prune-0.1.0.vsix</code>
                           <button
                             onClick={() => handleCopy("code --install-extension prune-0.1.0.vsix")}
-                            className="shrink-0 rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 hover:text-gray-900"
+                            className="shrink-0 rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-border hover:text-foreground"
                           >
                             {copied ? "Copied" : "Copy"}
                           </button>
@@ -353,28 +353,28 @@ export default function Home() {
 
                   {onboardStep === 2 && (
                     <>
-                      <h2 className="text-lg font-semibold text-gray-900">Try a command</h2>
-                      <p className="mt-2 text-sm text-gray-600">
+                      <h2 className="text-lg font-semibold text-foreground">Try a command</h2>
+                      <p className="mt-2 text-sm text-secondary">
                         Open any code file and test these features.
                       </p>
 
                       <div className="mt-5 space-y-3">
-                        <div className="rounded border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-900">Smart Copy</p>
-                          <p className="mt-1 text-xs text-gray-600">
+                        <div className="rounded border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">Smart Copy</p>
+                          <p className="mt-1 text-xs text-secondary">
                             Right-click → "Copy for AI (Optimized)"
                           </p>
                         </div>
-                        <div className="rounded border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-900">Status Bar</p>
-                          <p className="mt-1 text-xs text-gray-600">
+                        <div className="rounded border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">Status Bar</p>
+                          <p className="mt-1 text-xs text-secondary">
                             Check bottom-left for real-time token count
                           </p>
                         </div>
-                        <div className="rounded border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-900">Pre-flight</p>
-                          <p className="mt-1 text-xs text-gray-600">
-                            <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
+                        <div className="rounded border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">Pre-flight</p>
+                          <p className="mt-1 text-xs text-secondary">
+                            <kbd className="rounded border border-border bg-card-hover px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
                           </p>
                         </div>
                       </div>
@@ -382,7 +382,7 @@ export default function Home() {
                       <div className="mt-5 flex gap-3">
                         <button
                           onClick={() => setOnboardStep(1)}
-                          className="flex-1 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                          className="flex-1 rounded border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card-hover"
                         >
                           Back
                         </button>
@@ -406,14 +406,14 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <h2 className="mt-4 text-center text-lg font-semibold text-gray-900">You're all set</h2>
-                      <p className="mt-2 text-center text-sm text-gray-600">
+                      <h2 className="mt-4 text-center text-lg font-semibold text-foreground">You're all set</h2>
+                      <p className="mt-2 text-center text-sm text-secondary">
                         TokenLens is now running locally in your editor.
                       </p>
 
-                      <div className="mt-5 rounded border border-gray-200 bg-gray-100 p-4">
-                        <p className="text-xs font-medium text-gray-900">What happens next:</p>
-                        <ul className="mt-2 space-y-1.5 text-xs text-gray-600">
+                      <div className="mt-5 rounded border border-border bg-card-hover p-4">
+                        <p className="text-xs font-medium text-foreground">What happens next:</p>
+                        <ul className="mt-2 space-y-1.5 text-xs text-secondary">
                           <li className="flex items-start gap-2">
                             <span className="mt-0.5 text-prune-green">●</span>
                             <span>Token count shows in status bar</span>
@@ -449,16 +449,16 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="border-b border-gray-200 py-16">
+      <section id="features" className="border-b border-border py-16">
         <div className="mx-auto max-w-5xl px-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">Features</h2>
-              <p className="mt-2 text-gray-600">
+              <h2 className="text-2xl font-semibold text-foreground">Features</h2>
+              <p className="mt-2 text-secondary">
                 Reduce token consumption while maintaining context quality. Click any feature to open it in {ideName}.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-muted">
               <span>Select IDE:</span>
               <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
             </div>
@@ -475,56 +475,56 @@ export default function Home() {
       {/* Setup Section */}
       <section id="setup" className="py-16">
         <div className="mx-auto max-w-5xl px-4">
-          <h2 className="text-2xl font-semibold text-gray-900">Quick Setup</h2>
-          <p className="mt-2 text-gray-600">
+          <h2 className="text-2xl font-semibold text-foreground">Quick Setup</h2>
+          <p className="mt-2 text-secondary">
             Get running in under a minute.
           </p>
 
-          <div className="mt-8 rounded-lg border border-gray-200 bg-white p-6">
+          <div className="mt-8 rounded-lg border border-border bg-card p-6">
             <div className="space-y-6">
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   1
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Install dependencies</p>
-                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                    <code className="text-sm text-gray-900">npm install</code>
+                  <p className="font-medium text-foreground">Install dependencies</p>
+                  <div className="mt-2 rounded border border-border bg-card-hover px-3 py-2">
+                    <code className="text-sm text-foreground">npm install</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   2
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Build all packages</p>
-                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                    <code className="text-sm text-gray-900">npm run build</code>
+                  <p className="font-medium text-foreground">Build all packages</p>
+                  <div className="mt-2 rounded border border-border bg-card-hover px-3 py-2">
+                    <code className="text-sm text-foreground">npm run build</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   3
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Package the extension</p>
-                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                    <code className="text-sm text-gray-900">cd apps/extension && npm run package</code>
+                  <p className="font-medium text-foreground">Package the extension</p>
+                  <div className="mt-2 rounded border border-border bg-card-hover px-3 py-2">
+                    <code className="text-sm text-foreground">cd apps/extension && npm run package</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   4
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Install the VSIX</p>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className="font-medium text-foreground">Install the VSIX</p>
+                  <p className="mt-1 text-sm text-secondary">
                     Extensions → ... → Install from VSIX → select prune-0.1.0.vsix
                   </p>
                 </div>
@@ -535,16 +535,16 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white py-8">
+      <footer className="border-t border-border bg-card py-8">
         <div className="mx-auto max-w-5xl px-4">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-gray-900 text-white text-xs font-bold">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-foreground text-background text-xs font-bold">
                 TL
               </div>
-              <span className="text-sm text-gray-600">TokenLens</span>
+              <span className="text-sm text-secondary">TokenLens</span>
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted">
               Token intelligence for AI coding assistants
             </p>
           </div>

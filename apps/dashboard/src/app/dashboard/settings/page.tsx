@@ -115,17 +115,17 @@ function Toggle({
       <div
         className={cn(
           "relative h-6 w-11 rounded-full transition-colors",
-          enabled ? "bg-prune-green" : "bg-gray-300"
+          enabled ? "bg-prune-green" : "bg-border"
         )}
       >
         <div
           className={cn(
-            "absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform",
+            "absolute top-0.5 h-5 w-5 rounded-full bg-background shadow transition-transform",
             enabled ? "translate-x-5" : "translate-x-0.5"
           )}
         />
       </div>
-      <span className="text-sm text-gray-700">{label}</span>
+      <span className="text-sm text-foreground">{label}</span>
     </button>
   );
 }
@@ -209,34 +209,34 @@ export default function SettingsPage() {
   if (loading || !settings) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+      <h1 className="text-2xl font-bold text-foreground">Settings</h1>
 
       {/* Connected Tools */}
-      <section className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Connected Tools</h2>
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Connected Tools</h2>
         <div className="space-y-4">
           {settings.tools.map((tool) => (
             <div
               key={tool.id}
-              className="flex items-start justify-between border-b border-gray-100 pb-4 last:border-0 last:pb-0"
+              className="flex items-start justify-between border-b border-border pb-4 last:border-0 last:pb-0"
             >
               <div className="flex items-start gap-3">
                 <span className="mt-0.5 text-xl">
                   {tool.connected ? "✅" : "❌"}
                 </span>
                 <div>
-                  <p className="font-medium text-gray-900">{tool.name}</p>
-                  <p className="text-sm text-gray-500">
+                  <p className="font-medium text-foreground">{tool.name}</p>
+                  <p className="text-sm text-muted">
                     {tool.connected ? (
                       <>
-                        <code className="rounded bg-gray-100 px-1 py-0.5 text-xs">
+                        <code className="rounded bg-card-hover px-1 py-0.5 text-xs">
                           {tool.envVar}
                         </code>{" "}
                         configured
@@ -246,7 +246,7 @@ export default function SettingsPage() {
                     )}
                   </p>
                   {tool.connected && tool.lastSeen && (
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-muted">
                       Last seen: {formatRelativeTime(tool.lastSeen)}
                     </p>
                   )}
@@ -263,21 +263,21 @@ export default function SettingsPage() {
       </section>
 
       {/* API Key */}
-      <section className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">API Key</h2>
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">API Key</h2>
         <div className="flex items-center gap-4">
-          <code className="flex-1 rounded bg-gray-100 px-3 py-2 font-mono text-sm">
+          <code className="flex-1 rounded bg-card-hover px-3 py-2 font-mono text-sm">
             {showFullApiKey ? settings.apiKey.fullKey : `${settings.apiKey.prefix}...`}
           </code>
           <button
             onClick={() => setShowFullApiKey(!showFullApiKey)}
-            className="text-sm text-gray-500 hover:text-gray-700"
+            className="text-sm text-muted hover:text-foreground"
           >
             {showFullApiKey ? "Hide" : "Show"}
           </button>
           <button
             onClick={handleCopyApiKey}
-            className="rounded-md bg-gray-100 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-200"
+            className="rounded-md bg-card-hover px-3 py-2 text-sm font-medium text-foreground hover:bg-border"
           >
             {apiKeyCopied ? "Copied!" : "Copy"}
           </button>
@@ -291,14 +291,14 @@ export default function SettingsPage() {
       </section>
 
       {/* Alert Preferences */}
-      <section className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Alert Preferences</h2>
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Alert Preferences</h2>
         <div className="space-y-6">
           {/* Prune suggestions */}
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-medium text-gray-700">Prune suggestions</p>
-              <p className="text-sm text-gray-500">
+              <p className="font-medium text-foreground">Prune suggestions</p>
+              <p className="text-sm text-muted">
                 Get suggestions for context trimming
               </p>
             </div>
@@ -310,7 +310,7 @@ export default function SettingsPage() {
               />
               {settings.alertPreferences.pruneSuggestions && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Confidence:</span>
+                  <span className="text-sm text-muted">Confidence:</span>
                   <input
                     type="number"
                     min={50}
@@ -322,19 +322,19 @@ export default function SettingsPage() {
                         parseInt(e.target.value, 10)
                       )
                     }
-                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+                    className="w-16 rounded border border-border px-2 py-1 text-sm"
                   />
-                  <span className="text-sm text-gray-500">%</span>
+                  <span className="text-sm text-muted">%</span>
                 </div>
               )}
             </div>
           </div>
 
           {/* Burn alerts */}
-          <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between border-t border-border pt-4">
             <div>
-              <p className="font-medium text-gray-700">Burn alerts</p>
-              <p className="text-sm text-gray-500">
+              <p className="font-medium text-foreground">Burn alerts</p>
+              <p className="text-sm text-muted">
                 Get notified when waste patterns are detected
               </p>
             </div>
@@ -346,7 +346,7 @@ export default function SettingsPage() {
               />
               {settings.alertPreferences.burnAlerts && (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-500">Cooldown:</span>
+                  <span className="text-sm text-muted">Cooldown:</span>
                   <input
                     type="number"
                     min={1}
@@ -358,19 +358,19 @@ export default function SettingsPage() {
                         parseInt(e.target.value, 10)
                       )
                     }
-                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm"
+                    className="w-16 rounded border border-border px-2 py-1 text-sm"
                   />
-                  <span className="text-sm text-gray-500">min</span>
+                  <span className="text-sm text-muted">min</span>
                 </div>
               )}
             </div>
           </div>
 
           {/* Compaction notices */}
-          <div className="flex items-center justify-between border-t border-gray-100 pt-4">
+          <div className="flex items-center justify-between border-t border-border pt-4">
             <div>
-              <p className="font-medium text-gray-700">Compaction notices</p>
-              <p className="text-sm text-gray-500">
+              <p className="font-medium text-foreground">Compaction notices</p>
+              <p className="text-sm text-muted">
                 Get notified when context is compacted
               </p>
             </div>
@@ -382,14 +382,14 @@ export default function SettingsPage() {
           </div>
 
           {/* Cost meter thresholds */}
-          <div className="border-t border-gray-100 pt-4">
-            <p className="mb-3 font-medium text-gray-700">Cost meter color thresholds</p>
+          <div className="border-t border-border pt-4">
+            <p className="mb-3 font-medium text-foreground">Cost meter color thresholds</p>
             <div className="flex flex-wrap gap-6">
               <div className="flex items-center gap-2">
                 <span className="inline-block h-3 w-3 rounded bg-prune-green" />
-                <span className="text-sm text-gray-500">→</span>
+                <span className="text-sm text-muted">→</span>
                 <span className="inline-block h-3 w-3 rounded bg-amber-500" />
-                <span className="text-sm text-gray-500">at $</span>
+                <span className="text-sm text-muted">at $</span>
                 <input
                   type="number"
                   min={0}
@@ -401,14 +401,14 @@ export default function SettingsPage() {
                       parseFloat(e.target.value)
                     )
                   }
-                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                  className="w-20 rounded border border-border px-2 py-1 text-sm"
                 />
               </div>
               <div className="flex items-center gap-2">
                 <span className="inline-block h-3 w-3 rounded bg-amber-500" />
-                <span className="text-sm text-gray-500">→</span>
+                <span className="text-sm text-muted">→</span>
                 <span className="inline-block h-3 w-3 rounded bg-prune-red" />
-                <span className="text-sm text-gray-500">at $</span>
+                <span className="text-sm text-muted">at $</span>
                 <input
                   type="number"
                   min={0}
@@ -420,7 +420,7 @@ export default function SettingsPage() {
                       parseFloat(e.target.value)
                     )
                   }
-                  className="w-20 rounded border border-gray-300 px-2 py-1 text-sm"
+                  className="w-20 rounded border border-border px-2 py-1 text-sm"
                 />
               </div>
             </div>
@@ -429,22 +429,22 @@ export default function SettingsPage() {
       </section>
 
       {/* Auto-Trim Rules */}
-      <section className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Auto-Trim Rules</h2>
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Auto-Trim Rules</h2>
         {settings.autoTrimRules.length > 0 ? (
           <div className="space-y-3">
             {settings.autoTrimRules.map((rule) => (
               <div
                 key={rule.id}
-                className="flex items-center justify-between rounded-lg bg-gray-50 p-3"
+                className="flex items-center justify-between rounded-lg bg-card-hover p-3"
               >
                 <div>
-                  <span className="font-medium text-gray-900">{rule.repo}:</span>{" "}
-                  <span className="text-gray-600">{rule.description}</span>
+                  <span className="font-medium text-foreground">{rule.repo}:</span>{" "}
+                  <span className="text-secondary">{rule.description}</span>
                 </div>
                 <button
                   onClick={() => handleDeleteRule(rule.id)}
-                  className="text-sm text-red-600 hover:text-red-800"
+                  className="text-sm text-status-red hover:text-status-red/80"
                 >
                   Delete
                 </button>
@@ -452,7 +452,7 @@ export default function SettingsPage() {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-500">No auto-trim rules configured</p>
+          <p className="text-sm text-muted">No auto-trim rules configured</p>
         )}
         <button className="mt-4 text-sm font-medium text-prune-green hover:underline">
           [+ Add rule manually]
@@ -460,11 +460,11 @@ export default function SettingsPage() {
       </section>
 
       {/* Plan */}
-      <section className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Plan</h2>
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Plan</h2>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-700">
+            <p className="text-foreground">
               Current: <span className="font-semibold">{settings.plan.name}</span>
             </p>
           </div>
@@ -474,7 +474,7 @@ export default function SettingsPage() {
             </button>
           )}
           {settings.plan.tier === "pro" && (
-            <button className="rounded-lg bg-gray-800 px-4 py-2 font-medium text-white hover:bg-gray-700">
+            <button className="rounded-lg bg-foreground px-4 py-2 font-medium text-background hover:bg-secondary">
               Upgrade to Team — $29/seat/month
             </button>
           )}

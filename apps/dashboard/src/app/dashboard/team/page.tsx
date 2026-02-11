@@ -210,18 +210,18 @@ function StatCard({
   bar?: { value: number; color: string };
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-sm font-medium text-gray-500">{title}</h3>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+    <div className="rounded-lg border border-border bg-card p-6">
+      <h3 className="text-sm font-medium text-muted">{title}</h3>
+      <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
       {bar && (
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-border">
           <div
             className={cn("h-full rounded-full", bar.color)}
             style={{ width: `${Math.min(bar.value * 100, 100)}%` }}
           />
         </div>
       )}
-      {subtitle && <p className="mt-2 text-sm text-gray-500">{subtitle}</p>}
+      {subtitle && <p className="mt-2 text-sm text-muted">{subtitle}</p>}
     </div>
   );
 }
@@ -237,7 +237,7 @@ function ToolMixBadge({ toolMix }: { toolMix: Record<string, number> }) {
   };
 
   return (
-    <span className="text-sm text-gray-600">
+    <span className="text-sm text-secondary">
       {toolLabels[primary[0]] || primary[0]} {primary[1]}%
     </span>
   );
@@ -261,17 +261,17 @@ function BudgetRuleRow({ rule, onEdit }: { rule: BudgetRule; onEdit: () => void 
     rule.currentUsage >= 0.9
       ? "text-prune-red"
       : rule.currentUsage >= 0.7
-      ? "text-amber-600"
-      : "text-gray-600";
+      ? "text-status-amber"
+      : "text-secondary";
 
   return (
-    <div className="flex items-center justify-between border-b border-gray-100 py-3 last:border-b-0">
+    <div className="flex items-center justify-between border-b border-border py-3 last:border-b-0">
       <div>
-        <span className="font-medium text-gray-900">{typeLabels[rule.type]}:</span>
-        <span className="ml-2 text-gray-600">
+        <span className="font-medium text-foreground">{typeLabels[rule.type]}:</span>
+        <span className="ml-2 text-secondary">
           {formatCurrency(rule.limitUsd)}/{rule.type.includes("daily") ? "day" : "mo"}
         </span>
-        <span className="ml-2 text-xs text-gray-400">({actionLabels[rule.action]})</span>
+        <span className="ml-2 text-xs text-muted">({actionLabels[rule.action]})</span>
       </div>
       <div className="flex items-center gap-3">
         <span className={cn("text-sm", usageColor)}>{usagePercent}% used</span>
@@ -339,7 +339,7 @@ export default function TeamDashboardPage() {
   if (loading || !data) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
       </div>
     );
   }
@@ -360,24 +360,24 @@ export default function TeamDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Team Dashboard</h1>
-          <p className="text-gray-600">Team: {data.team.name}</p>
+          <h1 className="text-2xl font-bold text-foreground">Team Dashboard</h1>
+          <p className="text-secondary">Team: {data.team.name}</p>
         </div>
       </div>
 
       {/* Big number - Monthly spend with budget */}
-      <div className="rounded-lg border border-gray-200 bg-white p-8 text-center">
-        <h2 className="text-sm font-medium text-gray-500">This Month&apos;s Spend</h2>
-        <p className="mt-2 text-5xl font-bold text-gray-900">
+      <div className="rounded-lg border border-border bg-card p-8 text-center">
+        <h2 className="text-sm font-medium text-muted">This Month&apos;s Spend</h2>
+        <p className="mt-2 text-5xl font-bold text-foreground">
           {formatCurrency(data.monthlySpend)}
         </p>
         {data.monthlyBudget && (
           <>
-            <p className="mt-2 text-sm text-gray-500">
+            <p className="mt-2 text-sm text-muted">
               Budget: {formatCurrency(data.monthlyBudget)} · {budgetPercent}% used ·{" "}
               {data.daysRemaining} days remaining
             </p>
-            <div className="mx-auto mt-4 h-3 w-full max-w-md overflow-hidden rounded-full bg-gray-200">
+            <div className="mx-auto mt-4 h-3 w-full max-w-md overflow-hidden rounded-full bg-border">
               <div
                 className={cn("h-full rounded-full transition-all", budgetBarColor)}
                 style={{ width: `${Math.min(budgetPercent, 100)}%` }}
@@ -410,51 +410,51 @@ export default function TeamDashboardPage() {
       {/* Prediction Accuracy */}
       {data.predictionAccuracy && data.predictionAccuracy.length > 0 && (
         <div>
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">Predicted vs Actual</h3>
-          <div className="rounded-lg border border-gray-200 bg-white p-6">
-            <p className="mb-4 text-sm text-gray-600">
+          <h3 className="mb-4 text-lg font-semibold text-foreground">Predicted vs Actual</h3>
+          <div className="rounded-lg border border-border bg-card p-6">
+            <p className="mb-4 text-sm text-secondary">
               Comparing cost predictions to actual costs over recent weeks. Higher accuracy means better budget planning.
             </p>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-border">
                 <thead>
                   <tr>
-                    <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-2 text-left text-xs font-medium uppercase tracking-wider text-muted">
                       Week
                     </th>
-                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted">
                       Predictions
                     </th>
-                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted">
                       Avg Predicted
                     </th>
-                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted">
                       Avg Actual
                     </th>
-                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted">
                       MAE
                     </th>
-                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                    <th className="px-4 py-2 text-right text-xs font-medium uppercase tracking-wider text-muted">
                       Accuracy
                     </th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-border">
                   {data.predictionAccuracy.map((week, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="whitespace-nowrap px-4 py-3 text-sm text-gray-900">
+                    <tr key={idx} className="hover:bg-card-hover">
+                      <td className="whitespace-nowrap px-4 py-3 text-sm text-foreground">
                         {week.week}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-secondary">
                         {week.totalPredictions}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-secondary">
                         {formatCurrency(week.avgPredictedCost)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-secondary">
                         {formatCurrency(week.avgActualCost)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-gray-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-sm text-secondary">
                         {formatCurrency(week.meanAbsoluteError)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right">
@@ -464,7 +464,7 @@ export default function TeamDashboardPage() {
                             week.accuracyPercent >= 80
                               ? "text-prune-green"
                               : week.accuracyPercent >= 60
-                              ? "text-amber-600"
+                              ? "text-status-amber"
                               : "text-prune-red"
                           )}
                         >
@@ -476,7 +476,7 @@ export default function TeamDashboardPage() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-4 text-xs text-gray-500">
+            <p className="mt-4 text-xs text-muted">
               MAE = Mean Absolute Error (average difference between predicted and actual cost per request)
             </p>
           </div>
@@ -485,47 +485,47 @@ export default function TeamDashboardPage() {
 
       {/* By Developer table */}
       <div>
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">By Developer</h3>
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">By Developer</h3>
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-card-hover">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted">
                   Developer
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   Spend
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   ROI
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   Waste
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   Sessions
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   Tool Mix
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className="divide-y divide-border bg-card">
               {data.developers.map((dev) => (
-                <tr key={dev.id} className="hover:bg-gray-50">
+                <tr key={dev.id} className="hover:bg-card-hover">
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">{dev.name}</div>
+                    <div className="font-medium text-foreground">{dev.name}</div>
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900">
+                  <td className="whitespace-nowrap px-6 py-4 text-right text-foreground">
                     {formatCurrency(dev.spend)}
                   </td>
                   <td className={cn("whitespace-nowrap px-6 py-4 text-right font-medium", getRoiColor(dev.roi))}>
                     {Math.round(dev.roi * 100)}%
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right text-gray-600">
+                  <td className="whitespace-nowrap px-6 py-4 text-right text-secondary">
                     {formatCurrency(dev.waste)}
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right text-gray-600">
+                  <td className="whitespace-nowrap px-6 py-4 text-right text-secondary">
                     {dev.sessions}
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right">
@@ -540,32 +540,32 @@ export default function TeamDashboardPage() {
 
       {/* By Project table */}
       <div>
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">By Project</h3>
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">By Project</h3>
+        <div className="overflow-x-auto rounded-lg border border-border bg-card">
+          <table className="min-w-full divide-y divide-border">
+            <thead className="bg-card-hover">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted">
                   Project
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   Spend
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-muted">
                   ROI
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
+                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-muted">
                   Top Waste Pattern
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-200 bg-white">
+            <tbody className="divide-y divide-border bg-card">
               {data.projects.map((project) => (
-                <tr key={project.id} className="hover:bg-gray-50">
+                <tr key={project.id} className="hover:bg-card-hover">
                   <td className="whitespace-nowrap px-6 py-4">
-                    <div className="font-medium text-gray-900">{project.name}</div>
+                    <div className="font-medium text-foreground">{project.name}</div>
                   </td>
-                  <td className="whitespace-nowrap px-6 py-4 text-right text-gray-900">
+                  <td className="whitespace-nowrap px-6 py-4 text-right text-foreground">
                     {formatCurrency(project.spend)}
                   </td>
                   <td className={cn("whitespace-nowrap px-6 py-4 text-right font-medium", getRoiColor(project.roi))}>
@@ -573,7 +573,7 @@ export default function TeamDashboardPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4">
                     {project.topWastePattern ? (
-                      <span className="text-amber-600">
+                      <span className="text-status-amber">
                         {project.topWastePattern} ({formatCurrency(project.topWasteAmount)})
                       </span>
                     ) : (
@@ -589,8 +589,8 @@ export default function TeamDashboardPage() {
 
       {/* Budget Rules */}
       <div>
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Budget Rules</h3>
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">Budget Rules</h3>
+        <div className="rounded-lg border border-border bg-card p-6">
           {data.budgetRules.length > 0 ? (
             <div className="space-y-1">
               {data.budgetRules.map((rule) => (
@@ -605,7 +605,7 @@ export default function TeamDashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-gray-500">No budget rules configured.</p>
+            <p className="text-muted">No budget rules configured.</p>
           )}
           <button className="mt-4 text-sm font-medium text-prune-green hover:text-prune-green/80">
             + Add budget rule
@@ -615,12 +615,12 @@ export default function TeamDashboardPage() {
 
       {/* Alert Channel Configuration */}
       <div>
-        <h3 className="mb-4 text-lg font-semibold text-gray-900">Alert Channel</h3>
-        <div className="rounded-lg border border-gray-200 bg-white p-6">
-          <label className="block text-sm font-medium text-gray-700">
+        <h3 className="mb-4 text-lg font-semibold text-foreground">Alert Channel</h3>
+        <div className="rounded-lg border border-border bg-card p-6">
+          <label className="block text-sm font-medium text-foreground">
             Slack Webhook URL
           </label>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-muted">
             Budget alerts will be sent to this Slack channel.
           </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
@@ -629,7 +629,7 @@ export default function TeamDashboardPage() {
               value={slackWebhook}
               onChange={(e) => setSlackWebhook(e.target.value)}
               placeholder="https://hooks.slack.com/services/..."
-              className="flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
+              className="flex-1 rounded-md border border-border px-3 py-2 text-sm focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
             />
             <button
               onClick={handleSaveSlack}
@@ -639,8 +639,8 @@ export default function TeamDashboardPage() {
               {savingSlack ? "Saving..." : "Configure"}
             </button>
           </div>
-          <div className="mt-4 space-y-2 text-sm text-gray-600">
-            <p className="font-medium text-gray-700">Alert rules:</p>
+          <div className="mt-4 space-y-2 text-sm text-secondary">
+            <p className="font-medium text-foreground">Alert rules:</p>
             <ul className="list-inside list-disc space-y-1">
               <li>Notify when any developer exceeds $20 in one session</li>
               <li>Notify when project hits 80% of monthly budget</li>
@@ -654,13 +654,13 @@ export default function TeamDashboardPage() {
       <div className="flex flex-col gap-4 sm:flex-row">
         <button
           onClick={() => handleExport("pdf")}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-card-hover"
         >
           Export Monthly Report (PDF)
         </button>
         <button
           onClick={() => handleExport("csv")}
-          className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          className="rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-card-hover"
         >
           Export Raw Data (CSV)
         </button>

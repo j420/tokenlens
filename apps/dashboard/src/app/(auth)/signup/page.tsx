@@ -34,12 +34,12 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <div className="w-full max-w-md">
-        <div className="rounded-lg bg-white p-8 shadow-lg">
+        <div className="rounded-lg bg-card p-8 shadow-lg">
           <div className="mb-8 text-center">
-            <h1 className="text-2xl font-bold text-gray-900">Get started with Prune</h1>
-            <p className="mt-2 text-gray-600">
+            <h1 className="text-2xl font-bold text-foreground">Get started with Prune</h1>
+            <p className="mt-2 text-secondary">
               See what you spend on AI coding tools
             </p>
           </div>
@@ -53,7 +53,7 @@ export default function SignupPage() {
           <button
             onClick={handleGitHubSignup}
             disabled={isLoading}
-            className="flex w-full items-center justify-center gap-3 rounded-lg bg-gray-900 px-4 py-3 font-medium text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex w-full items-center justify-center gap-3 rounded-lg bg-foreground px-4 py-3 font-medium text-background transition hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-50"
           >
             <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
               <path
@@ -66,14 +66,14 @@ export default function SignupPage() {
           </button>
 
           <div className="my-6 flex items-center">
-            <div className="flex-1 border-t border-gray-300" />
-            <span className="px-4 text-sm text-gray-500">or</span>
-            <div className="flex-1 border-t border-gray-300" />
+            <div className="flex-1 border-t border-border" />
+            <span className="px-4 text-sm text-muted">or</span>
+            <div className="flex-1 border-t border-border" />
           </div>
 
           <form onSubmit={handleEmailSignup}>
             <div className="mb-4">
-              <label htmlFor="email" className="mb-1 block text-sm font-medium text-gray-700">
+              <label htmlFor="email" className="mb-1 block text-sm font-medium text-foreground">
                 Email address
               </label>
               <input
@@ -82,7 +82,7 @@ export default function SignupPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 text-gray-900 placeholder-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500"
+                className="w-full rounded-lg border border-border px-4 py-3 text-foreground placeholder-muted focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary"
                 disabled={isLoading}
               />
             </div>
@@ -95,7 +95,7 @@ export default function SignupPage() {
             </button>
           </form>
 
-          <p className="mt-6 text-center text-sm text-gray-500">
+          <p className="mt-6 text-center text-sm text-muted">
             Already have an account?{" "}
             <a href="/login" className="font-medium text-prune-green hover:underline">
               Log in
@@ -103,13 +103,13 @@ export default function SignupPage() {
           </p>
         </div>
 
-        <p className="mt-6 text-center text-xs text-gray-400">
+        <p className="mt-6 text-center text-xs text-muted">
           By signing up, you agree to our{" "}
-          <a href="/terms" className="underline hover:text-gray-600">
+          <a href="/terms" className="underline hover:text-foreground">
             Terms of Service
           </a>{" "}
           and{" "}
-          <a href="/privacy" className="underline hover:text-gray-600">
+          <a href="/privacy" className="underline hover:text-foreground">
             Privacy Policy
           </a>
         </p>

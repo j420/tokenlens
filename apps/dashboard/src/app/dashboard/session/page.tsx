@@ -40,26 +40,26 @@ function SessionCard({ session }: { session: Session }) {
   return (
     <Link
       href={`/dashboard/session/${session.id}`}
-      className="block rounded-lg border border-gray-200 bg-white p-4 transition hover:border-gray-300 hover:shadow-sm"
+      className="block rounded-lg border border-border bg-card p-4 transition hover:border-secondary hover:shadow-sm"
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <h3 className="font-semibold text-gray-900">
+          <h3 className="font-semibold text-foreground">
             {session.taskDescription || "Untitled Session"}
           </h3>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-muted">
             {toolName} · {session.model} · {startTime}
           </p>
         </div>
         <div className="text-right">
-          <p className="font-semibold text-gray-900">{formatCurrency(session.cost)}</p>
+          <p className="font-semibold text-foreground">{formatCurrency(session.cost)}</p>
           <p className={cn("text-sm font-medium", getRoiColor(session.roi))}>
             {Math.round(session.roi * 100)}% ROI
           </p>
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-4 text-sm text-gray-600">
+      <div className="mt-3 flex items-center gap-4 text-sm text-secondary">
         <span>{formatTokens(session.tokens)} tokens</span>
         <span>{session.turns} turns</span>
         {session.compactions > 0 && (
@@ -101,7 +101,7 @@ export default function SessionsListPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
       </div>
     );
   }
@@ -110,14 +110,14 @@ export default function SessionsListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Sessions</h1>
-          <p className="mt-1 text-gray-500">
+          <h1 className="text-2xl font-bold text-foreground">Sessions</h1>
+          <p className="mt-1 text-muted">
             {total} session{total !== 1 ? "s" : ""} recorded
           </p>
         </div>
         <Link
           href="/dashboard"
-          className="text-sm text-gray-500 transition hover:text-gray-700"
+          className="text-sm text-muted transition hover:text-foreground"
         >
           ← Back to Dashboard
         </Link>
@@ -130,9 +130,9 @@ export default function SessionsListPage() {
           ))}
         </div>
       ) : (
-        <div className="rounded-lg border border-dashed border-gray-300 p-12 text-center">
-          <p className="text-gray-500">No sessions recorded yet</p>
-          <p className="mt-2 text-sm text-gray-400">
+        <div className="rounded-lg border border-dashed border-border p-12 text-center">
+          <p className="text-muted">No sessions recorded yet</p>
+          <p className="mt-2 text-sm text-secondary">
             Sessions will appear here as you use AI coding tools
           </p>
         </div>
