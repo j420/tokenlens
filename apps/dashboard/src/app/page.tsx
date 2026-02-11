@@ -2,8 +2,150 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { IDESelector, usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
+import { cn } from "@/lib/utils";
 
 type OnboardStep = 1 | 2 | 3;
+
+interface Feature {
+  id: string;
+  command: string;
+  title: string;
+  description: string;
+  keybinding?: { windows: string; mac: string };
+  impact: "high" | "medium" | "low";
+  icon: React.ReactNode;
+}
+
+const FEATURES: Feature[] = [
+  {
+    id: "smartCopy",
+    command: "prune.smartCopy",
+    title: "Smart Copy",
+    description: "Copy files as signatures instead of full code. 70-90% token reduction.",
+    keybinding: { windows: "Ctrl+Alt+C", mac: "Cmd+Alt+C" },
+    impact: "high",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+      </svg>
+    ),
+  },
+  {
+    id: "preflight",
+    command: "prune.preflight",
+    title: "Pre-flight Optimizer",
+    description: "See what you're about to spend vs what you could spend with optimization.",
+    keybinding: { windows: "Ctrl+Alt+P", mac: "Cmd+Alt+P" },
+    impact: "high",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+    ),
+  },
+  {
+    id: "sessionStats",
+    command: "prune.sessionStats",
+    title: "Session Memory",
+    description: "Tracks files already in context. Prevents re-reading the same files.",
+    impact: "medium",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+  },
+  {
+    id: "compactionCheck",
+    command: "prune.compactionCheck",
+    title: "Compaction Recovery",
+    description: "Tracks architectural decisions. Shows what may be forgotten on context compaction.",
+    impact: "high",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+      </svg>
+    ),
+  },
+  {
+    id: "squeezeFile",
+    command: "prune.squeezeFile",
+    title: "Code Squeezer",
+    description: "Tree-sitter powered compression. Three tiers: lossless, structural, telegraphic.",
+    impact: "medium",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+      </svg>
+    ),
+  },
+  {
+    id: "analyzeContext",
+    command: "prune.analyzeContext",
+    title: "100% Local",
+    description: "No API keys required. No cloud. Your code never leaves your machine.",
+    impact: "low",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+      </svg>
+    ),
+  },
+];
+
+function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+        impact === "high" && "bg-emerald-100 text-emerald-700",
+        impact === "medium" && "bg-blue-100 text-blue-700",
+        impact === "low" && "bg-gray-100 text-gray-600"
+      )}
+    >
+      {impact === "high" && "High Impact"}
+      {impact === "medium" && "Medium"}
+      {impact === "low" && "Privacy"}
+    </span>
+  );
+}
+
+function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
+  const uri = getIDEUri(ide, feature.id);
+  const ideName = ide === "cursor" ? "Cursor" : ide === "vscode" ? "Claude Code" : "Codex";
+
+  return (
+    <a
+      href={uri}
+      className="group block rounded-lg border border-gray-200 bg-white p-5 transition hover:border-gray-300 hover:shadow-md"
+    >
+      <div className="mb-3 flex items-start justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition group-hover:bg-prune-green/10 group-hover:text-prune-green">
+          {feature.icon}
+        </div>
+        <ImpactBadge impact={feature.impact} />
+      </div>
+      <h3 className="font-semibold text-gray-900">{feature.title}</h3>
+      <p className="mt-2 text-sm text-gray-600">{feature.description}</p>
+      <div className="mt-4 flex items-center justify-between">
+        {feature.keybinding ? (
+          <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600">
+            {feature.keybinding.mac}
+          </kbd>
+        ) : (
+          <span />
+        )}
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition group-hover:text-prune-green">
+          Open in {ideName}
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+        </span>
+      </div>
+    </a>
+  );
+}
 
 export default function Home() {
   const router = useRouter();
@@ -12,6 +154,7 @@ export default function Home() {
   const [showOnboard, setShowOnboard] = useState(false);
   const [onboardStep, setOnboardStep] = useState<OnboardStep>(1);
   const [copied, setCopied] = useState(false);
+  const [preferredIDE, setPreferredIDE] = usePreferredIDE();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,70 +177,73 @@ export default function Home() {
     router.push("/dashboard");
   };
 
+  const ideName = preferredIDE === "cursor" ? "Cursor" : preferredIDE === "vscode" ? "Claude Code" : "Codex";
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <header className="border-b border-border">
+      <header className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-foreground text-background text-sm font-bold">
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-gray-900 text-white text-sm font-bold">
               TL
             </div>
-            <span className="font-semibold text-foreground">TokenLens</span>
+            <span className="font-semibold text-gray-900">TokenLens</span>
           </div>
           <nav className="flex items-center gap-6 text-sm">
-            <a href="#features" className="text-secondary hover:text-foreground transition">Features</a>
-            <a href="#setup" className="text-secondary hover:text-foreground transition">Setup</a>
-            <a href="/dashboard" className="text-secondary hover:text-foreground transition">Dashboard</a>
+            <a href="#features" className="text-gray-500 hover:text-gray-900 transition">Features</a>
+            <a href="#setup" className="text-gray-500 hover:text-gray-900 transition">Setup</a>
+            <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
+            <a href="/dashboard" className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition">Dashboard</a>
           </nav>
         </div>
       </header>
 
       {/* Hero + Signup Section */}
-      <section className="border-b border-border py-16">
+      <section className="border-b border-gray-200 py-16">
         <div className="mx-auto max-w-5xl px-4">
           <div className="grid gap-12 md:grid-cols-2 md:items-center">
             {/* Left: Value Prop */}
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
+              <h1 className="text-3xl font-semibold tracking-tight text-gray-900 md:text-4xl">
                 Token intelligence for AI coding assistants
               </h1>
-              <p className="mt-4 text-lg text-secondary">
+              <p className="mt-4 text-lg text-gray-600">
                 See what you spend, where the waste is, and what you're about to spend.
                 Zero API keys. All processing happens locally.
               </p>
 
-              <div className="mt-8 space-y-3 text-sm text-secondary">
+              <div className="mt-8 space-y-3 text-sm text-gray-600">
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-foreground"></span>
+                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>Real-time token counting in your status bar</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-foreground"></span>
+                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>70-90% token reduction with Smart Copy</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-foreground"></span>
+                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>Pre-flight optimizer shows spend before you send</span>
                 </div>
                 <div className="flex items-start gap-3">
-                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-foreground"></span>
+                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>Works with Cursor, Claude Code, OpenAI Codex</span>
                 </div>
               </div>
             </div>
 
             {/* Right: Signup Form */}
-            <div className="rounded-lg border border-border bg-card p-6">
+            <div className="rounded-lg border border-gray-200 bg-white p-6">
               {!showOnboard ? (
                 <>
-                  <h2 className="text-xl font-semibold text-foreground">Get started</h2>
-                  <p className="mt-2 text-sm text-secondary">
+                  <h2 className="text-xl font-semibold text-gray-900">Get started</h2>
+                  <p className="mt-2 text-sm text-gray-600">
                     Enter your email to begin setup. We'll guide you through installation.
                   </p>
 
                   <form onSubmit={handleSignup} className="mt-6">
-                    <label className="block text-sm font-medium text-foreground">
+                    <label className="block text-sm font-medium text-gray-900">
                       Email
                     </label>
                     <input
@@ -105,20 +251,20 @@ export default function Home() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@company.com"
-                      className="mt-2 w-full rounded border border-border bg-background px-3 py-2 text-foreground placeholder:text-muted focus:border-foreground focus:outline-none focus:ring-1 focus:ring-foreground"
+                      className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-400 focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
                       required
                     />
 
                     <button
                       type="submit"
                       disabled={signupState === "loading"}
-                      className="mt-4 w-full rounded bg-foreground px-4 py-2.5 text-sm font-medium text-background transition hover:opacity-90 disabled:opacity-50"
+                      className="mt-4 w-full rounded bg-prune-green px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
                     >
                       {signupState === "loading" ? "Starting..." : "Start Setup"}
                     </button>
                   </form>
 
-                  <p className="mt-4 text-center text-xs text-muted">
+                  <p className="mt-4 text-center text-xs text-gray-500">
                     No credit card required. Free forever for individuals.
                   </p>
                 </>
@@ -132,8 +278,8 @@ export default function Home() {
                         <div
                           className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition ${
                             onboardStep >= s
-                              ? "bg-foreground text-background"
-                              : "border border-border text-muted"
+                              ? "bg-prune-green text-white"
+                              : "border border-gray-300 text-gray-500"
                           }`}
                         >
                           {onboardStep > s ? (
@@ -145,7 +291,7 @@ export default function Home() {
                           )}
                         </div>
                         {s < 3 && (
-                          <div className={`h-px w-8 ${onboardStep > s ? "bg-foreground" : "bg-border"}`} />
+                          <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-gray-200"}`} />
                         )}
                       </div>
                     ))}
@@ -153,43 +299,43 @@ export default function Home() {
 
                   {onboardStep === 1 && (
                     <>
-                      <h2 className="text-lg font-semibold text-foreground">Install the extension</h2>
-                      <p className="mt-2 text-sm text-secondary">
+                      <h2 className="text-lg font-semibold text-gray-900">Install the extension</h2>
+                      <p className="mt-2 text-sm text-gray-600">
                         TokenLens runs locally in your editor. No cloud required.
                       </p>
 
                       <div className="mt-5 space-y-4 text-sm">
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">1</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">1</span>
                           <div>
-                            <p className="text-foreground">Open Extensions</p>
-                            <p className="text-secondary">
-                              <kbd className="rounded border border-border bg-code-bg px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
+                            <p className="text-gray-900">Open Extensions</p>
+                            <p className="text-gray-600">
+                              <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">2</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">2</span>
                           <div>
-                            <p className="text-foreground">Search "Prune"</p>
+                            <p className="text-gray-900">Search "Prune"</p>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">3</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">3</span>
                           <div>
-                            <p className="text-foreground">Click Install</p>
+                            <p className="text-gray-900">Click Install</p>
                           </div>
                         </div>
                       </div>
 
                       {/* CLI alternative */}
-                      <div className="mt-5 border-t border-border pt-5">
-                        <p className="text-xs text-muted">Or via terminal:</p>
-                        <div className="mt-2 flex items-center gap-2 rounded border border-border bg-code-bg px-3 py-2">
-                          <code className="flex-1 text-xs text-foreground">code --install-extension prune-0.1.0.vsix</code>
+                      <div className="mt-5 border-t border-gray-200 pt-5">
+                        <p className="text-xs text-gray-500">Or via terminal:</p>
+                        <div className="mt-2 flex items-center gap-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
+                          <code className="flex-1 text-xs text-gray-900">code --install-extension prune-0.1.0.vsix</code>
                           <button
                             onClick={() => handleCopy("code --install-extension prune-0.1.0.vsix")}
-                            className="shrink-0 rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-card-hover hover:text-foreground"
+                            className="shrink-0 rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 hover:text-gray-900"
                           >
                             {copied ? "Copied" : "Copy"}
                           </button>
@@ -198,7 +344,7 @@ export default function Home() {
 
                       <button
                         onClick={() => setOnboardStep(2)}
-                        className="mt-5 w-full rounded bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
+                        className="mt-5 w-full rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
                       >
                         I've installed it
                       </button>
@@ -207,28 +353,28 @@ export default function Home() {
 
                   {onboardStep === 2 && (
                     <>
-                      <h2 className="text-lg font-semibold text-foreground">Try a command</h2>
-                      <p className="mt-2 text-sm text-secondary">
+                      <h2 className="text-lg font-semibold text-gray-900">Try a command</h2>
+                      <p className="mt-2 text-sm text-gray-600">
                         Open any code file and test these features.
                       </p>
 
                       <div className="mt-5 space-y-3">
-                        <div className="rounded border border-border p-3">
-                          <p className="text-sm font-medium text-foreground">Smart Copy</p>
-                          <p className="mt-1 text-xs text-secondary">
+                        <div className="rounded border border-gray-200 p-3">
+                          <p className="text-sm font-medium text-gray-900">Smart Copy</p>
+                          <p className="mt-1 text-xs text-gray-600">
                             Right-click → "Copy for AI (Optimized)"
                           </p>
                         </div>
-                        <div className="rounded border border-border p-3">
-                          <p className="text-sm font-medium text-foreground">Status Bar</p>
-                          <p className="mt-1 text-xs text-secondary">
+                        <div className="rounded border border-gray-200 p-3">
+                          <p className="text-sm font-medium text-gray-900">Status Bar</p>
+                          <p className="mt-1 text-xs text-gray-600">
                             Check bottom-left for real-time token count
                           </p>
                         </div>
-                        <div className="rounded border border-border p-3">
-                          <p className="text-sm font-medium text-foreground">Pre-flight</p>
-                          <p className="mt-1 text-xs text-secondary">
-                            <kbd className="rounded border border-border bg-code-bg px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
+                        <div className="rounded border border-gray-200 p-3">
+                          <p className="text-sm font-medium text-gray-900">Pre-flight</p>
+                          <p className="mt-1 text-xs text-gray-600">
+                            <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
                           </p>
                         </div>
                       </div>
@@ -236,13 +382,13 @@ export default function Home() {
                       <div className="mt-5 flex gap-3">
                         <button
                           onClick={() => setOnboardStep(1)}
-                          className="flex-1 rounded border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card-hover"
+                          className="flex-1 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
                         >
                           Back
                         </button>
                         <button
                           onClick={() => setOnboardStep(3)}
-                          className="flex-1 rounded bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
+                          className="flex-1 rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
                         >
                           Next
                         </button>
@@ -253,35 +399,35 @@ export default function Home() {
                   {onboardStep === 3 && (
                     <>
                       <div className="flex justify-center">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-status-green text-white">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-prune-green text-white">
                           <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                           </svg>
                         </div>
                       </div>
 
-                      <h2 className="mt-4 text-center text-lg font-semibold text-foreground">You're all set</h2>
-                      <p className="mt-2 text-center text-sm text-secondary">
+                      <h2 className="mt-4 text-center text-lg font-semibold text-gray-900">You're all set</h2>
+                      <p className="mt-2 text-center text-sm text-gray-600">
                         TokenLens is now running locally in your editor.
                       </p>
 
-                      <div className="mt-5 rounded border border-border bg-code-bg p-4">
-                        <p className="text-xs font-medium text-foreground">What happens next:</p>
-                        <ul className="mt-2 space-y-1.5 text-xs text-secondary">
+                      <div className="mt-5 rounded border border-gray-200 bg-gray-100 p-4">
+                        <p className="text-xs font-medium text-gray-900">What happens next:</p>
+                        <ul className="mt-2 space-y-1.5 text-xs text-gray-600">
                           <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-status-green">●</span>
+                            <span className="mt-0.5 text-prune-green">●</span>
                             <span>Token count shows in status bar</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-status-green">●</span>
+                            <span className="mt-0.5 text-prune-green">●</span>
                             <span>Smart Copy reduces tokens by 70-90%</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-status-green">●</span>
+                            <span className="mt-0.5 text-prune-green">●</span>
                             <span>Pre-flight shows spend before you send</span>
                           </li>
                           <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-status-green">●</span>
+                            <span className="mt-0.5 text-prune-green">●</span>
                             <span>All processing stays on your machine</span>
                           </li>
                         </ul>
@@ -289,7 +435,7 @@ export default function Home() {
 
                       <button
                         onClick={handleOpenDashboard}
-                        className="mt-5 w-full rounded bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:opacity-90"
+                        className="mt-5 w-full rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
                       >
                         Open Dashboard
                       </button>
@@ -303,109 +449,25 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="border-b border-border py-16">
+      <section id="features" className="border-b border-gray-200 py-16">
         <div className="mx-auto max-w-5xl px-4">
-          <h2 className="text-2xl font-semibold text-foreground">Features</h2>
-          <p className="mt-2 text-secondary">
-            Reduce token consumption while maintaining context quality.
-          </p>
-
-          <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {/* Feature 1 */}
-            <div className="rounded-lg border border-border p-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-code-bg text-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 font-semibold text-foreground">Smart Copy</h3>
-              <p className="mt-2 text-sm text-secondary">
-                Copy files as signatures instead of full code. 70-90% token reduction.
-              </p>
-              <p className="mt-3 text-xs text-muted">
-                <kbd className="rounded border border-border bg-code-bg px-1 py-0.5 font-mono">Ctrl+Alt+C</kbd>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-gray-900">Features</h2>
+              <p className="mt-2 text-gray-600">
+                Reduce token consumption while maintaining context quality. Click any feature to open it in {ideName}.
               </p>
             </div>
-
-            {/* Feature 2 */}
-            <div className="rounded-lg border border-border p-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-code-bg text-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 font-semibold text-foreground">Pre-flight Optimizer</h3>
-              <p className="mt-2 text-sm text-secondary">
-                See what you're about to spend vs what you could spend with optimization.
-              </p>
-              <p className="mt-3 text-xs text-muted">
-                <kbd className="rounded border border-border bg-code-bg px-1 py-0.5 font-mono">Ctrl+Alt+P</kbd>
-              </p>
+            <div className="flex items-center gap-2 text-sm text-gray-500">
+              <span>Select IDE:</span>
+              <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
             </div>
+          </div>
 
-            {/* Feature 3 */}
-            <div className="rounded-lg border border-border p-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-code-bg text-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 font-semibold text-foreground">Session Memory</h3>
-              <p className="mt-2 text-sm text-secondary">
-                Tracks files already in context. Prevents re-reading the same files.
-              </p>
-              <p className="mt-3 text-xs text-muted">
-                Automatic deduplication
-              </p>
-            </div>
-
-            {/* Feature 4 */}
-            <div className="rounded-lg border border-border p-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-code-bg text-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
-                </svg>
-              </div>
-              <h3 className="mt-4 font-semibold text-foreground">Compaction Recovery</h3>
-              <p className="mt-2 text-sm text-secondary">
-                Tracks architectural decisions. Shows what may be forgotten on context compaction.
-              </p>
-              <p className="mt-3 text-xs text-muted">
-                Never lose important context
-              </p>
-            </div>
-
-            {/* Feature 5 */}
-            <div className="rounded-lg border border-border p-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-code-bg text-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 font-semibold text-foreground">Code Squeezer</h3>
-              <p className="mt-2 text-sm text-secondary">
-                Tree-sitter powered compression. Three tiers: lossless, structural, telegraphic.
-              </p>
-              <p className="mt-3 text-xs text-muted">
-                15-70% savings
-              </p>
-            </div>
-
-            {/* Feature 6 */}
-            <div className="rounded-lg border border-border p-5">
-              <div className="flex h-8 w-8 items-center justify-center rounded bg-code-bg text-foreground">
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
-                </svg>
-              </div>
-              <h3 className="mt-4 font-semibold text-foreground">100% Local</h3>
-              <p className="mt-2 text-sm text-secondary">
-                No API keys required. No cloud. Your code never leaves your machine.
-              </p>
-              <p className="mt-3 text-xs text-muted">
-                Privacy-first architecture
-              </p>
-            </div>
+          <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {FEATURES.map((feature) => (
+              <FeatureCard key={feature.id} feature={feature} ide={preferredIDE} />
+            ))}
           </div>
         </div>
       </section>
@@ -413,56 +475,56 @@ export default function Home() {
       {/* Setup Section */}
       <section id="setup" className="py-16">
         <div className="mx-auto max-w-5xl px-4">
-          <h2 className="text-2xl font-semibold text-foreground">Quick Setup</h2>
-          <p className="mt-2 text-secondary">
+          <h2 className="text-2xl font-semibold text-gray-900">Quick Setup</h2>
+          <p className="mt-2 text-gray-600">
             Get running in under a minute.
           </p>
 
-          <div className="mt-8 rounded-lg border border-border bg-card p-6">
+          <div className="mt-8 rounded-lg border border-gray-200 bg-white p-6">
             <div className="space-y-6">
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
                   1
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Install dependencies</p>
-                  <div className="mt-2 rounded border border-border bg-code-bg px-3 py-2">
-                    <code className="text-sm text-foreground">npm install</code>
+                  <p className="font-medium text-gray-900">Install dependencies</p>
+                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
+                    <code className="text-sm text-gray-900">npm install</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
                   2
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Build all packages</p>
-                  <div className="mt-2 rounded border border-border bg-code-bg px-3 py-2">
-                    <code className="text-sm text-foreground">npm run build</code>
+                  <p className="font-medium text-gray-900">Build all packages</p>
+                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
+                    <code className="text-sm text-gray-900">npm run build</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
                   3
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Package the extension</p>
-                  <div className="mt-2 rounded border border-border bg-code-bg px-3 py-2">
-                    <code className="text-sm text-foreground">cd apps/extension && npm run package</code>
+                  <p className="font-medium text-gray-900">Package the extension</p>
+                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
+                    <code className="text-sm text-gray-900">cd apps/extension && npm run package</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
                   4
                 </div>
                 <div>
-                  <p className="font-medium text-foreground">Install the VSIX</p>
-                  <p className="mt-1 text-sm text-secondary">
+                  <p className="font-medium text-gray-900">Install the VSIX</p>
+                  <p className="mt-1 text-sm text-gray-600">
                     Extensions → ... → Install from VSIX → select prune-0.1.0.vsix
                   </p>
                 </div>
@@ -473,16 +535,16 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-border py-8">
+      <footer className="border-t border-gray-200 bg-white py-8">
         <div className="mx-auto max-w-5xl px-4">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-foreground text-background text-xs font-bold">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-gray-900 text-white text-xs font-bold">
                 TL
               </div>
-              <span className="text-sm text-secondary">TokenLens</span>
+              <span className="text-sm text-gray-600">TokenLens</span>
             </div>
-            <p className="text-sm text-muted">
+            <p className="text-sm text-gray-500">
               Token intelligence for AI coding assistants
             </p>
           </div>
