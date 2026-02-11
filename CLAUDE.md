@@ -4,7 +4,7 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) is a VS Code extension that gives developers real-time visibility into token usage when working with AI coding tools like Cursor, Claude Code, and Codex. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend.
+TokenLens (internally: Prune) is an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage. It works with any VS Code-based editor. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
@@ -19,11 +19,11 @@ npm install
 # Build all packages
 npm run build
 
-# Package the VS Code extension
+# Package the extension
 cd apps/extension
 npm run package
 
-# Install the VSIX in VS Code
+# Install the VSIX in your AI coding assistant (Cursor / Claude Code / OpenAI Codex)
 # Extensions > ... > Install from VSIX > select prune-0.1.0.vsix
 ```
 
@@ -34,7 +34,7 @@ npm run package
 ```
 tokenlens/
 ├── apps/
-│   ├── extension/              # VS Code extension (main product)
+│   ├── extension/              # Editor extension (Cursor / Claude Code / Codex)
 │   │   ├── src/
 │   │   │   ├── extension.ts          # Entry point, commands, status bar
 │   │   │   ├── token-saver.ts        # Smart Copy, Pre-flight, Session Memory, Compaction
@@ -202,7 +202,7 @@ Prune tracks architectural decisions and shows what may be at risk:
 
 ### 5. Real-Time Token Counter (Status Bar)
 
-Shows token count for the current file or selection in the VS Code status bar. Updates on every keystroke. Color-coded based on spend thresholds.
+Shows token count for the current file or selection in the editor status bar (works in Cursor, Claude Code, Codex). Updates on every keystroke. Color-coded based on spend thresholds.
 
 **Implementation:** `apps/extension/src/extension.ts:187-231`
 
@@ -310,13 +310,13 @@ cd apps/extension && npm run watch
 # Run all tests
 npm run test
 
-# Run intelligence engine tests from VS Code
+# Run intelligence engine tests from your editor (Cursor / Claude Code / Codex)
 # Command Palette > "Prune: Run Intelligence Tests"
 ```
 
 ### Debugging the Extension
 
-1. Open the `apps/extension` folder in VS Code
+1. Open the `apps/extension` folder in your editor (Cursor / Claude Code / Codex)
 2. Press F5 to launch Extension Development Host
 3. Test commands in the new window
 
@@ -461,7 +461,7 @@ const WEIGHTS = {
 
 | File | Purpose |
 |------|---------|
-| `apps/extension/src/extension.ts` | VS Code extension entry point |
+| `apps/extension/src/extension.ts` | Extension entry point (Cursor / Claude Code / Codex) |
 | `apps/extension/src/token-saver.ts` | **Smart Copy, Pre-flight, Session Memory, Compaction** |
 | `apps/extension/src/prune-intelligence.ts` | v2 intelligence engine |
 | `apps/extension/src/context-analyzer.ts` | File-level relevance scoring |
