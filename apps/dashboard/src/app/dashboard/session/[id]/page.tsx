@@ -53,10 +53,10 @@ function TurnCard({ turn }: { turn: Turn }) {
 
   const isWaste = turn.status !== "clean";
   const statusBg = !isWaste
-    ? "bg-white border-gray-200"
+    ? "bg-card border-border"
     : turn.status === "loop_start"
-    ? "bg-amber-50 border-amber-300"
-    : "bg-red-50 border-red-300";
+    ? "bg-status-amber/10 border-status-amber/50"
+    : "bg-status-red/10 border-status-red/50";
 
   const statusIcon = !isWaste ? "✅" : turn.status === "loop_start" ? "⚠️" : "🔴";
 
@@ -67,11 +67,11 @@ function TurnCard({ turn }: { turn: Turn }) {
   return (
     <div className={cn("rounded-lg border p-4", statusBg)}>
       {/* Header row */}
-      <div className="flex items-center justify-between border-b border-gray-200/50 pb-2">
+      <div className="flex items-center justify-between border-b border-border/50 pb-2">
         <div className="flex items-center gap-3">
-          <span className="font-medium text-gray-700">Turn {turn.number}</span>
-          <span className="text-gray-400">·</span>
-          <span className="text-sm text-gray-500">{time}</span>
+          <span className="font-medium text-foreground">Turn {turn.number}</span>
+          <span className="text-muted">·</span>
+          <span className="text-sm text-muted">{time}</span>
           {turn.status === "loop_start" && (
             <span className="rounded bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-800">
               LOOP START
@@ -90,10 +90,10 @@ function TurnCard({ turn }: { turn: Turn }) {
       </div>
 
       {/* Prompt */}
-      <p className="mt-3 text-gray-900">"{promptDisplay}"</p>
+      <p className="mt-3 text-foreground">"{promptDisplay}"</p>
 
       {/* Stats row */}
-      <p className="mt-2 text-sm text-gray-600">
+      <p className="mt-2 text-sm text-secondary">
         {formatTokens(turn.tokensIn)} tokens in · {formatTokens(turn.tokensOut)} out ·{" "}
         <span className={cn("font-medium", getRoiColor(turn.roi))}>
           ROI: {Math.round(turn.roi * 100)}%
@@ -207,7 +207,7 @@ export default function SessionDetailPage({
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
       </div>
     );
   }
@@ -215,7 +215,7 @@ export default function SessionDetailPage({
   if (!session) {
     return (
       <div className="text-center">
-        <h1 className="text-xl font-bold text-gray-900">Session not found</h1>
+        <h1 className="text-xl font-bold text-foreground">Session not found</h1>
         <Link href="/dashboard" className="mt-4 inline-block text-prune-green hover:underline">
           ← Back to Dashboard
         </Link>
@@ -264,30 +264,30 @@ export default function SessionDetailPage({
       {/* Back link */}
       <Link
         href="/dashboard"
-        className="inline-flex items-center text-gray-500 transition hover:text-gray-700"
+        className="inline-flex items-center text-muted transition hover:text-foreground"
       >
         ← Back to Dashboard
       </Link>
 
       {/* Session header */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h1 className="text-2xl font-bold text-gray-900">
+      <div className="rounded-lg border border-border bg-card p-6">
+        <h1 className="text-2xl font-bold text-foreground">
           Session: {session.taskDescription || "Untitled Session"}
         </h1>
-        <p className="mt-2 text-gray-600">
+        <p className="mt-2 text-secondary">
           {toolName} · {session.model} · {startTime} - {endTime}
         </p>
         <div className="mt-4 flex flex-wrap gap-6 text-sm">
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Total:</span>
-            <span className="font-bold text-gray-900">{formatTokens(session.totalTokens)} tokens</span>
+            <span className="text-muted">Total:</span>
+            <span className="font-bold text-foreground">{formatTokens(session.totalTokens)} tokens</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">Cost:</span>
-            <span className="font-bold text-gray-900">{formatCurrency(session.totalCost)}</span>
+            <span className="text-muted">Cost:</span>
+            <span className="font-bold text-foreground">{formatCurrency(session.totalCost)}</span>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-gray-500">ROI:</span>
+            <span className="text-muted">ROI:</span>
             <span className={cn("font-bold", getRoiColor(session.roi))}>
               {Math.round(session.roi * 100)}%
             </span>
@@ -297,9 +297,9 @@ export default function SessionDetailPage({
 
       {/* Turn-by-turn timeline */}
       <div>
-        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+        <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-foreground">
           <span>Turn-by-Turn Timeline</span>
-          <span className="text-sm font-normal text-gray-500">
+          <span className="text-sm font-normal text-muted">
             ({session.turns.length} turn{session.turns.length !== 1 ? "s" : ""})
           </span>
         </h2>
@@ -313,7 +313,7 @@ export default function SessionDetailPage({
               )
             )
           ) : (
-            <div className="rounded-lg border border-dashed border-gray-300 p-8 text-center text-gray-500">
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-muted">
               No turns recorded for this session
             </div>
           )}
@@ -321,23 +321,23 @@ export default function SessionDetailPage({
       </div>
 
       {/* Session summary */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">Session Summary</h2>
+      <div className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Session Summary</h2>
         <div className="space-y-4">
           {/* Cost breakdown */}
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Total cost:</span>
+              <span className="text-secondary">Total cost:</span>
               <span className="font-semibold">{formatCurrency(session.totalCost)}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Productive cost:</span>
+              <span className="text-secondary">Productive cost:</span>
               <span className="font-semibold text-prune-green">
                 {formatCurrency(session.productiveCost)} ({productivePercent}%)
               </span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Wasted cost:</span>
+              <span className="text-secondary">Wasted cost:</span>
               <span className="font-semibold text-prune-red">
                 {formatCurrency(session.wastedCost)} ({wastedPercent}%)
               </span>
@@ -346,11 +346,11 @@ export default function SessionDetailPage({
 
           {/* Waste breakdown */}
           {session.wasteBreakdown.length > 0 && (
-            <div className="border-t border-gray-100 pt-4">
-              <p className="mb-2 text-sm font-medium text-gray-700">Waste breakdown:</p>
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-sm font-medium text-foreground">Waste breakdown:</p>
               <ul className="space-y-1 pl-4">
                 {session.wasteBreakdown.map((waste, i) => (
-                  <li key={i} className="text-sm text-gray-600">
+                  <li key={i} className="text-sm text-secondary">
                     {formatPatternName(waste.pattern)}
                     {waste.file && ` on ${waste.file}`}: {formatCurrency(waste.cost)}
                   </li>
@@ -360,9 +360,9 @@ export default function SessionDetailPage({
           )}
 
           {/* Prune interventions */}
-          <div className="border-t border-gray-100 pt-4">
+          <div className="border-t border-border pt-4">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Prune interventions:</span>
+              <span className="text-secondary">Prune interventions:</span>
               <span>
                 {session.pruneInterventions.burnAlerts} burn alert
                 {session.pruneInterventions.burnAlerts !== 1 ? "s" : ""},{" "}
@@ -373,9 +373,9 @@ export default function SessionDetailPage({
           </div>
 
           {/* Estimated savings */}
-          <div className="border-t border-gray-100 pt-4">
+          <div className="border-t border-border pt-4">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-600">Estimated savings from Prune:</span>
+              <span className="text-secondary">Estimated savings from Prune:</span>
               <span className="font-semibold text-prune-green">
                 {formatCurrency(session.estimatedSavings)}
               </span>

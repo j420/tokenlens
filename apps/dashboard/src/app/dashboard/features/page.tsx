@@ -163,9 +163,9 @@ function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        impact === "high" && "bg-emerald-100 text-emerald-700",
-        impact === "medium" && "bg-blue-100 text-blue-700",
-        impact === "low" && "bg-gray-100 text-gray-600"
+        impact === "high" && "bg-status-green/10 text-status-green",
+        impact === "medium" && "bg-status-amber/10 text-status-amber",
+        impact === "low" && "bg-card-hover text-secondary"
       )}
     >
       {impact === "high" && "High Impact"}
@@ -183,7 +183,7 @@ function KeybindingBadge({ keybinding }: { keybinding: Feature["keybinding"] }) 
     navigator.platform.toLowerCase().includes("mac");
 
   return (
-    <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600">
+    <kbd className="rounded border border-border bg-background px-2 py-1 font-mono text-xs text-secondary">
       {isMac ? keybinding.mac : keybinding.windows}
     </kbd>
   );
@@ -194,26 +194,26 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   const ideName = ide === "cursor" ? "Cursor" : ide === "vscode" ? "Claude Code" : "Codex";
 
   return (
-    <div className="group rounded-lg border border-gray-200 bg-white p-6 transition hover:border-gray-300 hover:shadow-sm">
+    <div className="group rounded-lg border border-border bg-card p-6 transition hover:border-secondary hover:shadow-sm">
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
           <span className="text-2xl">{feature.icon}</span>
           <div>
-            <h3 className="font-semibold text-gray-900">{feature.title}</h3>
-            <code className="text-xs text-gray-500">{feature.command}</code>
+            <h3 className="font-semibold text-foreground">{feature.title}</h3>
+            <code className="text-xs text-muted">{feature.command}</code>
           </div>
         </div>
         <ImpactBadge impact={feature.impact} />
       </div>
 
-      <p className="mb-4 text-sm text-gray-600">{feature.description}</p>
+      <p className="mb-4 text-sm text-secondary">{feature.description}</p>
 
       <div className="flex items-center justify-between">
         <KeybindingBadge keybinding={feature.keybinding} />
 
         <a
           href={uri}
-          className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200 group-hover:bg-prune-green group-hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-border group-hover:bg-prune-green group-hover:text-white"
         >
           <svg
             className="h-4 w-4"
@@ -257,8 +257,8 @@ export default function FeaturesPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Extension Features</h1>
-        <p className="mt-1 text-gray-600">
+        <h1 className="text-2xl font-bold text-foreground">Extension Features</h1>
+        <p className="mt-1 text-secondary">
           All Prune commands available in your editor. Click &quot;Open in {ideName}&quot; to run
           any command directly from here.
         </p>
@@ -281,14 +281,14 @@ export default function FeaturesPage() {
               "rounded-lg px-4 py-2 text-sm font-medium transition",
               filter === key
                 ? "bg-prune-green text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                : "bg-card-hover text-secondary hover:bg-border"
             )}
           >
             {label}
             <span
               className={cn(
                 "ml-2 rounded-full px-2 py-0.5 text-xs",
-                filter === key ? "bg-white/20" : "bg-gray-200"
+                filter === key ? "bg-white/20" : "bg-border"
               )}
             >
               {categoryStats[key]}
@@ -319,8 +319,8 @@ export default function FeaturesPage() {
       </div>
 
       {/* Quick actions */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">
+      <div className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">
           Quick Actions
         </h2>
         <div className="flex flex-wrap gap-3">

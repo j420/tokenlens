@@ -13,6 +13,8 @@ import {
 } from "recharts";
 import { cn, formatCurrency, formatTokens, getSpendColor, getRoiColor, getRoiBgColor } from "@/lib/utils";
 import { usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
+import { SkeletonDashboard, SkeletonFeatures } from "@/components/skeleton";
+import { useToast, toast } from "@/components/toast";
 
 // ============================================================================
 // Types
@@ -361,18 +363,18 @@ function StatCard({
   bar?: { value: number; color: string };
 }) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6">
-      <h3 className="text-sm font-medium text-gray-500">{title}</h3>
-      <p className="mt-2 text-2xl font-bold text-gray-900">{value}</p>
+    <div className="rounded-lg border border-border bg-card p-6">
+      <h3 className="text-sm font-medium text-muted">{title}</h3>
+      <p className="mt-2 text-2xl font-bold text-foreground">{value}</p>
       {bar && (
-        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gray-200">
+        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-border">
           <div
             className={cn("h-full rounded-full", bar.color)}
             style={{ width: `${bar.value * 100}%` }}
           />
         </div>
       )}
-      {subtitle && <p className="mt-2 text-sm text-gray-500">{subtitle}</p>}
+      {subtitle && <p className="mt-2 text-sm text-muted">{subtitle}</p>}
     </div>
   );
 }
@@ -395,16 +397,16 @@ function SessionCard({ session }: { session: Session }) {
   return (
     <Link
       href={`/dashboard/session/${session.id}`}
-      className="block rounded-lg border border-gray-200 bg-white p-4 transition hover:border-gray-300 hover:shadow-sm"
+      className="block rounded-lg border border-border bg-card p-4 transition hover:border-secondary hover:shadow-sm"
     >
-      <div className="mb-2 flex items-center justify-between text-sm text-gray-500">
+      <div className="mb-2 flex items-center justify-between text-sm text-muted">
         <span className="flex items-center gap-2">
           <ToolIcon tool={session.tool} />
           {time} · {toolName}
         </span>
       </div>
-      <h4 className="font-medium text-gray-900">{session.taskDescription}</h4>
-      <p className="mt-1 text-sm text-gray-600">
+      <h4 className="font-medium text-foreground">{session.taskDescription}</h4>
+      <p className="mt-1 text-sm text-secondary">
         {formatTokens(session.tokens)} tokens · {formatCurrency(session.cost)}
       </p>
       <div className="mt-3 flex items-center gap-4 text-sm">
@@ -432,9 +434,9 @@ function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        impact === "high" && "bg-emerald-100 text-emerald-700",
-        impact === "medium" && "bg-blue-100 text-blue-700",
-        impact === "low" && "bg-gray-100 text-gray-600"
+        impact === "high" && "bg-status-green/10 text-status-green",
+        impact === "medium" && "bg-status-amber/10 text-status-amber",
+        impact === "low" && "bg-card-hover text-secondary"
       )}
     >
       {impact === "high" && "High Impact"}
@@ -454,7 +456,7 @@ function KeybindingBadge({ keybinding }: { keybinding: Feature["keybinding"] }) 
   }, []);
 
   return (
-    <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600">
+    <kbd className="rounded border border-border bg-background px-2 py-1 font-mono text-xs text-secondary">
       {isMac ? keybinding.mac : keybinding.windows}
     </kbd>
   );
@@ -465,28 +467,28 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   const ideName = ide === "cursor" ? "Cursor" : ide === "vscode" ? "Claude Code" : "Codex";
 
   return (
-    <div className="group rounded-lg border border-gray-200 bg-white p-5 transition hover:border-gray-300 hover:shadow-sm">
+    <div className="group rounded-lg border border-border bg-card p-5 transition hover:border-secondary hover:shadow-sm">
       <div className="mb-3 flex items-start justify-between">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 group-hover:bg-prune-green/10 group-hover:text-prune-green">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-card-hover text-secondary group-hover:bg-prune-green/10 group-hover:text-prune-green">
             <FeatureIcon icon={feature.icon} />
           </div>
           <div>
-            <h3 className="font-semibold text-gray-900">{feature.title}</h3>
-            <code className="text-xs text-gray-500">{feature.command}</code>
+            <h3 className="font-semibold text-foreground">{feature.title}</h3>
+            <code className="text-xs text-muted">{feature.command}</code>
           </div>
         </div>
         <ImpactBadge impact={feature.impact} />
       </div>
 
-      <p className="mb-4 text-sm text-gray-600">{feature.description}</p>
+      <p className="mb-4 text-sm text-secondary">{feature.description}</p>
 
       <div className="flex items-center justify-between">
         <KeybindingBadge keybinding={feature.keybinding} />
 
         <a
           href={uri}
-          className="inline-flex items-center gap-1.5 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 transition hover:bg-gray-200 group-hover:bg-prune-green group-hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-border group-hover:bg-prune-green group-hover:text-white"
         >
           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
@@ -515,14 +517,14 @@ function OverviewSection({ period, data }: { period: TimePeriod; data: OverviewD
     <div className="space-y-6">
       {/* Big number + Stat cards in a grid */}
       <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-6 md:col-span-1">
-          <h2 className="text-sm font-medium text-gray-500">
+        <div className="rounded-lg border border-border bg-card p-6 md:col-span-1">
+          <h2 className="text-sm font-medium text-muted">
             {period === "today" ? "Today" : period === "week" ? "This Week" : "This Month"}
           </h2>
           <p className={cn("mt-2 text-3xl font-bold", getSpendColor(data.todaySpend))}>
             {formatCurrency(data.todaySpend)}
           </p>
-          <p className="mt-1 text-xs text-gray-500">{spendDiffText}</p>
+          <p className="mt-1 text-xs text-muted">{spendDiffText}</p>
         </div>
         <StatCard title="Sessions" value={data.sessions.toString()} subtitle={period} />
         <StatCard
@@ -541,15 +543,15 @@ function OverviewSection({ period, data }: { period: TimePeriod; data: OverviewD
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Sessions list */}
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-gray-900">Recent Sessions</h3>
+          <h3 className="mb-3 text-sm font-semibold text-foreground">Recent Sessions</h3>
           <div className="space-y-2">
             {data.recentSessions.slice(0, 4).map((session) => (
               <SessionCard key={session.id} session={session} />
             ))}
           </div>
           {data.recentSessions.length === 0 && (
-            <div className="rounded-lg border border-dashed border-gray-300 p-6 text-center">
-              <p className="text-sm text-gray-500">No sessions yet. Start using your AI coding tool!</p>
+            <div className="rounded-lg border border-dashed border-border p-6 text-center">
+              <p className="text-sm text-muted">No sessions yet. Start using your AI coding tool!</p>
             </div>
           )}
           {data.recentSessions.length > 4 && (
@@ -561,8 +563,8 @@ function OverviewSection({ period, data }: { period: TimePeriod; data: OverviewD
 
         {/* Chart */}
         <div>
-          <h3 className="mb-3 text-sm font-semibold text-gray-900">7-Day Trend</h3>
-          <div className="rounded-lg border border-gray-200 bg-white p-4">
+          <h3 className="mb-3 text-sm font-semibold text-foreground">7-Day Trend</h3>
+          <div className="rounded-lg border border-border bg-card p-4">
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={data.chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -587,11 +589,11 @@ function OverviewSection({ period, data }: { period: TimePeriod; data: OverviewD
             <div className="mt-2 flex justify-center gap-4 text-xs">
               <div className="flex items-center gap-1.5">
                 <div className="h-2.5 w-2.5 rounded-sm bg-prune-green" />
-                <span className="text-gray-600">Productive</span>
+                <span className="text-secondary">Productive</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <div className="h-2.5 w-2.5 rounded-sm bg-red-500" />
-                <span className="text-gray-600">Waste</span>
+                <span className="text-secondary">Waste</span>
               </div>
             </div>
           </div>
@@ -637,14 +639,14 @@ function FeaturesSection({ ide }: { ide: IDEType }) {
               "rounded-lg px-3 py-1.5 text-sm font-medium transition",
               filter === key
                 ? "bg-prune-green text-white"
-                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                : "bg-card-hover text-secondary hover:bg-border"
             )}
           >
             {label}
             <span
               className={cn(
                 "ml-1.5 rounded-full px-1.5 py-0.5 text-xs",
-                filter === key ? "bg-white/20" : "bg-gray-200"
+                filter === key ? "bg-white/20" : "bg-border"
               )}
             >
               {categoryStats[key]}
@@ -654,8 +656,8 @@ function FeaturesSection({ ide }: { ide: IDEType }) {
       </div>
 
       {/* Quick actions */}
-      <div className="rounded-lg border border-gray-200 bg-white p-4">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">Quick Actions</h3>
+      <div className="rounded-lg border border-border bg-card p-4">
+        <h3 className="mb-3 text-sm font-semibold text-foreground">Quick Actions</h3>
         <div className="flex flex-wrap gap-2">
           <a
             href={getIDEUri(ide, "smartCopy")}
@@ -686,7 +688,7 @@ function FeaturesSection({ ide }: { ide: IDEType }) {
             Session Stats
           </a>
         </div>
-        <p className="mt-3 text-xs text-gray-500">
+        <p className="mt-3 text-xs text-muted">
           Buttons open commands in {ideName}. Select your IDE using the dropdown in the header.
         </p>
       </div>
@@ -741,7 +743,7 @@ function SetupSection({ ide }: { ide: IDEType }) {
       action: (
         <a
           href={getIDEUri(ide, "smartCopy")}
-          className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          className="inline-flex items-center gap-2 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground hover:bg-border"
         >
           Try Smart Copy
         </a>
@@ -754,7 +756,7 @@ function SetupSection({ ide }: { ide: IDEType }) {
       action: (
         <a
           href={getIDEUri(ide, "preflight")}
-          className="inline-flex items-center gap-2 rounded-md bg-gray-100 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-200"
+          className="inline-flex items-center gap-2 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground hover:bg-border"
         >
           Try Pre-flight
         </a>
@@ -766,14 +768,14 @@ function SetupSection({ ide }: { ide: IDEType }) {
   return (
     <div className="space-y-6">
       {/* Progress indicator */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6">
+      <div className="rounded-lg border border-border bg-card p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900">Setup Progress</h3>
-          <span className="text-sm text-gray-500">
+          <h3 className="font-semibold text-foreground">Setup Progress</h3>
+          <span className="text-sm text-muted">
             {completedSteps.size} of {steps.length} completed
           </span>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+        <div className="h-2 overflow-hidden rounded-full bg-border">
           <div
             className="h-full rounded-full bg-prune-green transition-all"
             style={{ width: `${(completedSteps.size / steps.length) * 100}%` }}
@@ -787,8 +789,8 @@ function SetupSection({ ide }: { ide: IDEType }) {
           <div
             key={index}
             className={cn(
-              "rounded-lg border bg-white p-5 transition",
-              completedSteps.has(index) ? "border-prune-green/50 bg-prune-green/5" : "border-gray-200"
+              "rounded-lg border bg-card p-5 transition",
+              completedSteps.has(index) ? "border-prune-green/50 bg-prune-green/5" : "border-border"
             )}
           >
             <div className="flex items-start gap-4">
@@ -798,7 +800,7 @@ function SetupSection({ ide }: { ide: IDEType }) {
                   "mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border-2 transition",
                   completedSteps.has(index)
                     ? "border-prune-green bg-prune-green text-white"
-                    : "border-gray-300 hover:border-gray-400"
+                    : "border-border hover:border-secondary"
                 )}
               >
                 {completedSteps.has(index) && (
@@ -809,24 +811,24 @@ function SetupSection({ ide }: { ide: IDEType }) {
               </button>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h4 className={cn("font-medium", completedSteps.has(index) ? "text-prune-green" : "text-gray-900")}>
+                  <h4 className={cn("font-medium", completedSteps.has(index) ? "text-prune-green" : "text-foreground")}>
                     {index + 1}. {step.title}
                   </h4>
                   {step.action}
                 </div>
-                <p className="mt-1 text-sm text-gray-600">{step.description}</p>
+                <p className="mt-1 text-sm text-secondary">{step.description}</p>
                 {step.code && (
-                  <code className="mt-2 block rounded bg-gray-100 px-3 py-2 font-mono text-xs text-gray-700">
+                  <code className="mt-2 block rounded bg-card-hover px-3 py-2 font-mono text-xs text-foreground">
                     {step.code}
                   </code>
                 )}
                 {step.keybinding && (
-                  <p className="mt-2 text-xs text-gray-500">
-                    Keybinding: <kbd className="rounded bg-gray-100 px-1.5 py-0.5 font-mono">{step.keybinding}</kbd>
+                  <p className="mt-2 text-xs text-muted">
+                    Keybinding: <kbd className="rounded bg-card-hover px-1.5 py-0.5 font-mono">{step.keybinding}</kbd>
                   </p>
                 )}
                 {step.tip && (
-                  <p className="mt-2 text-xs text-blue-600">Tip: {step.tip}</p>
+                  <p className="mt-2 text-xs text-status-amber">Tip: {step.tip}</p>
                 )}
               </div>
             </div>
@@ -835,12 +837,12 @@ function SetupSection({ ide }: { ide: IDEType }) {
       </div>
 
       {/* Additional resources */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <div className="rounded-lg border border-status-amber/30 bg-status-amber/10 p-4">
         <div className="flex gap-3">
           <span className="text-xl">📚</span>
           <div>
-            <h3 className="font-medium text-blue-900">Need more help?</h3>
-            <p className="mt-1 text-sm text-blue-800">
+            <h3 className="font-medium text-foreground">Need more help?</h3>
+            <p className="mt-1 text-sm text-secondary">
               Check out our{" "}
               <a href="https://docs.delimit.dev" target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
                 documentation
@@ -892,11 +894,7 @@ export default function DashboardPage() {
   const hasData = data && (data.sessions > 0 || data.todaySpend > 0);
 
   if (loading || !data) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-gray-200 border-t-prune-green" />
-      </div>
-    );
+    return <SkeletonDashboard />;
   }
 
   const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
@@ -935,7 +933,7 @@ export default function DashboardPage() {
       {/* Page header with tabs and period selector */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         {/* Tabs */}
-        <div className="flex rounded-lg border border-gray-200 bg-white p-1">
+        <div className="flex rounded-lg border border-border bg-card p-1">
           {tabs.map((tab) => (
             <button
               key={tab.id}
@@ -943,8 +941,8 @@ export default function DashboardPage() {
               className={cn(
                 "flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition",
                 activeTab === tab.id
-                  ? "bg-gray-100 text-gray-900"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-card-hover text-foreground"
+                  : "text-muted hover:text-foreground"
               )}
             >
               {tab.icon}
@@ -955,7 +953,7 @@ export default function DashboardPage() {
 
         {/* Period selector (only show on overview) */}
         {activeTab === "overview" && (
-          <div className="inline-flex rounded-lg border border-gray-200 bg-white p-1">
+          <div className="inline-flex rounded-lg border border-border bg-card p-1">
             {(["today", "week", "month"] as TimePeriod[]).map((p) => (
               <button
                 key={p}
@@ -963,8 +961,8 @@ export default function DashboardPage() {
                 className={cn(
                   "rounded-md px-3 py-1.5 text-sm font-medium transition",
                   period === p
-                    ? "bg-gray-100 text-gray-900"
-                    : "text-gray-500 hover:text-gray-700"
+                    ? "bg-card-hover text-foreground"
+                    : "text-muted hover:text-foreground"
                 )}
               >
                 {p === "today" ? "Today" : p === "week" ? "Week" : "Month"}
@@ -976,12 +974,12 @@ export default function DashboardPage() {
 
       {/* Empty state for new users */}
       {!hasData && activeTab === "overview" && (
-        <div className="rounded-lg border-2 border-dashed border-gray-300 bg-white p-8 text-center">
+        <div className="rounded-lg border-2 border-dashed border-border bg-card p-8 text-center">
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-prune-green/10 text-2xl">
             🌱
           </div>
-          <h2 className="mb-2 text-lg font-semibold text-gray-900">Welcome to Prune!</h2>
-          <p className="mb-4 text-sm text-gray-600">
+          <h2 className="mb-2 text-lg font-semibold text-foreground">Welcome to Prune!</h2>
+          <p className="mb-4 text-sm text-secondary">
             Connect your AI coding tool to start tracking usage and costs.
           </p>
           <button

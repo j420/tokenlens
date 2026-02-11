@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { IDESelector, usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { useToast, toast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
 type OnboardStep = 1 | 2 | 3;
@@ -99,9 +101,9 @@ function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
     <span
       className={cn(
         "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        impact === "high" && "bg-emerald-100 text-emerald-700",
-        impact === "medium" && "bg-blue-100 text-blue-700",
-        impact === "low" && "bg-gray-100 text-gray-600"
+        impact === "high" && "bg-status-green/10 text-status-green",
+        impact === "medium" && "bg-status-amber/10 text-status-amber",
+        impact === "low" && "bg-card-hover text-secondary"
       )}
     >
       {impact === "high" && "High Impact"}
@@ -118,27 +120,33 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   return (
     <a
       href={uri}
-      className="group block rounded-lg border border-gray-200 bg-white p-5 transition hover:border-gray-300 hover:shadow-md"
+      className={cn(
+        "group block rounded-lg border border-border bg-card p-5",
+        "transition-all duration-200",
+        "hover:border-secondary hover:shadow-md hover:-translate-y-0.5",
+        "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+      )}
+      aria-label={`${feature.title}: ${feature.description}. Open in ${ideName}`}
     >
       <div className="mb-3 flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gray-100 text-gray-600 transition group-hover:bg-prune-green/10 group-hover:text-prune-green">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-card-hover text-secondary transition-colors duration-200 group-hover:bg-status-green/10 group-hover:text-status-green">
           {feature.icon}
         </div>
         <ImpactBadge impact={feature.impact} />
       </div>
-      <h3 className="font-semibold text-gray-900">{feature.title}</h3>
-      <p className="mt-2 text-sm text-gray-600">{feature.description}</p>
+      <h3 className="font-semibold text-foreground">{feature.title}</h3>
+      <p className="mt-2 text-sm text-secondary">{feature.description}</p>
       <div className="mt-4 flex items-center justify-between">
         {feature.keybinding ? (
-          <kbd className="rounded border border-gray-200 bg-gray-50 px-2 py-1 font-mono text-xs text-gray-600">
+          <kbd className="rounded border border-border bg-background px-2 py-1 font-mono text-xs text-secondary">
             {feature.keybinding.mac}
           </kbd>
         ) : (
           <span />
         )}
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-gray-500 transition group-hover:text-prune-green">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-secondary transition-colors duration-200 group-hover:text-status-green">
           Open in {ideName}
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
         </span>
@@ -150,28 +158,56 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [signupState, setSignupState] = useState<"idle" | "loading" | "success">("idle");
   const [showOnboard, setShowOnboard] = useState(false);
   const [onboardStep, setOnboardStep] = useState<OnboardStep>(1);
   const [copied, setCopied] = useState(false);
   const [preferredIDE, setPreferredIDE] = usePreferredIDE();
+  const { addToast } = useToast();
+  const toastHelpers = toast(addToast);
+
+  const validateEmail = useCallback((value: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!value) {
+      setEmailError("Email is required");
+      return false;
+    }
+    if (!emailRegex.test(value)) {
+      setEmailError("Please enter a valid email address");
+      return false;
+    }
+    setEmailError("");
+    return true;
+  }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    if (!validateEmail(email)) return;
 
     setSignupState("loading");
-    // Simulate signup - in production, this would call an API
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setSignupState("success");
-    setShowOnboard(true);
+    try {
+      // Simulate signup - in production, this would call an API
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setSignupState("success");
+      setShowOnboard(true);
+      toastHelpers.success("Welcome!", "Let's get you set up with TokenLens.");
+    } catch {
+      setSignupState("idle");
+      toastHelpers.error("Signup failed", "Please try again later.");
+    }
   };
 
-  const handleCopy = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const handleCopy = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toastHelpers.success("Copied!", "Command copied to clipboard.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toastHelpers.error("Copy failed", "Could not copy to clipboard.");
+    }
+  }, [toastHelpers]);
 
   const handleOpenDashboard = () => {
     router.push("/dashboard");
@@ -180,40 +216,41 @@ export default function Home() {
   const ideName = preferredIDE === "cursor" ? "Cursor" : preferredIDE === "vscode" ? "Claude Code" : "Codex";
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-gray-200 bg-white">
+      <header className="border-b border-border bg-card">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4">
           <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded bg-gray-900 text-white text-sm font-bold">
+            <div className="flex h-8 w-8 items-center justify-center rounded bg-foreground text-background text-sm font-bold">
               TL
             </div>
-            <span className="font-semibold text-gray-900">TokenLens</span>
+            <span className="font-semibold text-foreground">TokenLens</span>
           </div>
-          <nav className="flex items-center gap-6 text-sm">
-            <a href="#features" className="text-gray-500 hover:text-gray-900 transition">Features</a>
-            <a href="#setup" className="text-gray-500 hover:text-gray-900 transition">Setup</a>
+          <nav className="flex items-center gap-4 text-sm">
+            <a href="#features" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Features</a>
+            <a href="#setup" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Setup</a>
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
-            <a href="/dashboard" className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 transition">Dashboard</a>
+            <ThemeToggle compact />
+            <a href="/dashboard" className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-foreground focus:ring-offset-1">Dashboard</a>
           </nav>
         </div>
       </header>
 
       {/* Hero + Signup Section */}
-      <section className="border-b border-gray-200 py-16">
+      <section className="border-b border-border py-16">
         <div className="mx-auto max-w-5xl px-4">
           <div className="grid gap-12 md:grid-cols-2 md:items-center">
             {/* Left: Value Prop */}
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-gray-900 md:text-4xl">
+              <h1 className="text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
                 Token intelligence for AI coding assistants
               </h1>
-              <p className="mt-4 text-lg text-gray-600">
+              <p className="mt-4 text-lg text-secondary">
                 See what you spend, where the waste is, and what you're about to spend.
                 Zero API keys. All processing happens locally.
               </p>
 
-              <div className="mt-8 space-y-3 text-sm text-gray-600">
+              <div className="mt-8 space-y-3 text-sm text-secondary">
                 <div className="flex items-start gap-3">
                   <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>Real-time token counting in your status bar</span>
@@ -234,37 +271,64 @@ export default function Home() {
             </div>
 
             {/* Right: Signup Form */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
+            <div className="rounded-lg border border-border bg-card p-6">
               {!showOnboard ? (
                 <>
-                  <h2 className="text-xl font-semibold text-gray-900">Get started</h2>
-                  <p className="mt-2 text-sm text-gray-600">
+                  <h2 className="text-xl font-semibold text-foreground">Get started</h2>
+                  <p className="mt-2 text-sm text-secondary">
                     Enter your email to begin setup. We'll guide you through installation.
                   </p>
 
-                  <form onSubmit={handleSignup} className="mt-6">
-                    <label className="block text-sm font-medium text-gray-900">
+                  <form onSubmit={handleSignup} className="mt-6" noValidate>
+                    <label htmlFor="signup-email" className="block text-sm font-medium text-foreground">
                       Email
                     </label>
                     <input
+                      id="signup-email"
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (emailError) validateEmail(e.target.value);
+                      }}
+                      onBlur={() => email && validateEmail(email)}
                       placeholder="you@company.com"
-                      className="mt-2 w-full rounded border border-gray-300 bg-white px-3 py-2 text-gray-900 placeholder:text-gray-400 focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
-                      required
+                      aria-invalid={emailError ? "true" : undefined}
+                      aria-describedby={emailError ? "email-error" : undefined}
+                      className={cn(
+                        "mt-2 w-full rounded-lg border bg-card px-3 py-2.5 text-foreground transition",
+                        "placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-offset-1",
+                        emailError
+                          ? "border-status-red focus:border-status-red focus:ring-status-red"
+                          : "border-border focus:border-status-green focus:ring-status-green"
+                      )}
                     />
+                    {emailError && (
+                      <p id="email-error" className="mt-1.5 text-sm text-status-red" role="alert">
+                        {emailError}
+                      </p>
+                    )}
 
                     <button
                       type="submit"
                       disabled={signupState === "loading"}
-                      className="mt-4 w-full rounded bg-prune-green px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                      className={cn(
+                        "mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition",
+                        "hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1",
+                        "disabled:cursor-not-allowed disabled:opacity-50"
+                      )}
                     >
+                      {signupState === "loading" && (
+                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      )}
                       {signupState === "loading" ? "Starting..." : "Start Setup"}
                     </button>
                   </form>
 
-                  <p className="mt-4 text-center text-xs text-gray-500">
+                  <p className="mt-4 text-center text-xs text-muted">
                     No credit card required. Free forever for individuals.
                   </p>
                 </>
@@ -279,7 +343,7 @@ export default function Home() {
                           className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition ${
                             onboardStep >= s
                               ? "bg-prune-green text-white"
-                              : "border border-gray-300 text-gray-500"
+                              : "border border-border text-muted"
                           }`}
                         >
                           {onboardStep > s ? (
@@ -291,7 +355,7 @@ export default function Home() {
                           )}
                         </div>
                         {s < 3 && (
-                          <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-gray-200"}`} />
+                          <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-border"}`} />
                         )}
                       </div>
                     ))}
@@ -299,43 +363,43 @@ export default function Home() {
 
                   {onboardStep === 1 && (
                     <>
-                      <h2 className="text-lg font-semibold text-gray-900">Install the extension</h2>
-                      <p className="mt-2 text-sm text-gray-600">
+                      <h2 className="text-lg font-semibold text-foreground">Install the extension</h2>
+                      <p className="mt-2 text-sm text-secondary">
                         TokenLens runs locally in your editor. No cloud required.
                       </p>
 
                       <div className="mt-5 space-y-4 text-sm">
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">1</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">1</span>
                           <div>
-                            <p className="text-gray-900">Open Extensions</p>
-                            <p className="text-gray-600">
-                              <kbd className="rounded border border-gray-200 bg-gray-100 px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
+                            <p className="text-foreground">Open Extensions</p>
+                            <p className="text-secondary">
+                              <kbd className="rounded border border-border bg-card-hover px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">2</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">2</span>
                           <div>
-                            <p className="text-gray-900">Search "Prune"</p>
+                            <p className="text-foreground">Search "Prune"</p>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-gray-300 text-xs text-gray-500">3</span>
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">3</span>
                           <div>
-                            <p className="text-gray-900">Click Install</p>
+                            <p className="text-foreground">Click Install</p>
                           </div>
                         </div>
                       </div>
 
                       {/* CLI alternative */}
-                      <div className="mt-5 border-t border-gray-200 pt-5">
-                        <p className="text-xs text-gray-500">Or via terminal:</p>
-                        <div className="mt-2 flex items-center gap-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                          <code className="flex-1 text-xs text-gray-900">code --install-extension prune-0.1.0.vsix</code>
+                      <div className="mt-5 border-t border-border pt-5">
+                        <p className="text-xs text-muted">Or via terminal:</p>
+                        <div className="mt-2 flex items-center gap-2 rounded border border-border bg-card-hover px-3 py-2">
+                          <code className="flex-1 text-xs text-foreground">code --install-extension prune-0.1.0.vsix</code>
                           <button
                             onClick={() => handleCopy("code --install-extension prune-0.1.0.vsix")}
-                            className="shrink-0 rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-200 hover:text-gray-900"
+                            className="shrink-0 rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-border hover:text-foreground"
                           >
                             {copied ? "Copied" : "Copy"}
                           </button>
@@ -344,7 +408,11 @@ export default function Home() {
 
                       <button
                         onClick={() => setOnboardStep(2)}
-                        className="mt-5 w-full rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+                        className={cn(
+                          "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                          "hover:bg-emerald-600 hover:shadow-md",
+                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                        )}
                       >
                         I've installed it
                       </button>
@@ -353,28 +421,28 @@ export default function Home() {
 
                   {onboardStep === 2 && (
                     <>
-                      <h2 className="text-lg font-semibold text-gray-900">Try a command</h2>
-                      <p className="mt-2 text-sm text-gray-600">
+                      <h2 className="text-lg font-semibold text-foreground">Try a command</h2>
+                      <p className="mt-2 text-sm text-secondary">
                         Open any code file and test these features.
                       </p>
 
                       <div className="mt-5 space-y-3">
-                        <div className="rounded border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-900">Smart Copy</p>
-                          <p className="mt-1 text-xs text-gray-600">
+                        <div className="rounded border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">Smart Copy</p>
+                          <p className="mt-1 text-xs text-secondary">
                             Right-click → "Copy for AI (Optimized)"
                           </p>
                         </div>
-                        <div className="rounded border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-900">Status Bar</p>
-                          <p className="mt-1 text-xs text-gray-600">
+                        <div className="rounded border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">Status Bar</p>
+                          <p className="mt-1 text-xs text-secondary">
                             Check bottom-left for real-time token count
                           </p>
                         </div>
-                        <div className="rounded border border-gray-200 p-3">
-                          <p className="text-sm font-medium text-gray-900">Pre-flight</p>
-                          <p className="mt-1 text-xs text-gray-600">
-                            <kbd className="rounded border border-gray-200 bg-gray-100 px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
+                        <div className="rounded border border-border p-3">
+                          <p className="text-sm font-medium text-foreground">Pre-flight</p>
+                          <p className="mt-1 text-xs text-secondary">
+                            <kbd className="rounded border border-border bg-card-hover px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
                           </p>
                         </div>
                       </div>
@@ -382,13 +450,21 @@ export default function Home() {
                       <div className="mt-5 flex gap-3">
                         <button
                           onClick={() => setOnboardStep(1)}
-                          className="flex-1 rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-100"
+                          className={cn(
+                            "flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200",
+                            "hover:bg-card-hover",
+                            "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                          )}
                         >
                           Back
                         </button>
                         <button
                           onClick={() => setOnboardStep(3)}
-                          className="flex-1 rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+                          className={cn(
+                            "flex-1 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                            "hover:bg-emerald-600 hover:shadow-md",
+                            "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                          )}
                         >
                           Next
                         </button>
@@ -406,14 +482,14 @@ export default function Home() {
                         </div>
                       </div>
 
-                      <h2 className="mt-4 text-center text-lg font-semibold text-gray-900">You're all set</h2>
-                      <p className="mt-2 text-center text-sm text-gray-600">
+                      <h2 className="mt-4 text-center text-lg font-semibold text-foreground">You're all set</h2>
+                      <p className="mt-2 text-center text-sm text-secondary">
                         TokenLens is now running locally in your editor.
                       </p>
 
-                      <div className="mt-5 rounded border border-gray-200 bg-gray-100 p-4">
-                        <p className="text-xs font-medium text-gray-900">What happens next:</p>
-                        <ul className="mt-2 space-y-1.5 text-xs text-gray-600">
+                      <div className="mt-5 rounded border border-border bg-card-hover p-4">
+                        <p className="text-xs font-medium text-foreground">What happens next:</p>
+                        <ul className="mt-2 space-y-1.5 text-xs text-secondary">
                           <li className="flex items-start gap-2">
                             <span className="mt-0.5 text-prune-green">●</span>
                             <span>Token count shows in status bar</span>
@@ -435,7 +511,11 @@ export default function Home() {
 
                       <button
                         onClick={handleOpenDashboard}
-                        className="mt-5 w-full rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+                        className={cn(
+                          "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                          "hover:bg-emerald-600 hover:shadow-md",
+                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                        )}
                       >
                         Open Dashboard
                       </button>
@@ -449,16 +529,16 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section id="features" className="border-b border-gray-200 py-16">
+      <section id="features" className="border-b border-border py-16">
         <div className="mx-auto max-w-5xl px-4">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <h2 className="text-2xl font-semibold text-gray-900">Features</h2>
-              <p className="mt-2 text-gray-600">
+              <h2 className="text-2xl font-semibold text-foreground">Features</h2>
+              <p className="mt-2 text-secondary">
                 Reduce token consumption while maintaining context quality. Click any feature to open it in {ideName}.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-sm text-gray-500">
+            <div className="flex items-center gap-2 text-sm text-muted">
               <span>Select IDE:</span>
               <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
             </div>
@@ -475,56 +555,56 @@ export default function Home() {
       {/* Setup Section */}
       <section id="setup" className="py-16">
         <div className="mx-auto max-w-5xl px-4">
-          <h2 className="text-2xl font-semibold text-gray-900">Quick Setup</h2>
-          <p className="mt-2 text-gray-600">
+          <h2 className="text-2xl font-semibold text-foreground">Quick Setup</h2>
+          <p className="mt-2 text-secondary">
             Get running in under a minute.
           </p>
 
-          <div className="mt-8 rounded-lg border border-gray-200 bg-white p-6">
+          <div className="mt-8 rounded-lg border border-border bg-card p-6">
             <div className="space-y-6">
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   1
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Install dependencies</p>
-                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                    <code className="text-sm text-gray-900">npm install</code>
+                  <p className="font-medium text-foreground">Install dependencies</p>
+                  <div className="mt-2 rounded border border-border bg-card-hover px-3 py-2">
+                    <code className="text-sm text-foreground">npm install</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   2
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Build all packages</p>
-                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                    <code className="text-sm text-gray-900">npm run build</code>
+                  <p className="font-medium text-foreground">Build all packages</p>
+                  <div className="mt-2 rounded border border-border bg-card-hover px-3 py-2">
+                    <code className="text-sm text-foreground">npm run build</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   3
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Package the extension</p>
-                  <div className="mt-2 rounded border border-gray-200 bg-gray-100 px-3 py-2">
-                    <code className="text-sm text-gray-900">cd apps/extension && npm run package</code>
+                  <p className="font-medium text-foreground">Package the extension</p>
+                  <div className="mt-2 rounded border border-border bg-card-hover px-3 py-2">
+                    <code className="text-sm text-foreground">cd apps/extension && npm run package</code>
                   </div>
                 </div>
               </div>
 
               <div className="flex gap-4">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-300 text-sm font-medium text-gray-900">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border text-sm font-medium text-foreground">
                   4
                 </div>
                 <div>
-                  <p className="font-medium text-gray-900">Install the VSIX</p>
-                  <p className="mt-1 text-sm text-gray-600">
+                  <p className="font-medium text-foreground">Install the VSIX</p>
+                  <p className="mt-1 text-sm text-secondary">
                     Extensions → ... → Install from VSIX → select prune-0.1.0.vsix
                   </p>
                 </div>
@@ -535,16 +615,16 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-200 bg-white py-8">
+      <footer className="border-t border-border bg-card py-8">
         <div className="mx-auto max-w-5xl px-4">
           <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
             <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-gray-900 text-white text-xs font-bold">
+              <div className="flex h-6 w-6 items-center justify-center rounded bg-foreground text-background text-xs font-bold">
                 TL
               </div>
-              <span className="text-sm text-gray-600">TokenLens</span>
+              <span className="text-sm text-secondary">TokenLens</span>
             </div>
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-muted">
               Token intelligence for AI coding assistants
             </p>
           </div>
