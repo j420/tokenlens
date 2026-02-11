@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { IDESelector, usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { useToast, toast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 
 type OnboardStep = 1 | 2 | 3;
@@ -118,10 +120,16 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   return (
     <a
       href={uri}
-      className="group block rounded-lg border border-border bg-card p-5 transition hover:border-secondary hover:shadow-md"
+      className={cn(
+        "group block rounded-lg border border-border bg-card p-5",
+        "transition-all duration-200",
+        "hover:border-secondary hover:shadow-md hover:-translate-y-0.5",
+        "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+      )}
+      aria-label={`${feature.title}: ${feature.description}. Open in ${ideName}`}
     >
       <div className="mb-3 flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-card-hover text-secondary transition group-hover:bg-prune-green/10 group-hover:text-prune-green">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-card-hover text-secondary transition-colors duration-200 group-hover:bg-status-green/10 group-hover:text-status-green">
           {feature.icon}
         </div>
         <ImpactBadge impact={feature.impact} />
@@ -136,9 +144,9 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
         ) : (
           <span />
         )}
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-secondary transition group-hover:text-prune-green">
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-secondary transition-colors duration-200 group-hover:text-status-green">
           Open in {ideName}
-          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
           </svg>
         </span>
@@ -150,28 +158,56 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
 export default function Home() {
   const router = useRouter();
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [signupState, setSignupState] = useState<"idle" | "loading" | "success">("idle");
   const [showOnboard, setShowOnboard] = useState(false);
   const [onboardStep, setOnboardStep] = useState<OnboardStep>(1);
   const [copied, setCopied] = useState(false);
   const [preferredIDE, setPreferredIDE] = usePreferredIDE();
+  const { addToast } = useToast();
+  const toastHelpers = toast(addToast);
+
+  const validateEmail = useCallback((value: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!value) {
+      setEmailError("Email is required");
+      return false;
+    }
+    if (!emailRegex.test(value)) {
+      setEmailError("Please enter a valid email address");
+      return false;
+    }
+    setEmailError("");
+    return true;
+  }, []);
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email) return;
+    if (!validateEmail(email)) return;
 
     setSignupState("loading");
-    // Simulate signup - in production, this would call an API
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    setSignupState("success");
-    setShowOnboard(true);
+    try {
+      // Simulate signup - in production, this would call an API
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      setSignupState("success");
+      setShowOnboard(true);
+      toastHelpers.success("Welcome!", "Let's get you set up with TokenLens.");
+    } catch {
+      setSignupState("idle");
+      toastHelpers.error("Signup failed", "Please try again later.");
+    }
   };
 
-  const handleCopy = async (text: string) => {
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+  const handleCopy = useCallback(async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      toastHelpers.success("Copied!", "Command copied to clipboard.");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toastHelpers.error("Copy failed", "Could not copy to clipboard.");
+    }
+  }, [toastHelpers]);
 
   const handleOpenDashboard = () => {
     router.push("/dashboard");
@@ -190,11 +226,12 @@ export default function Home() {
             </div>
             <span className="font-semibold text-foreground">TokenLens</span>
           </div>
-          <nav className="flex items-center gap-6 text-sm">
-            <a href="#features" className="text-secondary hover:text-foreground transition">Features</a>
-            <a href="#setup" className="text-secondary hover:text-foreground transition">Setup</a>
+          <nav className="flex items-center gap-4 text-sm">
+            <a href="#features" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Features</a>
+            <a href="#setup" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Setup</a>
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
-            <a href="/dashboard" className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background hover:bg-secondary transition">Dashboard</a>
+            <ThemeToggle compact />
+            <a href="/dashboard" className="rounded-lg bg-foreground px-4 py-2 text-sm font-medium text-background transition hover:bg-secondary focus:outline-none focus:ring-2 focus:ring-foreground focus:ring-offset-1">Dashboard</a>
           </nav>
         </div>
       </header>
@@ -242,24 +279,51 @@ export default function Home() {
                     Enter your email to begin setup. We'll guide you through installation.
                   </p>
 
-                  <form onSubmit={handleSignup} className="mt-6">
-                    <label className="block text-sm font-medium text-foreground">
+                  <form onSubmit={handleSignup} className="mt-6" noValidate>
+                    <label htmlFor="signup-email" className="block text-sm font-medium text-foreground">
                       Email
                     </label>
                     <input
+                      id="signup-email"
                       type="email"
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (emailError) validateEmail(e.target.value);
+                      }}
+                      onBlur={() => email && validateEmail(email)}
                       placeholder="you@company.com"
-                      className="mt-2 w-full rounded border border-border bg-card px-3 py-2 text-foreground placeholder:text-muted focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
-                      required
+                      aria-invalid={emailError ? "true" : undefined}
+                      aria-describedby={emailError ? "email-error" : undefined}
+                      className={cn(
+                        "mt-2 w-full rounded-lg border bg-card px-3 py-2.5 text-foreground transition",
+                        "placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-offset-1",
+                        emailError
+                          ? "border-status-red focus:border-status-red focus:ring-status-red"
+                          : "border-border focus:border-status-green focus:ring-status-green"
+                      )}
                     />
+                    {emailError && (
+                      <p id="email-error" className="mt-1.5 text-sm text-status-red" role="alert">
+                        {emailError}
+                      </p>
+                    )}
 
                     <button
                       type="submit"
                       disabled={signupState === "loading"}
-                      className="mt-4 w-full rounded bg-prune-green px-4 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-600 disabled:opacity-50"
+                      className={cn(
+                        "mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition",
+                        "hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1",
+                        "disabled:cursor-not-allowed disabled:opacity-50"
+                      )}
                     >
+                      {signupState === "loading" && (
+                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      )}
                       {signupState === "loading" ? "Starting..." : "Start Setup"}
                     </button>
                   </form>
@@ -344,7 +408,11 @@ export default function Home() {
 
                       <button
                         onClick={() => setOnboardStep(2)}
-                        className="mt-5 w-full rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+                        className={cn(
+                          "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                          "hover:bg-emerald-600 hover:shadow-md",
+                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                        )}
                       >
                         I've installed it
                       </button>
@@ -382,13 +450,21 @@ export default function Home() {
                       <div className="mt-5 flex gap-3">
                         <button
                           onClick={() => setOnboardStep(1)}
-                          className="flex-1 rounded border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-card-hover"
+                          className={cn(
+                            "flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200",
+                            "hover:bg-card-hover",
+                            "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                          )}
                         >
                           Back
                         </button>
                         <button
                           onClick={() => setOnboardStep(3)}
-                          className="flex-1 rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+                          className={cn(
+                            "flex-1 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                            "hover:bg-emerald-600 hover:shadow-md",
+                            "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                          )}
                         >
                           Next
                         </button>
@@ -435,7 +511,11 @@ export default function Home() {
 
                       <button
                         onClick={handleOpenDashboard}
-                        className="mt-5 w-full rounded bg-prune-green px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-600"
+                        className={cn(
+                          "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                          "hover:bg-emerald-600 hover:shadow-md",
+                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                        )}
                       >
                         Open Dashboard
                       </button>

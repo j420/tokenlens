@@ -5,28 +5,29 @@ import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { IDESelector, usePreferredIDE } from "@/components/ide-selector";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 function VsCodeBanner({ onDismiss, ideName }: { onDismiss: () => void; ideName: string }) {
   return (
-    <div className="border-b border-amber-200 bg-amber-50 px-4 py-3">
-      <div className="mx-auto flex max-w-6xl items-center justify-between">
-        <p className="text-sm text-amber-800">
+    <div className="border-b border-status-amber/30 bg-status-amber/10 px-4 py-3">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+        <p className="text-sm text-foreground">
           <span className="mr-2">💡</span>
           Want real-time cost tracking in your editor? Install the Prune extension:{" "}
-          <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-xs">
+          <code className="rounded bg-status-amber/20 px-1.5 py-0.5 font-mono text-xs">
             ext install delimit.prune
           </code>
         </p>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <a
             href="vscode:extension/delimit.prune"
-            className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700"
+            className="rounded-md bg-status-amber px-3 py-1.5 text-sm font-medium text-white transition hover:bg-status-orange focus:outline-none focus:ring-2 focus:ring-status-amber focus:ring-offset-1"
           >
             Install for {ideName}
           </a>
           <button
             onClick={onDismiss}
-            className="rounded-md px-3 py-1.5 text-sm font-medium text-amber-700 hover:bg-amber-100"
+            className="rounded-md px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-status-amber/20 focus:outline-none focus:ring-2 focus:ring-status-amber focus:ring-offset-1"
           >
             Maybe later
           </button>
@@ -98,19 +99,21 @@ export default function DashboardLayout({
               </Link>
             </nav>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
+            <ThemeToggle compact />
+            <div className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
             <a
               href="https://docs.delimit.dev"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-sm text-secondary hover:text-foreground"
+              className="rounded-md px-2.5 py-1.5 text-sm text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1"
             >
               Docs
             </a>
             <Link
               href="/dashboard/settings"
-              className="rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground hover:bg-border"
+              className="rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-border focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1"
             >
               Settings
             </Link>

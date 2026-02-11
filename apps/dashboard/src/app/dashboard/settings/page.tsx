@@ -1,7 +1,11 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { useToast, toast } from "@/components/toast";
+import { Skeleton } from "@/components/skeleton";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface ConnectedTool {
   id: string;
@@ -144,15 +148,33 @@ function formatRelativeTime(isoString: string): string {
   return `${diffDays} day${diffDays !== 1 ? "s" : ""} ago`;
 }
 
+function SettingsSkeleton() {
+  return (
+    <div className="space-y-8">
+      <Skeleton className="h-8 w-32" />
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="rounded-lg border border-border bg-card p-6">
+          <Skeleton className="mb-4 h-6 w-40" />
+          <div className="space-y-4">
+            <Skeleton className="h-12 w-full" />
+            <Skeleton className="h-12 w-3/4" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const [showFullApiKey, setShowFullApiKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const { addToast } = useToast();
+  const toastHelpers = toast(addToast);
 
   useEffect(() => {
-    // In production, fetch from /api/dashboard/settings
-    // For now, use mock data
     const fetchSettings = async () => {
       try {
         const response = await fetch("/api/dashboard/settings");
@@ -171,28 +193,33 @@ export default function SettingsPage() {
     fetchSettings();
   }, []);
 
-  const handleCopyApiKey = async () => {
+  const handleCopyApiKey = useCallback(async () => {
     if (!settings) return;
-    await navigator.clipboard.writeText(settings.apiKey.fullKey);
-    setApiKeyCopied(true);
-    setTimeout(() => setApiKeyCopied(false), 2000);
-  };
+    try {
+      await navigator.clipboard.writeText(settings.apiKey.fullKey);
+      setApiKeyCopied(true);
+      toastHelpers.success("API key copied", "The API key has been copied to your clipboard.");
+      setTimeout(() => setApiKeyCopied(false), 2000);
+    } catch {
+      toastHelpers.error("Failed to copy", "Could not copy the API key to clipboard.");
+    }
+  }, [settings, toastHelpers]);
 
-  const handleRegenerateApiKey = async () => {
+  const handleRegenerateApiKey = useCallback(async () => {
     if (!confirm("Are you sure? This will invalidate your current API key.")) return;
-    // In production, call API to regenerate key
-    alert("API key regeneration not implemented in demo");
-  };
+    toastHelpers.warning("Not available", "API key regeneration is not available in demo mode.");
+  }, [toastHelpers]);
 
-  const handleDeleteRule = (ruleId: string) => {
+  const handleDeleteRule = useCallback((ruleId: string) => {
     if (!settings) return;
     setSettings({
       ...settings,
       autoTrimRules: settings.autoTrimRules.filter((r) => r.id !== ruleId),
     });
-  };
+    toastHelpers.success("Rule deleted", "The auto-trim rule has been removed.");
+  }, [settings, toastHelpers]);
 
-  const handlePreferenceChange = <K extends keyof AlertPreferences>(
+  const handlePreferenceChange = useCallback(<K extends keyof AlertPreferences>(
     key: K,
     value: AlertPreferences[K]
   ) => {
@@ -204,19 +231,40 @@ export default function SettingsPage() {
         [key]: value,
       },
     });
-  };
+  }, [settings]);
+
+  const handleSavePreferences = useCallback(async () => {
+    setSaving(true);
+    // Simulate API call
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    setSaving(false);
+    toastHelpers.success("Settings saved", "Your preferences have been updated.");
+  }, [toastHelpers]);
 
   if (loading || !settings) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
-      </div>
-    );
+    return <SettingsSkeleton />;
   }
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-foreground">Settings</h1>
+        <Button onClick={handleSavePreferences} loading={saving}>
+          Save Changes
+        </Button>
+      </div>
+
+      {/* Appearance */}
+      <section className="rounded-lg border border-border bg-card p-6">
+        <h2 className="mb-4 text-lg font-semibold text-foreground">Appearance</h2>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium text-foreground">Theme</p>
+            <p className="text-sm text-muted">Select your preferred color scheme</p>
+          </div>
+          <ThemeToggle />
+        </div>
+      </section>
 
       {/* Connected Tools */}
       <section className="rounded-lg border border-border bg-card p-6">

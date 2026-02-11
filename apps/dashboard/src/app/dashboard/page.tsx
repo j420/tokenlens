@@ -13,6 +13,8 @@ import {
 } from "recharts";
 import { cn, formatCurrency, formatTokens, getSpendColor, getRoiColor, getRoiBgColor } from "@/lib/utils";
 import { usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
+import { SkeletonDashboard, SkeletonFeatures } from "@/components/skeleton";
+import { useToast, toast } from "@/components/toast";
 
 // ============================================================================
 // Types
@@ -892,11 +894,7 @@ export default function DashboardPage() {
   const hasData = data && (data.sessions > 0 || data.todaySpend > 0);
 
   if (loading || !data) {
-    return (
-      <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
-      </div>
-    );
+    return <SkeletonDashboard />;
   }
 
   const tabs: { id: DashboardTab; label: string; icon: React.ReactNode }[] = [
