@@ -55,6 +55,7 @@ interface Feature {
   command: string;
   title: string;
   description: string;
+  aiContext: string; // Technical AI concept where this feature is useful
   keybinding?: { windows: string; mac: string };
   category: "token-saver" | "analysis" | "utility";
   impact: "high" | "medium" | "low";
@@ -92,6 +93,7 @@ const FEATURES: Feature[] = [
     title: "Smart Copy",
     description:
       "Copy files optimized for AI. Generates signatures-only format instead of full code. Typical savings: 70-90%.",
+    aiContext: "Optimizes context window utilization for RAG and prompt engineering workflows",
     keybinding: { windows: "Ctrl+Alt+C", mac: "Cmd+Alt+C" },
     category: "token-saver",
     impact: "high",
@@ -103,6 +105,7 @@ const FEATURES: Feature[] = [
     title: "Pre-flight Optimizer",
     description:
       "Analyze context before sending to AI. Shows current vs. recommended token usage with potential savings.",
+    aiContext: "Token budget management for LLM API cost control and context pruning",
     keybinding: { windows: "Ctrl+Alt+P", mac: "Cmd+Alt+P" },
     category: "token-saver",
     impact: "high",
@@ -114,6 +117,7 @@ const FEATURES: Feature[] = [
     title: "Session Memory Stats",
     description:
       "View deduplication stats showing files tracked and tokens saved from avoiding re-reads.",
+    aiContext: "Multi-turn conversation caching and semantic deduplication",
     category: "token-saver",
     impact: "medium",
     icon: "chart",
@@ -124,6 +128,7 @@ const FEATURES: Feature[] = [
     title: "Compaction Recovery",
     description:
       "Check for architectural decisions at risk of being forgotten during context compaction.",
+    aiContext: "Addresses summarization loss in long-context conversations and memory management",
     category: "token-saver",
     impact: "high",
     icon: "refresh",
@@ -134,6 +139,7 @@ const FEATURES: Feature[] = [
     title: "Track Decision",
     description:
       "Manually record an important architectural decision to protect it from context loss.",
+    aiContext: "Chain-of-thought persistence and explicit knowledge anchoring",
     category: "token-saver",
     impact: "medium",
     icon: "pin",
@@ -144,6 +150,7 @@ const FEATURES: Feature[] = [
     title: "Reset Session",
     description:
       "Clear session memory including file tracking and decision history. Start fresh.",
+    aiContext: "Context window reset for new conversation threads",
     category: "token-saver",
     impact: "low",
     icon: "trash",
@@ -155,6 +162,7 @@ const FEATURES: Feature[] = [
     title: "Analyze Current File",
     description:
       "Show token count and estimated cost for the currently open file.",
+    aiContext: "Prompt budgeting and API cost estimation before inference",
     keybinding: { windows: "Ctrl+Alt+T", mac: "Cmd+Alt+T" },
     category: "analysis",
     impact: "medium",
@@ -165,6 +173,7 @@ const FEATURES: Feature[] = [
     command: "prune.analyzeSelection",
     title: "Analyze Selection",
     description: "Count tokens for the selected text in the editor.",
+    aiContext: "Fine-grained token counting for precise context management",
     category: "analysis",
     impact: "low",
     icon: "scissors",
@@ -175,6 +184,7 @@ const FEATURES: Feature[] = [
     title: "Smart Context Analysis",
     description:
       "Analyze workspace files for relevance to a given task. Recommends which files to include.",
+    aiContext: "Semantic similarity scoring with TF-IDF for code retrieval optimization",
     keybinding: { windows: "Ctrl+Alt+A", mac: "Cmd+Alt+A" },
     category: "analysis",
     impact: "high",
@@ -186,6 +196,7 @@ const FEATURES: Feature[] = [
     title: "Intelligent Context (v2)",
     description:
       "Symbol-level DAG analysis with relevance categorization. The most advanced context selection.",
+    aiContext: "Dependency graph traversal with intent classification for precise retrieval",
     category: "analysis",
     impact: "high",
     icon: "brain",
@@ -196,6 +207,7 @@ const FEATURES: Feature[] = [
     title: "Squeeze File",
     description:
       "Compress file using tree-sitter AST. Three tiers: lossless (~15%), structural (~40%), telegraphic (~70%).",
+    aiContext: "AST-aware lossy/lossless encoding for code representation learning",
     category: "analysis",
     impact: "medium",
     icon: "compress",
@@ -207,6 +219,7 @@ const FEATURES: Feature[] = [
     title: "Check Cursor Usage",
     description:
       "Read Cursor's local SQLite database to show usage stats. Zero API keys required.",
+    aiContext: "API rate limiting awareness and usage quota monitoring",
     category: "utility",
     impact: "medium",
     icon: "cursor",
@@ -217,6 +230,7 @@ const FEATURES: Feature[] = [
     title: "Run Intelligence Tests",
     description:
       "Run the built-in test suite (107+ tests) to verify the intelligence engine.",
+    aiContext: "Validation of context selection algorithms and relevance scoring",
     category: "utility",
     impact: "low",
     icon: "flask",
@@ -481,7 +495,8 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
         <ImpactBadge impact={feature.impact} />
       </div>
 
-      <p className="mb-4 text-sm text-secondary">{feature.description}</p>
+      <p className="mb-2 text-sm text-secondary">{feature.description}</p>
+      <p className="mb-4 text-xs text-muted italic">{feature.aiContext}</p>
 
       <div className="flex items-center justify-between">
         <KeybindingBadge keybinding={feature.keybinding} />
