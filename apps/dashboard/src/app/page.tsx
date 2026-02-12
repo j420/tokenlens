@@ -134,19 +134,7 @@ const FEATURES: Feature[] = [
       </svg>
     ),
   },
-  // Privacy & Utility
-  {
-    id: "localProcessing",
-    command: "prune.analyzeContext",
-    title: "100% Local",
-    description: "No API keys required. No cloud. Your code never leaves your machine.",
-    aiContext: "Everything runs on your computer, nothing sent to the cloud",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-      </svg>
-    ),
-  },
+  // Utility
   {
     id: "checkCursorUsage",
     command: "prune.checkCursorUsage",
@@ -156,18 +144,6 @@ const FEATURES: Feature[] = [
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
-    id: "mcpServer",
-    command: "prune.analyzeContext",
-    title: "MCP Server",
-    description: "Let AI tools share context and work together automatically.",
-    aiContext: "Connects your AI tools so they can collaborate",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
     ),
   },
@@ -196,7 +172,7 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
       </div>
       <h3 className="font-semibold text-foreground">{feature.title}</h3>
       <p className="mt-2 text-sm text-secondary">{feature.description}</p>
-      <p className="mt-1.5 text-xs text-muted">{feature.aiContext}</p>
+      <p className="mt-1.5 text-xs text-secondary">{feature.aiContext}</p>
       <div className="mt-4 flex items-center justify-between">
         {feature.keybinding ? (
           <kbd className="rounded border border-border bg-background px-2 py-1 font-mono text-xs text-secondary">

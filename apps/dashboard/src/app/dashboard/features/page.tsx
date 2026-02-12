@@ -183,12 +183,12 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
         <span className="text-2xl">{feature.icon}</span>
         <div>
           <h3 className="font-semibold text-foreground">{feature.title}</h3>
-          <code className="text-xs text-muted">{feature.command}</code>
+          <code className="text-xs text-secondary">{feature.command}</code>
         </div>
       </div>
 
       <p className="mb-2 text-sm text-secondary">{feature.description}</p>
-      <p className="mb-4 text-xs text-muted">{feature.aiContext}</p>
+      <p className="mb-4 text-xs text-secondary">{feature.aiContext}</p>
 
       <div className="flex items-center justify-between">
         <KeybindingBadge keybinding={feature.keybinding} />
