@@ -18,8 +18,9 @@ interface SimulationStep {
 }
 
 const SIMULATIONS: SimulationStep[] = [
+  // Smart Copy variants
   {
-    id: "smart-copy",
+    id: "smart-copy-1",
     feature: "Smart Copy",
     prompt: "Copy auth service for AI context",
     command: "prune.smartCopy → auth/service.ts",
@@ -28,7 +29,27 @@ const SIMULATIONS: SimulationStep[] = [
     highlight: "89%",
   },
   {
-    id: "preflight",
+    id: "smart-copy-2",
+    feature: "Smart Copy",
+    prompt: "Copy entire API folder for refactoring",
+    command: "prune.smartCopy → src/api/* (12 files)",
+    status: "Extracting signatures...",
+    result: "28,400 tokens → 2,100 tokens (93% saved)",
+    highlight: "93%",
+  },
+  {
+    id: "smart-copy-3",
+    feature: "Smart Copy",
+    prompt: "Share database models with AI",
+    command: "prune.smartCopy → models/*.ts",
+    status: "Extracting type definitions...",
+    result: "8,900 tokens → 890 tokens (90% saved)",
+    highlight: "90%",
+  },
+
+  // Pre-flight variants
+  {
+    id: "preflight-1",
     feature: "Pre-flight",
     prompt: "Fix the header alignment bug",
     command: "prune.preflight → analyzing context...",
@@ -37,7 +58,27 @@ const SIMULATIONS: SimulationStep[] = [
     highlight: "82%",
   },
   {
-    id: "session-memory",
+    id: "preflight-2",
+    feature: "Pre-flight",
+    prompt: "Add dark mode to the dashboard",
+    command: "prune.preflight → scanning 89 files...",
+    status: "Finding relevant components...",
+    result: "124,000 → 15,600 tokens ($0.37 → $0.05)",
+    highlight: "87%",
+  },
+  {
+    id: "preflight-3",
+    feature: "Pre-flight",
+    prompt: "Write unit tests for UserService",
+    command: "prune.preflight → analyzing dependencies...",
+    status: "Mapping test coverage...",
+    result: "31,000 → 6,200 tokens ($0.09 → $0.02)",
+    highlight: "80%",
+  },
+
+  // Session Memory variants
+  {
+    id: "session-memory-1",
     feature: "Session Memory",
     prompt: "Read auth.ts again for context",
     command: "prune.sessionCheck → auth.ts",
@@ -46,7 +87,27 @@ const SIMULATIONS: SimulationStep[] = [
     highlight: "2.4K saved",
   },
   {
-    id: "context-analysis",
+    id: "session-memory-2",
+    feature: "Session Memory",
+    prompt: "Need to check the config file again",
+    command: "prune.sessionCheck → config/index.ts",
+    status: "Checking session memory...",
+    result: "Already in context (turn 3). Skipping.",
+    highlight: "1.8K saved",
+  },
+  {
+    id: "session-memory-3",
+    feature: "Session Memory",
+    prompt: "View session deduplication stats",
+    command: "prune.sessionStats → current session",
+    status: "Calculating savings...",
+    result: "6 files tracked, 14,200 tokens deduplicated",
+    highlight: "14.2K saved",
+  },
+
+  // Context Analysis variants
+  {
+    id: "context-analysis-1",
     feature: "Context Analysis",
     prompt: "Add rate limiting to API",
     command: "prune.analyzeContext → workspace",
@@ -55,13 +116,51 @@ const SIMULATIONS: SimulationStep[] = [
     highlight: "91%",
   },
   {
-    id: "compaction",
+    id: "context-analysis-2",
+    feature: "Context Analysis",
+    prompt: "Debug the checkout flow bug",
+    command: "prune.analyzeContext → src/checkout/*",
+    status: "Tracing error path...",
+    result: "5 files critical, 2 medium (skip 18)",
+    highlight: "72%",
+  },
+  {
+    id: "context-analysis-3",
+    feature: "Context Analysis",
+    prompt: "Refactor payment processing",
+    command: "prune.analyzeContext → analyzing imports...",
+    status: "Building dependency graph...",
+    result: "7 files in scope, clear refactor boundary",
+    highlight: "85%",
+  },
+
+  // Compaction Recovery variants
+  {
+    id: "compaction-1",
     feature: "Compaction Recovery",
     prompt: "Check decisions before context compacts",
     command: "prune.compactionCheck → session",
     status: "Scanning architectural decisions...",
     result: "3 decisions at risk. Reminder copied.",
     highlight: "Protected",
+  },
+  {
+    id: "compaction-2",
+    feature: "Compaction Recovery",
+    prompt: "Track: Use Redis for session storage",
+    command: "prune.trackDecision → recording...",
+    status: "Saving architectural decision...",
+    result: "Decision saved. Will persist across compaction.",
+    highlight: "Tracked",
+  },
+  {
+    id: "compaction-3",
+    feature: "Compaction Recovery",
+    prompt: "Generate compaction recovery prompt",
+    command: "prune.compactionCheck → 8 decisions found",
+    status: "Building recovery context...",
+    result: "Recovery prompt ready. 340 tokens.",
+    highlight: "8 decisions",
   },
 ];
 
@@ -194,6 +293,24 @@ function TerminalWindow({ simulation, phase }: TerminalWindowProps) {
 }
 
 // ============================================================================
+// Feature Categories
+// ============================================================================
+
+const FEATURES = [
+  "Smart Copy",
+  "Pre-flight",
+  "Session Memory",
+  "Context Analysis",
+  "Compaction Recovery",
+] as const;
+
+type FeatureName = (typeof FEATURES)[number];
+
+function getSimulationsByFeature(feature: FeatureName): SimulationStep[] {
+  return SIMULATIONS.filter((sim) => sim.feature === feature);
+}
+
+// ============================================================================
 // Feature Simulation Component
 // ============================================================================
 
@@ -213,6 +330,9 @@ export function FeatureSimulation({
   const [isPaused, setIsPaused] = useState(false);
 
   const currentSimulation = SIMULATIONS[currentIndex];
+  const currentFeature = currentSimulation.feature as FeatureName;
+  const featureSimulations = getSimulationsByFeature(currentFeature);
+  const variantIndex = featureSimulations.findIndex((s) => s.id === currentSimulation.id);
 
   // Phase progression
   useEffect(() => {
@@ -241,9 +361,20 @@ export function FeatureSimulation({
     return () => clearTimeout(timer);
   }, [currentIndex, autoPlay, intervalMs, isPaused]);
 
-  const handleDotClick = useCallback((index: number) => {
-    setPhase("typing");
-    setCurrentIndex(index);
+  const handleFeatureClick = useCallback((feature: FeatureName) => {
+    const firstSimIndex = SIMULATIONS.findIndex((s) => s.feature === feature);
+    if (firstSimIndex !== -1) {
+      setPhase("typing");
+      setCurrentIndex(firstSimIndex);
+    }
+  }, []);
+
+  const handleVariantClick = useCallback((simId: string) => {
+    const index = SIMULATIONS.findIndex((s) => s.id === simId);
+    if (index !== -1) {
+      setPhase("typing");
+      setCurrentIndex(index);
+    }
   }, []);
 
   return (
@@ -255,39 +386,45 @@ export function FeatureSimulation({
       {/* Terminal */}
       <TerminalWindow simulation={currentSimulation} phase={phase} />
 
-      {/* Navigation Dots */}
-      <div className="flex justify-center gap-2 mt-6">
-        {SIMULATIONS.map((sim, index) => (
+      {/* Feature Tabs */}
+      <div className="flex justify-center gap-2 mt-6 flex-wrap">
+        {FEATURES.map((feature) => (
           <button
-            key={sim.id}
-            onClick={() => handleDotClick(index)}
+            key={feature}
+            onClick={() => handleFeatureClick(feature)}
             className={cn(
-              "w-2 h-2 rounded-full transition-all duration-300",
-              index === currentIndex
-                ? "bg-status-green w-6"
-                : "bg-border hover:bg-secondary"
-            )}
-            aria-label={`View ${sim.feature} demo`}
-          />
-        ))}
-      </div>
-
-      {/* Feature Labels */}
-      <div className="flex justify-center gap-3 mt-4 flex-wrap">
-        {SIMULATIONS.map((sim, index) => (
-          <button
-            key={sim.id}
-            onClick={() => handleDotClick(index)}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200",
-              index === currentIndex
+              "px-4 py-2 rounded-full text-sm font-medium transition-all duration-200",
+              currentFeature === feature
                 ? "bg-foreground text-background"
                 : "bg-transparent text-secondary hover:text-foreground border border-border hover:border-secondary"
             )}
           >
-            {sim.feature}
+            {feature}
           </button>
         ))}
+      </div>
+
+      {/* Variant Dots (examples within current feature) */}
+      <div className="flex justify-center items-center gap-3 mt-4">
+        <span className="text-xs text-muted">Examples:</span>
+        <div className="flex gap-1.5">
+          {featureSimulations.map((sim, idx) => (
+            <button
+              key={sim.id}
+              onClick={() => handleVariantClick(sim.id)}
+              className={cn(
+                "w-2 h-2 rounded-full transition-all duration-300",
+                variantIndex === idx
+                  ? "bg-status-green w-5"
+                  : "bg-border hover:bg-secondary"
+              )}
+              aria-label={`Example ${idx + 1}`}
+            />
+          ))}
+        </div>
+        <span className="text-xs text-muted">
+          {variantIndex + 1} of {featureSimulations.length}
+        </span>
       </div>
 
       {/* Pause indicator */}
