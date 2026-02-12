@@ -14,22 +14,20 @@ interface Feature {
   command: string;
   title: string;
   description: string;
-  aiContext: string; // Technical AI concept where this feature is useful
+  aiContext: string; // Plain language explanation of the benefit
   keybinding?: { windows: string; mac: string };
-  impact: "high" | "medium" | "low";
   icon: React.ReactNode;
 }
 
 const FEATURES: Feature[] = [
-  // High Impact - Token Savers
+  // Token Savers
   {
     id: "smartCopy",
     command: "prune.smartCopy",
     title: "Smart Copy",
     description: "Copy files as signatures instead of full code. 70-90% token reduction.",
-    aiContext: "Optimizes context window utilization for RAG and prompt engineering workflows",
+    aiContext: "Paste into AI chat and get better answers with less cost",
     keybinding: { windows: "Ctrl+Alt+C", mac: "Cmd+Alt+C" },
-    impact: "high",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -41,9 +39,8 @@ const FEATURES: Feature[] = [
     command: "prune.preflight",
     title: "Pre-flight Optimizer",
     description: "See what you're about to spend vs what you could spend with optimization.",
-    aiContext: "Token budget management for LLM API cost control and context pruning",
+    aiContext: "Know the exact cost before you send your request",
     keybinding: { windows: "Ctrl+Alt+P", mac: "Cmd+Alt+P" },
-    impact: "high",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -54,9 +51,8 @@ const FEATURES: Feature[] = [
     id: "smartContext",
     command: "prune.smartContext",
     title: "Intelligent Context",
-    description: "Symbol-level DAG analysis. Selects optimal code context based on your intent.",
-    aiContext: "Dependency graph traversal with intent classification for precise retrieval",
-    impact: "high",
+    description: "Automatically picks the right code to include based on what you're asking.",
+    aiContext: "AI understands your question and selects relevant code for you",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
@@ -68,8 +64,7 @@ const FEATURES: Feature[] = [
     command: "prune.compactionCheck",
     title: "Compaction Recovery",
     description: "Tracks architectural decisions. Shows what may be forgotten on context compaction.",
-    aiContext: "Addresses summarization loss in long-context conversations and memory management",
-    impact: "high",
+    aiContext: "Keep important decisions from getting lost in long conversations",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -81,23 +76,21 @@ const FEATURES: Feature[] = [
     command: "prune.analyzeContext",
     title: "Context Analysis",
     description: "Score workspace files by relevance to your task. Know what to include.",
-    aiContext: "Semantic similarity scoring with TF-IDF for code retrieval optimization",
+    aiContext: "Find the most relevant files for your task",
     keybinding: { windows: "Ctrl+Alt+A", mac: "Cmd+Alt+A" },
-    impact: "high",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
       </svg>
     ),
   },
-  // Medium Impact
+  // Session & Analysis
   {
     id: "sessionStats",
     command: "prune.sessionStats",
     title: "Session Memory",
     description: "Tracks files already in context. Prevents re-reading the same files.",
-    aiContext: "Multi-turn conversation caching and semantic deduplication",
-    impact: "medium",
+    aiContext: "AI remembers what it already read so it doesn't read again",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -108,9 +101,8 @@ const FEATURES: Feature[] = [
     id: "squeezeFile",
     command: "prune.squeezeFile",
     title: "Code Squeezer",
-    description: "Tree-sitter powered compression. Three tiers: lossless, structural, telegraphic.",
-    aiContext: "AST-aware lossy/lossless encoding for code representation learning",
-    impact: "medium",
+    description: "Compress code while keeping it readable. Choose from light, medium, or heavy compression.",
+    aiContext: "Shrink your code while AI can still understand it",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
@@ -122,8 +114,7 @@ const FEATURES: Feature[] = [
     command: "prune.trackDecision",
     title: "Track Decision",
     description: "Record architectural decisions to protect them from context loss.",
-    aiContext: "Chain-of-thought persistence and explicit knowledge anchoring",
-    impact: "medium",
+    aiContext: "Bookmark key decisions so they don't get forgotten",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
@@ -135,23 +126,21 @@ const FEATURES: Feature[] = [
     command: "prune.analyzeFile",
     title: "Token Counter",
     description: "Real-time token count and cost estimation for any file or selection.",
-    aiContext: "Prompt budgeting and API cost estimation before inference",
+    aiContext: "Know the cost before asking AI",
     keybinding: { windows: "Ctrl+Alt+T", mac: "Cmd+Alt+T" },
-    impact: "medium",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
       </svg>
     ),
   },
-  // Privacy / Utility
+  // Privacy & Utility
   {
     id: "localProcessing",
     command: "prune.analyzeContext",
     title: "100% Local",
     description: "No API keys required. No cloud. Your code never leaves your machine.",
-    aiContext: "On-device inference preparation without external API dependencies",
-    impact: "low",
+    aiContext: "Everything runs on your computer, nothing sent to the cloud",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
@@ -163,8 +152,7 @@ const FEATURES: Feature[] = [
     command: "prune.checkCursorUsage",
     title: "Usage Tracking",
     description: "Monitor your AI coding assistant usage. Zero-key local database access.",
-    aiContext: "API rate limiting awareness and usage quota monitoring",
-    impact: "low",
+    aiContext: "See how many requests you've used this month",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -175,9 +163,8 @@ const FEATURES: Feature[] = [
     id: "mcpServer",
     command: "prune.analyzeContext",
     title: "MCP Server",
-    description: "Model Context Protocol server for AI self-regulation and tool orchestration.",
-    aiContext: "Enables agentic workflows with tool use and context-aware AI orchestration",
-    impact: "low",
+    description: "Let AI tools share context and work together automatically.",
+    aiContext: "Connects your AI tools so they can collaborate",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -186,22 +173,6 @@ const FEATURES: Feature[] = [
   },
 ];
 
-function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        impact === "high" && "bg-status-green/10 text-status-green",
-        impact === "medium" && "bg-status-amber/10 text-status-amber",
-        impact === "low" && "bg-card-hover text-secondary"
-      )}
-    >
-      {impact === "high" && "High Impact"}
-      {impact === "medium" && "Medium"}
-      {impact === "low" && "Privacy"}
-    </span>
-  );
-}
 
 function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   const uri = getIDEUri(ide, feature.id);
@@ -218,15 +189,14 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
       )}
       aria-label={`${feature.title}: ${feature.description}. Open in ${ideName}`}
     >
-      <div className="mb-3 flex items-start justify-between">
+      <div className="mb-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-card-hover text-secondary transition-colors duration-200 group-hover:bg-status-green/10 group-hover:text-status-green">
           {feature.icon}
         </div>
-        <ImpactBadge impact={feature.impact} />
       </div>
       <h3 className="font-semibold text-foreground">{feature.title}</h3>
       <p className="mt-2 text-sm text-secondary">{feature.description}</p>
-      <p className="mt-1.5 text-xs text-muted italic">{feature.aiContext}</p>
+      <p className="mt-1.5 text-xs text-muted">{feature.aiContext}</p>
       <div className="mt-4 flex items-center justify-between">
         {feature.keybinding ? (
           <kbd className="rounded border border-border bg-background px-2 py-1 font-mono text-xs text-secondary">
