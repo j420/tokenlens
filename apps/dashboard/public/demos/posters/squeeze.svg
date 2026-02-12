@@ -1,0 +1,104 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="720" fill="#18181b"/>
+
+  <!-- Title -->
+  <text x="640" y="50" font-family="system-ui" font-size="20" font-weight="600" fill="#fafafa" text-anchor="middle">Code Squeezer</text>
+  <text x="640" y="75" font-family="system-ui" font-size="14" fill="#a1a1aa" text-anchor="middle">Three compression tiers using AST analysis</text>
+
+  <!-- Original code panel -->
+  <rect x="80" y="110" width="340" height="400" rx="12" fill="#27272a" stroke="#3f3f46" stroke-width="2"/>
+  <rect x="80" y="110" width="340" height="40" rx="12" fill="#27272a"/>
+  <text x="250" y="137" font-family="system-ui" font-size="12" font-weight="600" fill="#71717a" text-anchor="middle">ORIGINAL</text>
+
+  <!-- Code lines (simulated) -->
+  <rect x="100" y="170" width="200" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="190" width="280" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="210" width="150" height="10" rx="2" fill="#71717a"/>
+  <rect x="100" y="230" width="220" height="10" rx="2" fill="#71717a"/>
+  <rect x="100" y="250" width="260" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="270" width="180" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="290" width="300" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="310" width="240" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="330" width="160" height="10" rx="2" fill="#71717a"/>
+  <rect x="100" y="350" width="290" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="370" width="200" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="390" width="250" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="410" width="120" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="430" width="270" height="10" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="450" width="180" height="10" rx="2" fill="#3f3f46"/>
+
+  <rect x="100" y="480" width="300" height="20" rx="4" fill="#3f3f46"/>
+  <text x="250" y="495" font-family="system-ui" font-size="11" fill="#a1a1aa" text-anchor="middle">1,200 tokens</text>
+
+  <!-- Lossless tier -->
+  <rect x="470" y="110" width="240" height="180" rx="12" fill="#27272a" stroke="#10b981" stroke-width="2"/>
+  <rect x="470" y="110" width="240" height="36" rx="12" fill="#10b981" fill-opacity="0.1"/>
+  <text x="590" y="134" font-family="system-ui" font-size="11" font-weight="600" fill="#10b981" text-anchor="middle">LOSSLESS</text>
+
+  <rect x="490" y="160" width="140" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="175" width="180" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="190" width="160" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="205" width="200" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="220" width="120" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="235" width="170" height="8" rx="2" fill="#3f3f46"/>
+
+  <rect x="490" y="260" width="200" height="18" rx="4" fill="#10b981" fill-opacity="0.2"/>
+  <text x="590" y="273" font-family="system-ui" font-size="10" font-weight="600" fill="#10b981" text-anchor="middle">~15% saved • 1,020 tokens</text>
+
+  <!-- Structural tier -->
+  <rect x="470" y="310" width="240" height="180" rx="12" fill="#27272a" stroke="#f59e0b" stroke-width="2"/>
+  <rect x="470" y="310" width="240" height="36" rx="12" fill="#f59e0b" fill-opacity="0.1"/>
+  <text x="590" y="334" font-family="system-ui" font-size="11" font-weight="600" fill="#f59e0b" text-anchor="middle">STRUCTURAL</text>
+
+  <rect x="490" y="360" width="140" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="375" width="100" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="390" width="160" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="490" y="405" width="80" height="8" rx="2" fill="#3f3f46"/>
+
+  <rect x="490" y="460" width="200" height="18" rx="4" fill="#f59e0b" fill-opacity="0.2"/>
+  <text x="590" y="473" font-family="system-ui" font-size="10" font-weight="600" fill="#f59e0b" text-anchor="middle">~40% saved • 720 tokens</text>
+
+  <!-- Telegraphic tier -->
+  <rect x="760" y="110" width="240" height="180" rx="12" fill="#27272a" stroke="#ef4444" stroke-width="2"/>
+  <rect x="760" y="110" width="240" height="36" rx="12" fill="#ef4444" fill-opacity="0.1"/>
+  <text x="880" y="134" font-family="system-ui" font-size="11" font-weight="600" fill="#ef4444" text-anchor="middle">TELEGRAPHIC</text>
+
+  <rect x="780" y="160" width="100" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="780" y="175" width="80" height="8" rx="2" fill="#3f3f46"/>
+  <rect x="780" y="190" width="60" height="8" rx="2" fill="#3f3f46"/>
+
+  <rect x="780" y="260" width="200" height="18" rx="4" fill="#ef4444" fill-opacity="0.2"/>
+  <text x="880" y="273" font-family="system-ui" font-size="10" font-weight="600" fill="#ef4444" text-anchor="middle">~70% saved • 360 tokens</text>
+
+  <!-- Languages supported -->
+  <rect x="760" y="310" width="440" height="180" rx="12" fill="#27272a" stroke="#3f3f46" stroke-width="1"/>
+  <text x="980" y="345" font-family="system-ui" font-size="12" font-weight="600" fill="#a1a1aa" text-anchor="middle">SUPPORTED LANGUAGES</text>
+
+  <text x="800" y="385" font-family="system-ui" font-size="12" fill="#fafafa">JavaScript</text>
+  <text x="920" y="385" font-family="system-ui" font-size="12" fill="#fafafa">TypeScript</text>
+  <text x="1040" y="385" font-family="system-ui" font-size="12" fill="#fafafa">Python</text>
+  <text x="1140" y="385" font-family="system-ui" font-size="12" fill="#fafafa">Go</text>
+  <text x="800" y="415" font-family="system-ui" font-size="12" fill="#fafafa">Rust</text>
+  <text x="920" y="415" font-family="system-ui" font-size="12" fill="#fafafa">Java</text>
+  <text x="1040" y="415" font-family="system-ui" font-size="12" fill="#fafafa">C/C++</text>
+  <text x="1140" y="415" font-family="system-ui" font-size="12" fill="#fafafa">Ruby</text>
+
+  <text x="980" y="465" font-family="system-ui" font-size="11" fill="#71717a" text-anchor="middle">Powered by Tree-sitter WASM</text>
+
+  <!-- Arrows -->
+  <path d="M430 200 L460 200" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+  <path d="M450 195 L465 200 L450 205" stroke="#10b981" stroke-width="2" stroke-linecap="round" fill="none"/>
+
+  <path d="M430 400 L460 400" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"/>
+  <path d="M450 395 L465 400 L450 405" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" fill="none"/>
+
+  <path d="M720 200 L750 200" stroke="#ef4444" stroke-width="2" stroke-linecap="round"/>
+  <path d="M740 195 L755 200 L740 205" stroke="#ef4444" stroke-width="2" stroke-linecap="round" fill="none"/>
+
+  <!-- Title -->
+  <text x="640" y="580" font-family="system-ui" font-size="24" font-weight="600" fill="#fafafa" text-anchor="middle">Code Squeezer - Compress while preserving semantics</text>
+
+  <!-- Selection hint -->
+  <rect x="340" y="620" width="600" height="50" rx="8" fill="#27272a" stroke="#3f3f46" stroke-width="1"/>
+  <text x="640" y="652" font-family="system-ui" font-size="13" fill="#a1a1aa" text-anchor="middle">Choose compression level based on how central the code is to your task</text>
+</svg>

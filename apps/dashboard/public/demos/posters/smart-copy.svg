@@ -1,0 +1,50 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="720" fill="#18181b"/>
+
+  <!-- Code editor mockup -->
+  <rect x="80" y="80" width="560" height="560" rx="12" fill="#27272a" stroke="#3f3f46" stroke-width="2"/>
+
+  <!-- Title bar -->
+  <rect x="80" y="80" width="560" height="40" rx="12" fill="#27272a"/>
+  <circle cx="104" cy="100" r="6" fill="#ef4444"/>
+  <circle cx="124" cy="100" r="6" fill="#f59e0b"/>
+  <circle cx="144" cy="100" r="6" fill="#10b981"/>
+  <text x="340" y="105" font-family="system-ui" font-size="12" fill="#71717a" text-anchor="middle">auth.service.ts</text>
+
+  <!-- Code lines -->
+  <rect x="100" y="140" width="400" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="164" width="320" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="188" width="480" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="212" width="260" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="236" width="380" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="260" width="200" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="284" width="440" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="308" width="300" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="332" width="420" height="12" rx="2" fill="#3f3f46"/>
+  <rect x="100" y="356" width="180" height="12" rx="2" fill="#3f3f46"/>
+
+  <!-- Selection highlight -->
+  <rect x="96" y="184" width="492" height="160" rx="4" fill="#10b981" fill-opacity="0.15" stroke="#10b981" stroke-width="2" stroke-dasharray="4 2"/>
+
+  <!-- Arrow -->
+  <path d="M680 360 L760 360" stroke="#10b981" stroke-width="3" stroke-linecap="round"/>
+  <path d="M750 350 L770 360 L750 370" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Output panel -->
+  <rect x="800" y="200" width="400" height="320" rx="12" fill="#27272a" stroke="#10b981" stroke-width="2"/>
+  <rect x="800" y="200" width="400" height="40" rx="12" fill="#27272a"/>
+  <text x="1000" y="225" font-family="system-ui" font-size="12" fill="#10b981" text-anchor="middle">Optimized Output</text>
+
+  <!-- Simplified code -->
+  <rect x="820" y="260" width="200" height="10" rx="2" fill="#10b981" fill-opacity="0.5"/>
+  <rect x="820" y="280" width="280" height="10" rx="2" fill="#10b981" fill-opacity="0.5"/>
+  <rect x="820" y="300" width="160" height="10" rx="2" fill="#10b981" fill-opacity="0.5"/>
+  <rect x="820" y="320" width="240" height="10" rx="2" fill="#10b981" fill-opacity="0.5"/>
+
+  <!-- Token savings badge -->
+  <rect x="820" y="460" width="360" height="40" rx="8" fill="#10b981" fill-opacity="0.1" stroke="#10b981" stroke-width="1"/>
+  <text x="1000" y="486" font-family="system-ui" font-size="14" font-weight="600" fill="#10b981" text-anchor="middle">89% Token Reduction</text>
+
+  <!-- Title -->
+  <text x="640" y="680" font-family="system-ui" font-size="24" font-weight="600" fill="#fafafa" text-anchor="middle">Smart Copy - Copy files as signatures</text>
+</svg>

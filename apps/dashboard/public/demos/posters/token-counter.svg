@@ -1,0 +1,110 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="720" fill="#18181b"/>
+
+  <!-- Editor mockup -->
+  <rect x="80" y="80" width="1120" height="480" rx="12" fill="#27272a" stroke="#3f3f46" stroke-width="2"/>
+
+  <!-- Title bar -->
+  <rect x="80" y="80" width="1120" height="44" rx="12" fill="#27272a"/>
+  <circle cx="108" cy="102" r="7" fill="#ef4444"/>
+  <circle cx="132" cy="102" r="7" fill="#f59e0b"/>
+  <circle cx="156" cy="102" r="7" fill="#10b981"/>
+  <text x="640" y="107" font-family="system-ui" font-size="13" fill="#a1a1aa" text-anchor="middle">user-service.ts — TokenLens Extension</text>
+
+  <!-- Code content area -->
+  <rect x="100" y="140" width="1080" height="380" fill="#1a1a1a" rx="4"/>
+
+  <!-- Line numbers -->
+  <text x="120" y="170" font-family="monospace" font-size="12" fill="#71717a">1</text>
+  <text x="120" y="190" font-family="monospace" font-size="12" fill="#71717a">2</text>
+  <text x="120" y="210" font-family="monospace" font-size="12" fill="#71717a">3</text>
+  <text x="120" y="230" font-family="monospace" font-size="12" fill="#71717a">4</text>
+  <text x="120" y="250" font-family="monospace" font-size="12" fill="#71717a">5</text>
+  <text x="120" y="270" font-family="monospace" font-size="12" fill="#71717a">6</text>
+  <text x="120" y="290" font-family="monospace" font-size="12" fill="#71717a">7</text>
+  <text x="120" y="310" font-family="monospace" font-size="12" fill="#71717a">8</text>
+  <text x="120" y="330" font-family="monospace" font-size="12" fill="#71717a">9</text>
+  <text x="120" y="350" font-family="monospace" font-size="12" fill="#71717a">10</text>
+  <text x="120" y="370" font-family="monospace" font-size="12" fill="#71717a">11</text>
+  <text x="120" y="390" font-family="monospace" font-size="12" fill="#71717a">12</text>
+
+  <!-- Code lines -->
+  <text x="150" y="170" font-family="monospace" font-size="12" fill="#c084fc">import</text>
+  <text x="200" y="170" font-family="monospace" font-size="12" fill="#fafafa">{ User, AuthToken }</text>
+  <text x="370" y="170" font-family="monospace" font-size="12" fill="#c084fc">from</text>
+  <text x="410" y="170" font-family="monospace" font-size="12" fill="#a5d6ff">'./types'</text>
+
+  <text x="150" y="210" font-family="monospace" font-size="12" fill="#c084fc">export class</text>
+  <text x="260" y="210" font-family="monospace" font-size="12" fill="#fde68a">UserService</text>
+  <text x="360" y="210" font-family="monospace" font-size="12" fill="#fafafa">{</text>
+
+  <text x="170" y="230" font-family="monospace" font-size="12" fill="#c084fc">private</text>
+  <text x="230" y="230" font-family="monospace" font-size="12" fill="#fafafa">users: Map&lt;string, User&gt;</text>
+
+  <text x="170" y="270" font-family="monospace" font-size="12" fill="#c084fc">async</text>
+  <text x="210" y="270" font-family="monospace" font-size="12" fill="#60a5fa">authenticate</text>
+  <text x="320" y="270" font-family="monospace" font-size="12" fill="#fafafa">(email: string): Promise&lt;AuthToken&gt; {</text>
+
+  <text x="190" y="290" font-family="monospace" font-size="12" fill="#c084fc">const</text>
+  <text x="240" y="290" font-family="monospace" font-size="12" fill="#fafafa">user = this.users.get(email)</text>
+
+  <text x="190" y="310" font-family="monospace" font-size="12" fill="#c084fc">if</text>
+  <text x="210" y="310" font-family="monospace" font-size="12" fill="#fafafa">(!user)</text>
+  <text x="270" y="310" font-family="monospace" font-size="12" fill="#c084fc">throw new</text>
+  <text x="360" y="310" font-family="monospace" font-size="12" fill="#fde68a">Error</text>
+  <text x="400" y="310" font-family="monospace" font-size="12" fill="#a5d6ff">('Not found')</text>
+
+  <text x="190" y="350" font-family="monospace" font-size="12" fill="#c084fc">return</text>
+  <text x="250" y="350" font-family="monospace" font-size="12" fill="#fafafa">this.createToken(user)</text>
+
+  <text x="170" y="370" font-family="monospace" font-size="12" fill="#fafafa">}</text>
+
+  <text x="150" y="390" font-family="monospace" font-size="12" fill="#fafafa">}</text>
+
+  <!-- Selection highlight -->
+  <rect x="145" y="258" width="580" height="100" rx="2" fill="#10b981" fill-opacity="0.15" stroke="#10b981" stroke-width="1"/>
+
+  <!-- Status bar -->
+  <rect x="80" y="560" width="1120" height="36" rx="0" fill="#27272a" stroke="#3f3f46" stroke-width="1"/>
+
+  <!-- Status bar content -->
+  <rect x="100" y="568" width="20" height="20" rx="4" fill="#10b981"/>
+
+  <!-- Token count badge (highlighted) -->
+  <rect x="130" y="566" width="180" height="24" rx="6" fill="#10b981" fill-opacity="0.2" stroke="#10b981" stroke-width="2"/>
+  <text x="145" y="583" font-family="system-ui" font-size="12" font-weight="600" fill="#10b981">Selection: 142 tokens</text>
+
+  <rect x="330" y="568" width="1" height="20" fill="#3f3f46"/>
+
+  <text x="350" y="583" font-family="system-ui" font-size="12" fill="#a1a1aa">File: 486 tokens</text>
+
+  <rect x="490" y="568" width="1" height="20" fill="#3f3f46"/>
+
+  <text x="510" y="583" font-family="system-ui" font-size="12" fill="#a1a1aa">Est. cost: $0.0015</text>
+
+  <!-- Right side of status bar -->
+  <text x="1080" y="583" font-family="system-ui" font-size="12" fill="#71717a" text-anchor="end">TypeScript</text>
+  <text x="1160" y="583" font-family="system-ui" font-size="12" fill="#71717a" text-anchor="end">UTF-8</text>
+
+  <!-- Live update indicator -->
+  <circle cx="968" cy="578" r="5" fill="#10b981">
+    <animate attributeName="opacity" values="1;0.3;1" dur="1.5s" repeatCount="indefinite"/>
+  </circle>
+  <text x="980" y="583" font-family="system-ui" font-size="11" fill="#10b981">Live</text>
+
+  <!-- Annotation arrows -->
+  <path d="M220 610 L220 596" stroke="#10b981" stroke-width="2" stroke-linecap="round"/>
+  <path d="M215 600 L220 610 L225 600" stroke="#10b981" stroke-width="2" fill="none"/>
+
+  <text x="220" y="640" font-family="system-ui" font-size="14" font-weight="600" fill="#10b981" text-anchor="middle">Real-time updates</text>
+  <text x="220" y="660" font-family="system-ui" font-size="12" fill="#a1a1aa" text-anchor="middle">on every keystroke</text>
+
+  <!-- Second annotation -->
+  <path d="M640" y1="520" d="M580 450 L580 350" stroke="#f59e0b" stroke-width="2" stroke-dasharray="4 4"/>
+  <circle cx="580" cy="350" r="8" fill="#f59e0b" fill-opacity="0.3" stroke="#f59e0b" stroke-width="2"/>
+  <text x="620" y="450" font-family="system-ui" font-size="12" fill="#f59e0b">Selected code</text>
+  <text x="620" y="468" font-family="system-ui" font-size="12" fill="#f59e0b">= 142 tokens</text>
+
+  <!-- Title at bottom -->
+  <text x="640" y="700" font-family="system-ui" font-size="22" font-weight="600" fill="#fafafa" text-anchor="middle">Real-Time Token Counter - Always know your token count</text>
+</svg>
