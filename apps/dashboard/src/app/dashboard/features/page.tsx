@@ -9,25 +9,23 @@ interface Feature {
   command: string;
   title: string;
   description: string;
-  aiContext: string; // Technical AI concept where this feature is useful
+  aiContext: string; // Plain language explanation of the benefit
   keybinding?: { windows: string; mac: string };
   category: "token-saver" | "analysis" | "utility";
-  impact: "high" | "medium" | "low";
   icon: string;
 }
 
 const FEATURES: Feature[] = [
-  // Token Saver Commands (High Impact)
+  // Token Saver Commands
   {
     id: "smartCopy",
     command: "prune.smartCopy",
     title: "Smart Copy",
     description:
       "Copy files optimized for AI. Generates signatures-only format instead of full code. Typical savings: 70-90%.",
-    aiContext: "Optimizes context window utilization for RAG and prompt engineering workflows",
+    aiContext: "Paste into AI chat and get better answers with less cost",
     keybinding: { windows: "Ctrl+Alt+C", mac: "Cmd+Alt+C" },
     category: "token-saver",
-    impact: "high",
     icon: "📋",
   },
   {
@@ -36,10 +34,9 @@ const FEATURES: Feature[] = [
     title: "Pre-flight Optimizer",
     description:
       "Analyze context before sending to AI. Shows current vs. recommended token usage with potential savings.",
-    aiContext: "Token budget management for LLM API cost control and context pruning",
+    aiContext: "Know the exact cost before you send your request",
     keybinding: { windows: "Ctrl+Alt+P", mac: "Cmd+Alt+P" },
     category: "token-saver",
-    impact: "high",
     icon: "⚡",
   },
   {
@@ -48,9 +45,8 @@ const FEATURES: Feature[] = [
     title: "Session Memory Stats",
     description:
       "View deduplication stats showing files tracked and tokens saved from avoiding re-reads.",
-    aiContext: "Multi-turn conversation caching and semantic deduplication",
+    aiContext: "AI remembers what it already read so it doesn't read again",
     category: "token-saver",
-    impact: "medium",
     icon: "📊",
   },
   {
@@ -59,9 +55,8 @@ const FEATURES: Feature[] = [
     title: "Compaction Recovery",
     description:
       "Check for architectural decisions at risk of being forgotten during context compaction.",
-    aiContext: "Addresses summarization loss in long-context conversations and memory management",
+    aiContext: "Keep important decisions from getting lost in long conversations",
     category: "token-saver",
-    impact: "high",
     icon: "🔄",
   },
   {
@@ -70,9 +65,8 @@ const FEATURES: Feature[] = [
     title: "Track Decision",
     description:
       "Manually record an important architectural decision to protect it from context loss.",
-    aiContext: "Chain-of-thought persistence and explicit knowledge anchoring",
+    aiContext: "Bookmark key decisions so they don't get forgotten",
     category: "token-saver",
-    impact: "medium",
     icon: "📌",
   },
   {
@@ -81,9 +75,8 @@ const FEATURES: Feature[] = [
     title: "Reset Session",
     description:
       "Clear session memory including file tracking and decision history. Start fresh.",
-    aiContext: "Context window reset for new conversation threads",
+    aiContext: "Clear everything and start a new conversation",
     category: "token-saver",
-    impact: "low",
     icon: "🗑️",
   },
 
@@ -94,10 +87,9 @@ const FEATURES: Feature[] = [
     title: "Analyze Current File",
     description:
       "Show token count and estimated cost for the currently open file.",
-    aiContext: "Prompt budgeting and API cost estimation before inference",
+    aiContext: "Know the cost before asking AI",
     keybinding: { windows: "Ctrl+Alt+T", mac: "Cmd+Alt+T" },
     category: "analysis",
-    impact: "medium",
     icon: "📄",
   },
   {
@@ -105,9 +97,8 @@ const FEATURES: Feature[] = [
     command: "prune.analyzeSelection",
     title: "Analyze Selection",
     description: "Count tokens for the selected text in the editor.",
-    aiContext: "Fine-grained token counting for precise context management",
+    aiContext: "Count tokens in just the text you select",
     category: "analysis",
-    impact: "low",
     icon: "✂️",
   },
   {
@@ -116,10 +107,9 @@ const FEATURES: Feature[] = [
     title: "Smart Context Analysis",
     description:
       "Analyze workspace files for relevance to a given task. Recommends which files to include.",
-    aiContext: "Semantic similarity scoring with TF-IDF for code retrieval optimization",
+    aiContext: "Find the most relevant files for your task",
     keybinding: { windows: "Ctrl+Alt+A", mac: "Cmd+Alt+A" },
     category: "analysis",
-    impact: "high",
     icon: "🎯",
   },
   {
@@ -127,10 +117,9 @@ const FEATURES: Feature[] = [
     command: "prune.smartContext",
     title: "Intelligent Context (v2)",
     description:
-      "Symbol-level DAG analysis with relevance categorization. The most advanced context selection.",
-    aiContext: "Dependency graph traversal with intent classification for precise retrieval",
+      "Automatically picks the right code based on what you're asking. The most advanced context selection.",
+    aiContext: "AI understands your question and selects relevant code for you",
     category: "analysis",
-    impact: "high",
     icon: "🧠",
   },
   {
@@ -138,10 +127,9 @@ const FEATURES: Feature[] = [
     command: "prune.squeezeFile",
     title: "Squeeze File",
     description:
-      "Compress file using tree-sitter AST. Three tiers: lossless (~15%), structural (~40%), telegraphic (~70%).",
-    aiContext: "AST-aware lossy/lossless encoding for code representation learning",
+      "Compress code while keeping it readable. Choose from light (~15%), medium (~40%), or heavy (~70%) compression.",
+    aiContext: "Shrink your code while AI can still understand it",
     category: "analysis",
-    impact: "medium",
     icon: "🗜️",
   },
 
@@ -152,9 +140,8 @@ const FEATURES: Feature[] = [
     title: "Check Cursor Usage",
     description:
       "Read Cursor's local SQLite database to show usage stats. Zero API keys required.",
-    aiContext: "API rate limiting awareness and usage quota monitoring",
+    aiContext: "See how many requests you've used this month",
     category: "utility",
-    impact: "medium",
     icon: "🔷",
   },
   {
@@ -163,31 +150,14 @@ const FEATURES: Feature[] = [
     title: "Run Intelligence Tests",
     description:
       "Run the built-in test suite (107+ tests) to verify the intelligence engine.",
-    aiContext: "Validation of context selection algorithms and relevance scoring",
+    aiContext: "Make sure everything is working correctly",
     category: "utility",
-    impact: "low",
     icon: "🧪",
   },
 ];
 
 type CategoryFilter = "all" | "token-saver" | "analysis" | "utility";
 
-function ImpactBadge({ impact }: { impact: Feature["impact"] }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-        impact === "high" && "bg-status-green/10 text-status-green",
-        impact === "medium" && "bg-status-amber/10 text-status-amber",
-        impact === "low" && "bg-card-hover text-secondary"
-      )}
-    >
-      {impact === "high" && "High Impact"}
-      {impact === "medium" && "Medium"}
-      {impact === "low" && "Utility"}
-    </span>
-  );
-}
 
 function KeybindingBadge({ keybinding }: { keybinding: Feature["keybinding"] }) {
   if (!keybinding) return null;
@@ -209,19 +179,16 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
 
   return (
     <div className="group rounded-lg border border-border bg-card p-6 transition hover:border-secondary hover:shadow-sm">
-      <div className="mb-3 flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <span className="text-2xl">{feature.icon}</span>
-          <div>
-            <h3 className="font-semibold text-foreground">{feature.title}</h3>
-            <code className="text-xs text-muted">{feature.command}</code>
-          </div>
+      <div className="mb-3 flex items-center gap-3">
+        <span className="text-2xl">{feature.icon}</span>
+        <div>
+          <h3 className="font-semibold text-foreground">{feature.title}</h3>
+          <code className="text-xs text-muted">{feature.command}</code>
         </div>
-        <ImpactBadge impact={feature.impact} />
       </div>
 
       <p className="mb-2 text-sm text-secondary">{feature.description}</p>
-      <p className="mb-4 text-xs text-muted italic">{feature.aiContext}</p>
+      <p className="mb-4 text-xs text-muted">{feature.aiContext}</p>
 
       <div className="flex items-center justify-between">
         <KeybindingBadge keybinding={feature.keybinding} />
