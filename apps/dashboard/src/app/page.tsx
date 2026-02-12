@@ -265,7 +265,7 @@ export default function Home() {
             <span className="font-semibold text-foreground">TokenLens</span>
           </div>
           <nav className="flex items-center gap-4 text-sm">
-            <a href="#demos" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Demos</a>
+            <a href="#get-started" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Get Started</a>
             <a href="#features" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Features</a>
             <a href="#setup" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Setup</a>
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
@@ -309,280 +309,11 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Right: Signup Form */}
-            <div className="rounded-lg border border-border bg-card p-6">
-              {!showOnboard ? (
-                <>
-                  <h2 className="text-xl font-semibold text-foreground">Get started</h2>
-                  <p className="mt-2 text-sm text-secondary">
-                    Enter your email to begin setup. We'll guide you through installation.
-                  </p>
-
-                  <form onSubmit={handleSignup} className="mt-6" noValidate>
-                    <label htmlFor="signup-email" className="block text-sm font-medium text-foreground">
-                      Email
-                    </label>
-                    <input
-                      id="signup-email"
-                      type="email"
-                      value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        if (emailError) validateEmail(e.target.value);
-                      }}
-                      onBlur={() => email && validateEmail(email)}
-                      placeholder="you@company.com"
-                      aria-invalid={emailError ? "true" : undefined}
-                      aria-describedby={emailError ? "email-error" : undefined}
-                      className={cn(
-                        "mt-2 w-full rounded-lg border bg-card px-3 py-2.5 text-foreground transition",
-                        "placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-offset-1",
-                        emailError
-                          ? "border-status-red focus:border-status-red focus:ring-status-red"
-                          : "border-border focus:border-status-green focus:ring-status-green"
-                      )}
-                    />
-                    {emailError && (
-                      <p id="email-error" className="mt-1.5 text-sm text-status-red" role="alert">
-                        {emailError}
-                      </p>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={signupState === "loading"}
-                      className={cn(
-                        "mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition",
-                        "hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1",
-                        "disabled:cursor-not-allowed disabled:opacity-50"
-                      )}
-                    >
-                      {signupState === "loading" && (
-                        <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                      )}
-                      {signupState === "loading" ? "Starting..." : "Start Setup"}
-                    </button>
-                  </form>
-
-                  <p className="mt-4 text-center text-xs text-muted">
-                    No credit card required. Free forever for individuals.
-                  </p>
-                </>
-              ) : (
-                /* Inline Onboarding */
-                <div>
-                  {/* Progress indicator */}
-                  <div className="mb-6 flex items-center gap-3">
-                    {[1, 2, 3].map((s) => (
-                      <div key={s} className="flex items-center gap-3">
-                        <div
-                          className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition ${
-                            onboardStep >= s
-                              ? "bg-prune-green text-white"
-                              : "border border-border text-muted"
-                          }`}
-                        >
-                          {onboardStep > s ? (
-                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          ) : (
-                            s
-                          )}
-                        </div>
-                        {s < 3 && (
-                          <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-border"}`} />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-
-                  {onboardStep === 1 && (
-                    <>
-                      <h2 className="text-lg font-semibold text-foreground">Install the extension</h2>
-                      <p className="mt-2 text-sm text-secondary">
-                        TokenLens runs locally in your editor. No cloud required.
-                      </p>
-
-                      <div className="mt-5 space-y-4 text-sm">
-                        <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">1</span>
-                          <div>
-                            <p className="text-foreground">Open Extensions</p>
-                            <p className="text-secondary">
-                              <kbd className="rounded border border-border bg-card-hover px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">2</span>
-                          <div>
-                            <p className="text-foreground">Search "Prune"</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-3">
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">3</span>
-                          <div>
-                            <p className="text-foreground">Click Install</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* CLI alternative */}
-                      <div className="mt-5 border-t border-border pt-5">
-                        <p className="text-xs text-muted">Or via terminal:</p>
-                        <div className="mt-2 flex items-center gap-2 rounded border border-border bg-card-hover px-3 py-2">
-                          <code className="flex-1 text-xs text-foreground">code --install-extension prune-0.1.0.vsix</code>
-                          <button
-                            onClick={() => handleCopy("code --install-extension prune-0.1.0.vsix")}
-                            className="shrink-0 rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-border hover:text-foreground"
-                          >
-                            {copied ? "Copied" : "Copy"}
-                          </button>
-                        </div>
-                      </div>
-
-                      <button
-                        onClick={() => setOnboardStep(2)}
-                        className={cn(
-                          "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
-                          "hover:bg-emerald-600 hover:shadow-md",
-                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
-                        )}
-                      >
-                        I've installed it
-                      </button>
-                    </>
-                  )}
-
-                  {onboardStep === 2 && (
-                    <>
-                      <h2 className="text-lg font-semibold text-foreground">Try a command</h2>
-                      <p className="mt-2 text-sm text-secondary">
-                        Open any code file and test these features.
-                      </p>
-
-                      <div className="mt-5 space-y-3">
-                        <div className="rounded border border-border p-3">
-                          <p className="text-sm font-medium text-foreground">Smart Copy</p>
-                          <p className="mt-1 text-xs text-secondary">
-                            Right-click → "Copy for AI (Optimized)"
-                          </p>
-                        </div>
-                        <div className="rounded border border-border p-3">
-                          <p className="text-sm font-medium text-foreground">Status Bar</p>
-                          <p className="mt-1 text-xs text-secondary">
-                            Check bottom-left for real-time token count
-                          </p>
-                        </div>
-                        <div className="rounded border border-border p-3">
-                          <p className="text-sm font-medium text-foreground">Pre-flight</p>
-                          <p className="mt-1 text-xs text-secondary">
-                            <kbd className="rounded border border-border bg-card-hover px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 flex gap-3">
-                        <button
-                          onClick={() => setOnboardStep(1)}
-                          className={cn(
-                            "flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200",
-                            "hover:bg-card-hover",
-                            "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
-                          )}
-                        >
-                          Back
-                        </button>
-                        <button
-                          onClick={() => setOnboardStep(3)}
-                          className={cn(
-                            "flex-1 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
-                            "hover:bg-emerald-600 hover:shadow-md",
-                            "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
-                          )}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </>
-                  )}
-
-                  {onboardStep === 3 && (
-                    <>
-                      <div className="flex justify-center">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-prune-green text-white">
-                          <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        </div>
-                      </div>
-
-                      <h2 className="mt-4 text-center text-lg font-semibold text-foreground">You're all set</h2>
-                      <p className="mt-2 text-center text-sm text-secondary">
-                        TokenLens is now running locally in your editor.
-                      </p>
-
-                      <div className="mt-5 rounded border border-border bg-card-hover p-4">
-                        <p className="text-xs font-medium text-foreground">What happens next:</p>
-                        <ul className="mt-2 space-y-1.5 text-xs text-secondary">
-                          <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-prune-green">●</span>
-                            <span>Token count shows in status bar</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-prune-green">●</span>
-                            <span>Smart Copy reduces tokens by 70-90%</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-prune-green">●</span>
-                            <span>Pre-flight shows spend before you send</span>
-                          </li>
-                          <li className="flex items-start gap-2">
-                            <span className="mt-0.5 text-prune-green">●</span>
-                            <span>All processing stays on your machine</span>
-                          </li>
-                        </ul>
-                      </div>
-
-                      <button
-                        onClick={handleOpenDashboard}
-                        className={cn(
-                          "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
-                          "hover:bg-emerald-600 hover:shadow-md",
-                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
-                        )}
-                      >
-                        Open Dashboard
-                      </button>
-                    </>
-                  )}
-                </div>
-              )}
+            {/* Right: Feature Animation */}
+            <div className="flex items-center justify-center">
+              <FeatureSimulation autoPlay intervalMs={5000} />
             </div>
           </div>
-        </div>
-      </section>
-
-      {/* Feature Demo Section - See TokenLens in Action */}
-      <section id="demos" className="border-b border-border bg-card-hover/30 py-16">
-        <div className="mx-auto max-w-5xl px-4">
-          <div className="text-center mb-10">
-            <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-status-green/10 text-status-green border border-status-green/20 mb-4">
-              See it in Action
-            </span>
-            <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
-              Watch How TokenLens Works
-            </h2>
-            <p className="text-secondary max-w-2xl mx-auto">
-              Interactive simulations showing each feature. Hover to pause, click to switch.
-            </p>
-          </div>
-
-          <FeatureSimulation autoPlay intervalMs={5000} />
         </div>
       </section>
 
@@ -668,6 +399,265 @@ export default function Home() {
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Get Started Section */}
+      <section id="get-started" className="border-b border-border bg-card-hover/30 py-16">
+        <div className="mx-auto max-w-xl px-4">
+          <div className="rounded-lg border border-border bg-card p-6">
+            {!showOnboard ? (
+              <>
+                <h2 className="text-xl font-semibold text-foreground">Get started</h2>
+                <p className="mt-2 text-sm text-secondary">
+                  Enter your email to begin setup. We'll guide you through installation.
+                </p>
+
+                <form onSubmit={handleSignup} className="mt-6" noValidate>
+                  <label htmlFor="signup-email" className="block text-sm font-medium text-foreground">
+                    Email
+                  </label>
+                  <input
+                    id="signup-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      if (emailError) validateEmail(e.target.value);
+                    }}
+                    onBlur={() => email && validateEmail(email)}
+                    placeholder="you@company.com"
+                    aria-invalid={emailError ? "true" : undefined}
+                    aria-describedby={emailError ? "email-error" : undefined}
+                    className={cn(
+                      "mt-2 w-full rounded-lg border bg-card px-3 py-2.5 text-foreground transition",
+                      "placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-offset-1",
+                      emailError
+                        ? "border-status-red focus:border-status-red focus:ring-status-red"
+                        : "border-border focus:border-status-green focus:ring-status-green"
+                    )}
+                  />
+                  {emailError && (
+                    <p id="email-error" className="mt-1.5 text-sm text-status-red" role="alert">
+                      {emailError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={signupState === "loading"}
+                    className={cn(
+                      "mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition",
+                      "hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1",
+                      "disabled:cursor-not-allowed disabled:opacity-50"
+                    )}
+                  >
+                    {signupState === "loading" && (
+                      <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                    )}
+                    {signupState === "loading" ? "Starting..." : "Start Setup"}
+                  </button>
+                </form>
+
+                <p className="mt-4 text-center text-xs text-muted">
+                  No credit card required. Free forever for individuals.
+                </p>
+              </>
+            ) : (
+              /* Inline Onboarding */
+              <div>
+                {/* Progress indicator */}
+                <div className="mb-6 flex items-center gap-3">
+                  {[1, 2, 3].map((s) => (
+                    <div key={s} className="flex items-center gap-3">
+                      <div
+                        className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium transition ${
+                          onboardStep >= s
+                            ? "bg-prune-green text-white"
+                            : "border border-border text-muted"
+                        }`}
+                      >
+                        {onboardStep > s ? (
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          s
+                        )}
+                      </div>
+                      {s < 3 && (
+                        <div className={`h-px w-8 ${onboardStep > s ? "bg-prune-green" : "bg-border"}`} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {onboardStep === 1 && (
+                  <>
+                    <h2 className="text-lg font-semibold text-foreground">Install the extension</h2>
+                    <p className="mt-2 text-sm text-secondary">
+                      TokenLens runs locally in your editor. No cloud required.
+                    </p>
+
+                    <div className="mt-5 space-y-4 text-sm">
+                      <div className="flex gap-3">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">1</span>
+                        <div>
+                          <p className="text-foreground">Open Extensions</p>
+                          <p className="text-secondary">
+                            <kbd className="rounded border border-border bg-card-hover px-1.5 py-0.5 font-mono text-xs">Cmd+Shift+X</kbd>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">2</span>
+                        <div>
+                          <p className="text-foreground">Search "Prune"</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-border text-xs text-muted">3</span>
+                        <div>
+                          <p className="text-foreground">Click Install</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* CLI alternative */}
+                    <div className="mt-5 border-t border-border pt-5">
+                      <p className="text-xs text-muted">Or via terminal:</p>
+                      <div className="mt-2 flex items-center gap-2 rounded border border-border bg-card-hover px-3 py-2">
+                        <code className="flex-1 text-xs text-foreground">code --install-extension prune-0.1.0.vsix</code>
+                        <button
+                          onClick={() => handleCopy("code --install-extension prune-0.1.0.vsix")}
+                          className="shrink-0 rounded border border-border px-2 py-1 text-xs text-secondary hover:bg-border hover:text-foreground"
+                        >
+                          {copied ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setOnboardStep(2)}
+                      className={cn(
+                        "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                        "hover:bg-emerald-600 hover:shadow-md",
+                        "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                      )}
+                    >
+                      I've installed it
+                    </button>
+                  </>
+                )}
+
+                {onboardStep === 2 && (
+                  <>
+                    <h2 className="text-lg font-semibold text-foreground">Try a command</h2>
+                    <p className="mt-2 text-sm text-secondary">
+                      Open any code file and test these features.
+                    </p>
+
+                    <div className="mt-5 space-y-3">
+                      <div className="rounded border border-border p-3">
+                        <p className="text-sm font-medium text-foreground">Smart Copy</p>
+                        <p className="mt-1 text-xs text-secondary">
+                          Right-click → "Copy for AI (Optimized)"
+                        </p>
+                      </div>
+                      <div className="rounded border border-border p-3">
+                        <p className="text-sm font-medium text-foreground">Status Bar</p>
+                        <p className="mt-1 text-xs text-secondary">
+                          Check bottom-left for real-time token count
+                        </p>
+                      </div>
+                      <div className="rounded border border-border p-3">
+                        <p className="text-sm font-medium text-foreground">Pre-flight</p>
+                        <p className="mt-1 text-xs text-secondary">
+                          <kbd className="rounded border border-border bg-card-hover px-1 py-0.5 font-mono text-xs">Ctrl+Alt+P</kbd> to analyze before sending
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-5 flex gap-3">
+                      <button
+                        onClick={() => setOnboardStep(1)}
+                        className={cn(
+                          "flex-1 rounded-lg border border-border px-4 py-2.5 text-sm font-medium text-foreground transition-all duration-200",
+                          "hover:bg-card-hover",
+                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                        )}
+                      >
+                        Back
+                      </button>
+                      <button
+                        onClick={() => setOnboardStep(3)}
+                        className={cn(
+                          "flex-1 rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                          "hover:bg-emerald-600 hover:shadow-md",
+                          "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                        )}
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {onboardStep === 3 && (
+                  <>
+                    <div className="flex justify-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-prune-green text-white">
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    <h2 className="mt-4 text-center text-lg font-semibold text-foreground">You're all set</h2>
+                    <p className="mt-2 text-center text-sm text-secondary">
+                      TokenLens is now running locally in your editor.
+                    </p>
+
+                    <div className="mt-5 rounded border border-border bg-card-hover p-4">
+                      <p className="text-xs font-medium text-foreground">What happens next:</p>
+                      <ul className="mt-2 space-y-1.5 text-xs text-secondary">
+                        <li className="flex items-start gap-2">
+                          <span className="mt-0.5 text-prune-green">●</span>
+                          <span>Token count shows in status bar</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-0.5 text-prune-green">●</span>
+                          <span>Smart Copy reduces tokens by 70-90%</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-0.5 text-prune-green">●</span>
+                          <span>Pre-flight shows spend before you send</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="mt-0.5 text-prune-green">●</span>
+                          <span>All processing stays on your machine</span>
+                        </li>
+                      </ul>
+                    </div>
+
+                    <button
+                      onClick={handleOpenDashboard}
+                      className={cn(
+                        "mt-5 w-full rounded-lg bg-status-green px-4 py-2.5 text-sm font-medium text-white transition-all duration-200",
+                        "hover:bg-emerald-600 hover:shadow-md",
+                        "focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-2"
+                      )}
+                    >
+                      Open Dashboard
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>
