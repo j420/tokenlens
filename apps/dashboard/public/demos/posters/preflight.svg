@@ -1,0 +1,52 @@
+<svg width="1280" height="720" viewBox="0 0 1280 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1280" height="720" fill="#18181b"/>
+
+  <!-- Pre-flight panel mockup -->
+  <rect x="240" y="100" width="800" height="520" rx="16" fill="#27272a" stroke="#3f3f46" stroke-width="2"/>
+
+  <!-- Header -->
+  <rect x="240" y="100" width="800" height="60" rx="16" fill="#27272a"/>
+  <text x="640" y="140" font-family="system-ui" font-size="20" font-weight="600" fill="#f59e0b" text-anchor="middle">PRE-FLIGHT OPTIMIZER</text>
+
+  <!-- Current context section -->
+  <rect x="280" y="180" width="340" height="200" rx="12" fill="#3f3f46"/>
+  <text x="450" y="210" font-family="system-ui" font-size="14" font-weight="600" fill="#a1a1aa" text-anchor="middle">CURRENT CONTEXT</text>
+
+  <text x="300" y="250" font-family="system-ui" font-size="13" fill="#71717a">Files:</text>
+  <text x="560" y="250" font-family="system-ui" font-size="13" fill="#ef4444" text-anchor="end">34 files</text>
+
+  <text x="300" y="280" font-family="system-ui" font-size="13" fill="#71717a">Tokens:</text>
+  <text x="560" y="280" font-family="system-ui" font-size="13" fill="#ef4444" text-anchor="end">47,000</text>
+
+  <text x="300" y="310" font-family="system-ui" font-size="13" fill="#71717a">Cost:</text>
+  <text x="560" y="310" font-family="system-ui" font-size="13" fill="#ef4444" text-anchor="end">$0.1410</text>
+
+  <!-- Arrow -->
+  <path d="M640 280 L680 280" stroke="#f59e0b" stroke-width="3" stroke-linecap="round"/>
+  <path d="M670 270 L690 280 L670 290" stroke="#f59e0b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+
+  <!-- Optimized section -->
+  <rect x="660" y="180" width="340" height="200" rx="12" fill="#10b981" fill-opacity="0.1" stroke="#10b981" stroke-width="2"/>
+  <text x="830" y="210" font-family="system-ui" font-size="14" font-weight="600" fill="#10b981" text-anchor="middle">RECOMMENDED</text>
+
+  <text x="680" y="250" font-family="system-ui" font-size="13" fill="#71717a">Files:</text>
+  <text x="940" y="250" font-family="system-ui" font-size="13" fill="#10b981" text-anchor="end">3 files</text>
+
+  <text x="680" y="280" font-family="system-ui" font-size="13" fill="#71717a">Tokens:</text>
+  <text x="940" y="280" font-family="system-ui" font-size="13" fill="#10b981" text-anchor="end">8,200</text>
+
+  <text x="680" y="310" font-family="system-ui" font-size="13" fill="#71717a">Cost:</text>
+  <text x="940" y="310" font-family="system-ui" font-size="13" fill="#10b981" text-anchor="end">$0.0246</text>
+
+  <!-- Savings banner -->
+  <rect x="280" y="420" width="720" height="80" rx="12" fill="#10b981" fill-opacity="0.15" stroke="#10b981" stroke-width="2"/>
+  <text x="640" y="455" font-family="system-ui" font-size="18" font-weight="600" fill="#10b981" text-anchor="middle">SAVINGS: 38,800 tokens (82%)</text>
+  <text x="640" y="480" font-family="system-ui" font-size="13" fill="#10b981" text-anchor="middle">Know before you spend</text>
+
+  <!-- Prompt input mockup -->
+  <rect x="280" y="520" width="720" height="50" rx="8" fill="#3f3f46"/>
+  <text x="300" y="550" font-family="system-ui" font-size="13" fill="#71717a">"fix the header alignment..."</text>
+
+  <!-- Title -->
+  <text x="640" y="680" font-family="system-ui" font-size="24" font-weight="600" fill="#fafafa" text-anchor="middle">Pre-flight Optimizer - See spend before you send</text>
+</svg>

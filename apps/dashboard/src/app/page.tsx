@@ -6,6 +6,7 @@ import { IDESelector, usePreferredIDE, getIDEUri, type IDEType } from "@/compone
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useToast, toast } from "@/components/toast";
 import { cn } from "@/lib/utils";
+import { FeatureShowcase, FeaturedDemo, FEATURE_DEMOS } from "@/components/feature-showcase";
 
 type OnboardStep = 1 | 2 | 3;
 
@@ -264,6 +265,7 @@ export default function Home() {
             <span className="font-semibold text-foreground">TokenLens</span>
           </div>
           <nav className="flex items-center gap-4 text-sm">
+            <a href="#demos" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Demos</a>
             <a href="#features" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Features</a>
             <a href="#setup" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Setup</a>
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
@@ -562,6 +564,36 @@ export default function Home() {
               )}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Feature Demos Section - See TokenLens in Action */}
+      <section id="demos" className="border-b border-border bg-card-hover/30 py-16">
+        <div className="mx-auto max-w-5xl px-4">
+          {/* Featured Demo - Highlight the most impactful feature */}
+          <div className="mb-16">
+            <div className="text-center mb-8">
+              <span className="inline-block px-3 py-1 rounded-full text-xs font-medium bg-status-green/10 text-status-green border border-status-green/20 mb-4">
+                See it in Action
+              </span>
+              <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-2">
+                Watch How TokenLens Works
+              </h2>
+              <p className="text-secondary max-w-2xl mx-auto">
+                Short simulations showing each feature in action. Hover to preview, click to watch full demo.
+              </p>
+            </div>
+
+            <FeaturedDemo demo={FEATURE_DEMOS[0]} />
+          </div>
+
+          {/* All Feature Demos Grid */}
+          <FeatureShowcase
+            title="Explore All Features"
+            subtitle="Each feature is designed to reduce token consumption while maintaining context quality"
+            showFilters={true}
+            compact={false}
+          />
         </div>
       </section>
 
