@@ -56,6 +56,19 @@ export {
   type CompactionDiff,
 } from "./compaction-auditor.js";
 
+// Cache Analyzer
+export {
+  computeCacheMetrics,
+  diagnoseCacheBust,
+  type CacheTurnInput,
+  type CacheTTL,
+  type CacheMetrics,
+  type CacheCost,
+  type CacheBustSignal,
+  type CacheBustDiagnosis,
+  type DiagnoseInput,
+} from "./cache-analyzer.js";
+
 // Cost Predictor
 export {
   MIN_EVENTS_FOR_PREDICTION,

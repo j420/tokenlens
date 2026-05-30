@@ -835,3 +835,107 @@ describe("Performance", () => {
     expect(results.length).toBe(10);
   });
 });
+
+// ============================================================================
+// cache_report tool
+// ============================================================================
+
+describe("cache_report tool", () => {
+  const transcriptPath = path.join(testDir, "transcript.jsonl");
+
+  beforeAll(() => {
+    // A minimal real-shape transcript with two turns and a cache read on
+    // turn 2 — mirrors @prune/telemetry's fixture.
+    const lines = [
+      JSON.stringify({
+        type: "user",
+        sessionId: "s1",
+        timestamp: "2026-05-30T10:00:00Z",
+        message: { role: "user", content: "explain auth" },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        sessionId: "s1",
+        timestamp: "2026-05-30T10:00:01Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "ok" }],
+          usage: {
+            input_tokens: 2000,
+            output_tokens: 200,
+            cache_creation_input_tokens: 2000,
+            cache_read_input_tokens: 0,
+          },
+        },
+      }),
+      JSON.stringify({
+        type: "user",
+        sessionId: "s1",
+        timestamp: "2026-05-30T10:00:05Z",
+        message: { role: "user", content: "now write a test" },
+      }),
+      JSON.stringify({
+        type: "assistant",
+        sessionId: "s1",
+        timestamp: "2026-05-30T10:00:06Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [{ type: "text", text: "done" }],
+          usage: {
+            input_tokens: 100,
+            output_tokens: 200,
+            cache_creation_input_tokens: 0,
+            cache_read_input_tokens: 2000,
+          },
+        },
+      }),
+    ];
+    fs.writeFileSync(transcriptPath, lines.join("\n") + "\n");
+  });
+
+  it("computes hit rate and cost on a real transcript", async () => {
+    const { TranscriptReader, groupIntoTurns } = await import("@prune/telemetry");
+    const { computeCacheMetrics } = await import("@prune/intelligence");
+    const reader = new TranscriptReader(transcriptPath);
+    const { messages } = await reader.readAll();
+    const turns = groupIntoTurns(messages);
+    const m = computeCacheMetrics(
+      turns.map((t) => ({ model: t.model, usage: t.usage })),
+      "5m"
+    );
+
+    // total_input = (2000+0+2000) + (100+2000+0) = 6100
+    expect(m.totalInputTokens).toBe(6100);
+    expect(m.cacheReadTokens).toBe(2000);
+    expect(m.hitRate).toBeCloseTo(2000 / 6100, 6);
+    expect(m.cost.savedVsNoCache).toBeGreaterThan(0);
+  });
+
+  it("returns parseable JSON from the MCP handler shape", async () => {
+    // The handler is internal; call the same code path the dispatcher does.
+    const { TranscriptReader, groupIntoTurns } = await import("@prune/telemetry");
+    const { computeCacheMetrics, diagnoseCacheBust } = await import(
+      "@prune/intelligence"
+    );
+    const reader = new TranscriptReader(transcriptPath);
+    const { messages, errors } = await reader.readAll();
+    const turns = groupIntoTurns(messages);
+    const inputs = turns.map((t) => ({ model: t.model, usage: t.usage }));
+    const metrics = computeCacheMetrics(inputs, "5m");
+    const diagnoses = diagnoseCacheBust({ turns: inputs });
+
+    const payload = {
+      transcript_path: transcriptPath,
+      window: { totalTurns: turns.length, analyzedTurns: turns.length },
+      metrics,
+      diagnoses,
+      parseErrors: errors.length,
+    };
+
+    const roundTrip = JSON.parse(JSON.stringify(payload));
+    expect(roundTrip.metrics.hitRate).toBeCloseTo(2000 / 6100, 6);
+    expect(roundTrip.parseErrors).toBe(0);
+  });
+});

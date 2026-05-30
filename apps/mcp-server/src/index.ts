@@ -20,6 +20,15 @@ import * as path from "path";
 import { countTokens, countTokensBatch, estimateCost, formatTokens, formatCost } from "@prune/tokenizer";
 import { squeezeFile, type SqueezeTier } from "@prune/squeezer";
 import { fetchCursorUsage } from "@prune/state-scraper";
+import {
+  TranscriptReader,
+  groupIntoTurns,
+} from "@prune/telemetry";
+import {
+  computeCacheMetrics,
+  diagnoseCacheBust,
+  type CacheTurnInput,
+} from "@prune/intelligence";
 
 // ============================================================================
 // Server Setup
@@ -96,6 +105,41 @@ const TOOLS = [
     inputSchema: {
       type: "object" as const,
       properties: {},
+    },
+  },
+  {
+    name: "cache_report",
+    description:
+      "Analyze a Claude Code session transcript (JSONL) and report prompt-cache " +
+      "performance: hit rate, write amplification, $ saved vs. no-cache, and any " +
+      "bust signals (volatile prefix, MCP tool drift, timestamps in system).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description:
+            "Absolute path to a Claude Code session transcript JSONL file.",
+        },
+        window_turns: {
+          type: "number" as const,
+          description:
+            "Limit analysis to the most recent N turns (default: all turns).",
+        },
+        ttl: {
+          type: "string" as const,
+          enum: ["5m", "1h"],
+          description:
+            "Cache TTL used for cost math (default: 5m, the cheaper write tier).",
+          default: "5m",
+        },
+        system_prompt: {
+          type: "string" as const,
+          description:
+            "Optional system-prompt text to scan for volatility (timestamps, etc.).",
+        },
+      },
+      required: ["transcript_path"],
     },
   },
 ];
@@ -258,6 +302,62 @@ async function handleCheckBudget(): Promise<string> {
   });
 }
 
+async function handleCacheReport(args: {
+  transcript_path: string;
+  window_turns?: number;
+  ttl?: "5m" | "1h";
+  system_prompt?: string;
+}): Promise<string> {
+  const reader = new TranscriptReader(args.transcript_path);
+  if (!reader.exists()) {
+    return JSON.stringify({
+      error: `transcript not found: ${args.transcript_path}`,
+    });
+  }
+  const { messages, errors } = await reader.readAll();
+  const allTurns = groupIntoTurns(messages);
+  const window =
+    args.window_turns && args.window_turns > 0
+      ? allTurns.slice(-args.window_turns)
+      : allTurns;
+
+  const cacheInputs: CacheTurnInput[] = window.map((t) => ({
+    model: t.model,
+    usage: t.usage,
+  }));
+
+  const metrics = computeCacheMetrics(cacheInputs, args.ttl ?? "5m");
+  const diagnoses = diagnoseCacheBust({
+    systemPrompt: args.system_prompt,
+    turns: cacheInputs,
+  });
+
+  return JSON.stringify({
+    transcript_path: args.transcript_path,
+    window: {
+      totalTurns: allTurns.length,
+      analyzedTurns: window.length,
+    },
+    metrics: {
+      hitRate: metrics.hitRate,
+      writeAmplification: metrics.writeAmplification,
+      totalInputTokens: metrics.totalInputTokens,
+      cacheReadTokens: metrics.cacheReadTokens,
+      cacheCreationTokens: metrics.cacheCreationTokens,
+      uncachedInputTokens: metrics.uncachedInputTokens,
+      outputTokens: metrics.outputTokens,
+    },
+    cost: {
+      actual: formatCost(metrics.cost.actual),
+      ifAllCached: formatCost(metrics.cost.ifAllCached),
+      ifNoCache: formatCost(metrics.cost.ifNoCache),
+      savedVsNoCache: formatCost(metrics.cost.savedVsNoCache),
+    },
+    diagnoses,
+    parseErrors: errors.length,
+  }, null, 2);
+}
+
 // ============================================================================
 // Request Handlers
 // ============================================================================
@@ -281,6 +381,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "check_budget":
         result = await handleCheckBudget();
+        break;
+      case "cache_report":
+        result = await handleCacheReport(args as {
+          transcript_path: string;
+          window_turns?: number;
+          ttl?: "5m" | "1h";
+          system_prompt?: string;
+        });
         break;
       default:
         throw new Error("Unknown tool: " + name);

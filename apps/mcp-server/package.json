@@ -18,7 +18,9 @@
     "@prune/tokenizer": "0.1.0",
     "@prune/squeezer": "0.1.0",
     "@prune/state-scraper": "0.1.0",
-    "@prune/shared": "0.1.0"
+    "@prune/shared": "0.1.0",
+    "@prune/intelligence": "0.1.0",
+    "@prune/telemetry": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
