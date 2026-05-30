@@ -76,5 +76,13 @@ export interface PersistenceSink {
   recordAlert(row: AlertRow): Promise<void>;
   upsertBudgetUsage(row: BudgetUsageRow): Promise<void>;
   getRecentEvents(sessionId: string, limit?: number): Promise<EventRow[]>;
+  /**
+   * Commit pending writes to durable storage. Implementations are free to
+   * no-op if the underlying store is already durable (e.g. a server-side
+   * database). For file-backed sinks, callers that want at-most-N-events
+   * of loss tolerance should call this on their own cadence; `close()`
+   * always flushes regardless.
+   */
+  flush(): Promise<void>;
   close(): Promise<void>;
 }

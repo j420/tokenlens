@@ -557,16 +557,23 @@ interface LineDiff {
   unified: string;
   added: number;
   removed: number;
+  /** True when the inputs exceeded the LCS table cap and the diff was skipped. */
+  skipped?: boolean;
 }
 
+// Cap on the LCS DP table size. 4M cells ≈ 32 MB at 8 bytes/Number — beyond
+// this the table-based diff isn't worth computing for a token-cost estimate,
+// and the caller falls through to "send signatures or full" anyway.
+const MAX_DIFF_CELLS = 4_000_000;
+
 function computeUnifiedDiff(before: string, after: string): LineDiff {
-  // Compact Myers-style line diff with no surrounding context — sufficient
-  // for token-cost estimation. (Full unified context only needed when the
-  // diff is actually surfaced to the model.)
   const beforeLines = before.split("\n");
   const afterLines = after.split("\n");
   const n = beforeLines.length;
   const m = afterLines.length;
+  if (n * m > MAX_DIFF_CELLS) {
+    return { unified: "", added: 0, removed: 0, skipped: true };
+  }
   const dp: number[][] = Array.from({ length: n + 1 }, () =>
     new Array(m + 1).fill(0)
   );
@@ -603,6 +610,12 @@ function computeUnifiedDiff(before: string, after: string): LineDiff {
   return { unified: out.join("\n"), added, removed };
 }
 
+// Refuse to read files larger than this from disk in diff_context — a giant
+// minified bundle would otherwise pin the MCP event loop and starve every
+// concurrent tool call. Callers that want a diff on something bigger must
+// pass `content` themselves.
+const MAX_DIFF_FILE_BYTES = 10 * 1024 * 1024;
+
 async function handleDiffContext(args: {
   file_path: string;
   content?: string;
@@ -615,7 +628,14 @@ async function handleDiffContext(args: {
   let content = args.content;
   if (content === undefined) {
     try {
-      content = fs.readFileSync(args.file_path, "utf-8");
+      const stat = await fs.promises.stat(args.file_path);
+      if (stat.size > MAX_DIFF_FILE_BYTES) {
+        return JSON.stringify({
+          file_path: args.file_path,
+          error: `file too large for diff_context (${stat.size} bytes > ${MAX_DIFF_FILE_BYTES}); pass content explicitly if a diff is still desired`,
+        });
+      }
+      content = await fs.promises.readFile(args.file_path, "utf-8");
     } catch (e) {
       return JSON.stringify({
         error: `cannot read ${args.file_path}: ${(e as Error).message}`,
@@ -740,12 +760,18 @@ async function handleCompactionCheck(args: {
 
   // Build pre-compaction buffer from turn text (best-effort approximation —
   // a real PreCompact hook would supply the exact transcript window).
+  // We also build a parallel `beforeContent` string so we can tokenize the
+  // before/after sides with the SAME function — MessageBuffer.getTotalTokens
+  // is a heuristic count and would otherwise disagree with countTokens by
+  // tens of percent, triggering spurious "compaction detected" verdicts.
   const buffer = new MessageBuffer();
+  const beforeParts: string[] = [];
   for (const t of before) {
     if (t.userMessage) {
       buffer.addMessage(
         createMessageSummary(t.textContent, t.turnNumber, "user")
       );
+      if (t.textContent) beforeParts.push(t.textContent);
     }
     for (const a of t.assistantMessages) {
       const text =
@@ -757,20 +783,20 @@ async function handleCompactionCheck(args: {
       buffer.addMessage(
         createMessageSummary(text, t.turnNumber, "assistant")
       );
+      if (text) beforeParts.push(text);
     }
   }
 
+  const beforeContent = beforeParts.join("\n");
   const postContent = after
     .map((t) => t.textContent)
     .filter((s) => s)
     .join("\n");
 
-  // detectCompaction takes NUMERIC sizes (tokens), not strings.
-  const detected = detectCompaction(
-    buffer.getTotalTokens(),
-    countTokens(postContent, "gpt-4o").tokens,
-    0.5
-  );
+  // Both sides through the SAME tokenizer — see comment above.
+  const beforeTokens = countTokens(beforeContent, "gpt-4o").tokens;
+  const afterTokens = countTokens(postContent, "gpt-4o").tokens;
+  const detected = detectCompaction(beforeTokens, afterTokens, 0.5);
 
   const diff = analyzeCompaction(buffer, postContent, splitAt);
 

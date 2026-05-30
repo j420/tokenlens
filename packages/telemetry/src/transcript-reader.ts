@@ -8,6 +8,7 @@
 
 import { createReadStream, watch, statSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
+import { StringDecoder } from "node:string_decoder";
 import {
   TranscriptMessageSchema,
   type TranscriptMessage,
@@ -32,30 +33,6 @@ export class TranscriptReader {
 
   exists(): boolean {
     return existsSync(this.path);
-  }
-
-  /**
-   * Stream raw JSONL records. Yields each successfully parsed message.
-   * Errors are accumulated on the returned iterator's `errors` array (after
-   * iteration completes).
-   */
-  async *iterateRaw(): AsyncGenerator<TranscriptMessage, void, void> {
-    if (!this.exists()) return;
-    const stream = createReadStream(this.path, { encoding: "utf8" });
-    const rl = createInterface({ input: stream, crlfDelay: Infinity });
-    let lineNumber = 0;
-    for await (const line of rl) {
-      lineNumber++;
-      const trimmed = line.trim();
-      if (!trimmed) continue;
-      try {
-        const json = JSON.parse(trimmed);
-        const parsed = TranscriptMessageSchema.safeParse(json);
-        if (parsed.success) yield parsed.data;
-      } catch {
-        // skip malformed
-      }
-    }
   }
 
   /**
@@ -106,55 +83,131 @@ export class TranscriptReader {
 
   /**
    * Tail the transcript file for live sessions. Returns an unsubscribe
-   * function. New messages are emitted via `onMessage`; the watcher tracks
-   * the byte offset and reads only appended content.
+   * function. New messages are emitted via `onMessage`; parse failures
+   * are reported via `onError` (not silently dropped).
    *
-   * Note: this is a best-effort poll-style watcher (fs.watch semantics vary
-   * across platforms); for production live-mode use Phase 1 will switch to
-   * platform-specific subscription where available.
+   * Implementation notes:
+   *  - Single-flight: only one drain runs at a time. fs.watch firings that
+   *    arrive while a drain is in progress trigger one more drain after it
+   *    completes, so growth during a drain is never lost — but two
+   *    concurrent reads can't race the shared offset or buffer.
+   *  - UTF-8 safety: byte-range slices through a multi-byte character would
+   *    otherwise decode to U+FFFD and break JSON.parse. A StringDecoder
+   *    buffers incomplete sequences across reads.
+   *  - Truncation: if the file shrinks (rotation, manual edit), reset
+   *    rather than try to read a negative range.
    */
-  watch(onMessage: (m: FlatMessage) => void): () => void {
+  watch(
+    onMessage: (m: FlatMessage) => void,
+    onError?: (err: TranscriptParseError) => void
+  ): () => void {
     let lastSize = this.exists() ? statSync(this.path).size : 0;
     let buffer = "";
+    let lineNumber = 0;
+    const decoder = new StringDecoder("utf8");
+    let inFlight: Promise<void> | null = null;
+    let pendingRedrain = false;
+    let closed = false;
 
-    const readAppended = async () => {
-      const current = this.exists() ? statSync(this.path).size : 0;
-      if (current <= lastSize) {
+    const drain = async (): Promise<void> => {
+      if (closed || !this.exists()) return;
+      const current = statSync(this.path).size;
+      if (current < lastSize) {
+        // File truncated or rotated — reset.
         lastSize = current;
+        buffer = decoder.end();
         return;
       }
+      if (current === lastSize) return;
+
+      const startAt = lastSize;
+      // NOTE: do not advance lastSize until the bytes are consumed; the
+      // single-flight guard ensures no other drain reads in parallel.
       const stream = createReadStream(this.path, {
-        encoding: "utf8",
-        start: lastSize,
+        start: startAt,
         end: current - 1,
       });
-      lastSize = current;
-      for await (const chunk of stream) {
-        buffer += chunk as string;
+      try {
+        for await (const chunk of stream) {
+          buffer += decoder.write(chunk as Buffer);
+        }
+      } finally {
+        lastSize = current;
       }
+
       let nl: number;
       while ((nl = buffer.indexOf("\n")) >= 0) {
         const line = buffer.slice(0, nl).trim();
         buffer = buffer.slice(nl + 1);
+        lineNumber++;
         if (!line) continue;
+        let json: unknown;
         try {
-          const parsed = TranscriptMessageSchema.parse(JSON.parse(line));
-          const flat = flattenMessage(parsed);
-          if (flat) onMessage(flat);
-        } catch {
-          // skip
+          json = JSON.parse(line);
+        } catch (e) {
+          onError?.({
+            lineNumber,
+            raw: line,
+            reason: `invalid JSON: ${(e as Error).message}`,
+          });
+          continue;
         }
+        const parsed = TranscriptMessageSchema.safeParse(json);
+        if (!parsed.success) {
+          onError?.({
+            lineNumber,
+            raw: line,
+            reason: parsed.error.issues
+              .map((i) => `${i.path.join(".")}: ${i.message}`)
+              .join("; "),
+          });
+          continue;
+        }
+        const flat = flattenMessage(parsed.data);
+        if (flat) onMessage(flat);
       }
     };
 
-    const watcher = watch(this.path, () => {
-      readAppended().catch(() => {});
+    const schedule = (): void => {
+      if (closed) return;
+      if (inFlight) {
+        // Coalesce — the file may have grown during the current drain;
+        // request exactly one more pass after it finishes.
+        pendingRedrain = true;
+        return;
+      }
+      inFlight = drain()
+        .catch((err) => {
+          onError?.({
+            lineNumber,
+            raw: "",
+            reason: `watch drain failed: ${(err as Error).message}`,
+          });
+        })
+        .finally(() => {
+          inFlight = null;
+          if (pendingRedrain && !closed) {
+            pendingRedrain = false;
+            schedule();
+          }
+        });
+    };
+
+    const watcher = watch(this.path, () => schedule());
+    watcher.on("error", (err) => {
+      onError?.({
+        lineNumber,
+        raw: "",
+        reason: `fs.watch error: ${(err as Error).message}`,
+      });
     });
 
-    // Also kick off an initial drain so callers receive any messages already
-    // present at watch-start time.
-    readAppended().catch(() => {});
+    // Initial drain — surface any messages already present at watch-start.
+    schedule();
 
-    return () => watcher.close();
+    return () => {
+      closed = true;
+      watcher.close();
+    };
   }
 }

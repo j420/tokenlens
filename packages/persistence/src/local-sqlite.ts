@@ -2,9 +2,23 @@
  * LocalSqliteSink — durable local storage backed by sql.js (WASM SQLite).
  *
  * No native binaries (consistent with the Prune ethos). The database lives
- * in memory while open; `flush()` writes it to disk; `close()` flushes once
- * and releases. Callers that want crash-durable writes should `flush()`
- * after each `recordEvent` or wrap calls with their own throttling.
+ * in memory while open; `flush()` writes it atomically to disk (tmp file +
+ * rename); `close()` flushes once and releases.
+ *
+ * Durability model: writes are NOT flushed on every insert by default —
+ * sql.js exposes no incremental write API, so every flush re-serializes
+ * the entire database, making per-event flushing O(db_size) per row and
+ * the dominant cost of the ingest pipeline once the file gets non-trivial.
+ * Callers that need at-most-N-events of loss tolerance should call
+ * `flush()` on their own cadence (e.g. every K events, or on a timer);
+ * `close()` always flushes regardless. Set `autoFlush: true` only for
+ * test fixtures or very low-volume scenarios where the cost is acceptable.
+ *
+ * Crash safety: `flush()` writes to `${path}.tmp.${pid}` then renames over
+ * `path`, so a crash mid-write leaves either the old image or the new one,
+ * never a half-written file that fails to reopen. Multi-process safety
+ * still requires external coordination (file lock or a single writer
+ * process).
  *
  * Schema mirrors @prune/db (Drizzle/Postgres) so rows can be re-exported.
  */
@@ -100,7 +114,11 @@ function getSqlJs(): Promise<SqlJsStatic> {
 export interface LocalSqliteSinkOptions {
   /** Path to the .sqlite file. When `:memory:`, no disk persistence. */
   path: string;
-  /** If true, flush on every write. Default true. */
+  /**
+   * If true, flush on every write. Default **false** — see class docstring
+   * for the cost model. Callers needing durability should either call
+   * `flush()` on a cadence or rely on `close()` (which always flushes).
+   */
   autoFlush?: boolean;
 }
 
@@ -109,7 +127,7 @@ export class LocalSqliteSink implements PersistenceSink {
   private readonly opts: Required<LocalSqliteSinkOptions>;
 
   constructor(opts: LocalSqliteSinkOptions) {
-    this.opts = { autoFlush: true, ...opts };
+    this.opts = { autoFlush: false, ...opts };
   }
 
   async init(): Promise<void> {
@@ -130,7 +148,11 @@ export class LocalSqliteSink implements PersistenceSink {
     return this.db;
   }
 
-  private flush(): void {
+  async flush(): Promise<void> {
+    this.flushSync();
+  }
+
+  private flushSync(): void {
     if (this.opts.path === ":memory:") return;
     const db = this.ensure();
     const buf = db.export();
@@ -191,7 +213,7 @@ export class LocalSqliteSink implements PersistenceSink {
         $task_metadata: JSON.stringify(r.task_metadata),
       }
     );
-    if (this.opts.autoFlush) this.flush();
+    if (this.opts.autoFlush) this.flushSync();
   }
 
   async recordCompaction(r: CompactionEventRow): Promise<void> {
@@ -215,7 +237,7 @@ export class LocalSqliteSink implements PersistenceSink {
         $summary: r.summary,
       }
     );
-    if (this.opts.autoFlush) this.flush();
+    if (this.opts.autoFlush) this.flushSync();
   }
 
   async recordAlert(r: AlertRow): Promise<void> {
@@ -236,7 +258,7 @@ export class LocalSqliteSink implements PersistenceSink {
         $payload_json: r.payload_json,
       }
     );
-    if (this.opts.autoFlush) this.flush();
+    if (this.opts.autoFlush) this.flushSync();
   }
 
   async upsertBudgetUsage(r: BudgetUsageRow): Promise<void> {
@@ -253,7 +275,7 @@ export class LocalSqliteSink implements PersistenceSink {
         $limit_usd: r.limit_usd,
       }
     );
-    if (this.opts.autoFlush) this.flush();
+    if (this.opts.autoFlush) this.flushSync();
   }
 
   async getRecentEvents(
@@ -300,7 +322,7 @@ export class LocalSqliteSink implements PersistenceSink {
 
   async close(): Promise<void> {
     if (this.db) {
-      if (this.opts.path !== ":memory:") this.flush();
+      if (this.opts.path !== ":memory:") this.flushSync();
       this.db.close();
       this.db = null;
     }

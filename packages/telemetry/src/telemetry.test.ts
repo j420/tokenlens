@@ -1,9 +1,20 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { TranscriptReader } from "./transcript-reader.js";
+import {
+  appendFileSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import {
+  TranscriptReader,
+  type TranscriptParseError,
+} from "./transcript-reader.js";
 import { groupIntoTurns, toTurnDataLike } from "./turn-mapper.js";
 import { summarize, aggregateUsage, hitRate } from "./cache-fields.js";
+import type { FlatMessage } from "./schema.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = join(__dirname, "../test/fixtures/session-basic.jsonl");
@@ -112,5 +123,108 @@ describe("toTurnDataLike", () => {
     const out = toTurnDataLike(turn);
     expect(out.responseContent).toContain("tool_use:Edit");
     expect(out.filesWritten).toEqual(["src/x.ts"]);
+  });
+});
+
+describe("TranscriptReader.watch — tail-mode", () => {
+  function sample(role: "user" | "assistant", text: string): string {
+    return (
+      JSON.stringify({
+        type: role,
+        sessionId: "sw",
+        timestamp: "2026-05-30T10:00:00Z",
+        message: {
+          role,
+          ...(role === "assistant"
+            ? { model: "claude-sonnet-4-5-20250929" }
+            : {}),
+          content: text,
+        },
+      }) + "\n"
+    );
+  }
+
+  async function settle(): Promise<void> {
+    // Give fs.watch + the single-flight drain a couple of microtask flushes
+    // plus a real timer tick — enough for inotify on Linux and the polling
+    // fallback on other platforms.
+    await new Promise((r) => setTimeout(r, 75));
+  }
+
+  let dir = "";
+  let path = "";
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "prune-watch-"));
+    path = join(dir, "session.jsonl");
+    writeFileSync(path, "");
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("surfaces appended messages without losing any to fs.watch coalescing", async () => {
+    const seen: FlatMessage[] = [];
+    const reader = new TranscriptReader(path);
+    const unsub = reader.watch((m) => seen.push(m));
+    appendFileSync(path, sample("user", "hello"));
+    await settle();
+    appendFileSync(path, sample("assistant", "hi"));
+    await settle();
+    appendFileSync(path, sample("user", "again"));
+    await settle();
+    unsub();
+    expect(seen.map((m) => m.role)).toEqual(["user", "assistant", "user"]);
+  });
+
+  it("decodes multi-byte UTF-8 even when characters straddle the read boundary", async () => {
+    const seen: FlatMessage[] = [];
+    const reader = new TranscriptReader(path);
+    const unsub = reader.watch((m) => seen.push(m));
+
+    // Write the first record's bytes in two halves so a multi-byte character
+    // splits across the fs.watch fire. Without a StringDecoder the second
+    // half would arrive in a new utf8 stream that emits U+FFFD for the
+    // dangling lead byte, JSON.parse would throw, and the line would be
+    // lost.
+    const line = sample("assistant", "héllo 🎉 こんにちは");
+    const buf = Buffer.from(line, "utf8");
+    // Find a byte that's the middle of a multi-byte sequence — choose the
+    // 'こ' (E3 81 93) inside the content string; we know it's in there.
+    const idx = buf.indexOf(Buffer.from([0xe3, 0x81, 0x93]));
+    expect(idx).toBeGreaterThan(0);
+    appendFileSync(path, buf.slice(0, idx + 1)); // mid-codepoint cut
+    await settle();
+    appendFileSync(path, buf.slice(idx + 1));
+    await settle();
+    unsub();
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0].role).toBe("assistant");
+    const content = seen[0].content;
+    const text = typeof content === "string" ? content : "";
+    expect(text).toContain("héllo");
+    expect(text).toContain("🎉");
+    expect(text).toContain("こんにちは");
+    expect(text).not.toContain("�");
+  });
+
+  it("reports parse failures via onError instead of silently dropping the line", async () => {
+    const seen: FlatMessage[] = [];
+    const errors: TranscriptParseError[] = [];
+    const reader = new TranscriptReader(path);
+    const unsub = reader.watch(
+      (m) => seen.push(m),
+      (e) => errors.push(e)
+    );
+
+    appendFileSync(path, "not-json-at-all\n");
+    await settle();
+    appendFileSync(path, sample("user", "valid"));
+    await settle();
+    unsub();
+
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    expect(errors[0].reason).toContain("invalid JSON");
+    expect(seen.map((m) => m.role)).toEqual(["user"]);
   });
 });

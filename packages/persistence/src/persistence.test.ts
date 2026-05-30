@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { LocalSqliteSink } from "./local-sqlite.js";
@@ -150,5 +150,56 @@ describe("LocalSqliteSink", () => {
     const rows = await mem.getRecentEvents(baseEvent.session_id);
     expect(rows).toHaveLength(1);
     await mem.close();
+  });
+
+  it("does not write to disk by default until flush() is called", async () => {
+    const p = join(dir, "lazy.sqlite");
+    const lazy = new LocalSqliteSink({ path: p });
+    await lazy.init();
+    // The on-disk file should not exist after init — sql.js holds the DB
+    // in memory and the default is autoFlush:false.
+    expect(existsSync(p)).toBe(false);
+    await lazy.recordEvent(baseEvent);
+    expect(existsSync(p)).toBe(false);
+
+    await lazy.flush();
+    expect(existsSync(p)).toBe(true);
+    const sizeAfterFlush = statSync(p).size;
+    expect(sizeAfterFlush).toBeGreaterThan(0);
+
+    // A second record without flush leaves the file at its previous size.
+    await lazy.recordEvent({
+      ...baseEvent,
+      event_id: "ffffffff-1111-1111-1111-111111111111",
+    });
+    expect(statSync(p).size).toBe(sizeAfterFlush);
+
+    await lazy.close(); // close() flushes regardless
+    expect(statSync(p).size).toBeGreaterThanOrEqual(sizeAfterFlush);
+  });
+
+  it("flushes on every write when autoFlush is opted in", async () => {
+    const p = join(dir, "eager.sqlite");
+    const eager = new LocalSqliteSink({ path: p, autoFlush: true });
+    await eager.init();
+    await eager.recordEvent(baseEvent);
+    expect(existsSync(p)).toBe(true);
+    await eager.close();
+  });
+
+  it("flush() writes atomically — no stray .tmp.<pid> file is left behind", async () => {
+    const p = join(dir, "atomic.sqlite");
+    const sink2 = new LocalSqliteSink({ path: p });
+    await sink2.init();
+    await sink2.recordEvent(baseEvent);
+    await sink2.flush();
+
+    const fs = await import("node:fs/promises");
+    const dirContents = await fs.readdir(dir);
+    const stray = dirContents.filter(
+      (f) => f.startsWith("atomic.sqlite.tmp.") || f.endsWith(".tmp")
+    );
+    expect(stray).toEqual([]);
+    await sink2.close();
   });
 });
