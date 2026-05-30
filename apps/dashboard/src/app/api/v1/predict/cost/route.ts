@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getModelPricingByName } from "@prune/shared";
 
 export const runtime = "edge";
-
-// Model pricing
-const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-  // Anthropic
-  "claude-opus-4-5-20251101": { input: 15, output: 75 },
-  "claude-sonnet-4-5-20250929": { input: 3, output: 15 },
-  "claude-sonnet-4-20250514": { input: 3, output: 15 },
-  "claude-3-5-sonnet-20241022": { input: 3, output: 15 },
-  "claude-3-5-haiku-20241022": { input: 0.8, output: 4 },
-  "claude-3-haiku-20240307": { input: 0.25, output: 1.25 },
-  // OpenAI
-  "gpt-4o": { input: 2.5, output: 10 },
-  "gpt-4o-mini": { input: 0.15, output: 0.6 },
-  "gpt-4-turbo": { input: 10, output: 30 },
-  "o1-preview": { input: 15, output: 60 },
-  "o1-mini": { input: 3, output: 12 },
-  "o3-mini": { input: 1.1, output: 4.4 },
-};
 
 type TaskType = "refactor" | "debug" | "test" | "feature" | "unknown";
 
@@ -45,7 +28,7 @@ function predictCost(params: {
   model: string;
   estimatedContextTokens: number;
 }) {
-  const pricing = MODEL_PRICING[params.model] ?? { input: 3, output: 15 };
+  const pricing = getModelPricingByName(params.model);
 
   // Estimate input cost
   const inputCost = (params.estimatedContextTokens / 1_000_000) * pricing.input;

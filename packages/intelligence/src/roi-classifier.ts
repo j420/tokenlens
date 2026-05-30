@@ -9,36 +9,36 @@
  */
 
 import { estimateTokenCount } from "./tokenizer.js";
+import {
+  FLAT_PRICING,
+  detectProvider,
+  getModelPricingByName,
+} from "@prune/shared";
 
-// Model pricing table ($ per 1M tokens input / output)
-export const MODEL_PRICING: Record<
-  string,
-  { input: number; output: number; provider: string }
-> = {
-  // Anthropic
-  "claude-opus-4-5-20251101": { input: 15, output: 75, provider: "anthropic" },
-  "claude-sonnet-4-5-20250929": { input: 3, output: 15, provider: "anthropic" },
-  "claude-sonnet-4-20250514": { input: 3, output: 15, provider: "anthropic" },
-  "claude-3-5-sonnet-20241022": { input: 3, output: 15, provider: "anthropic" },
-  "claude-3-5-haiku-20241022": { input: 0.8, output: 4, provider: "anthropic" },
-  "claude-3-opus-20240229": { input: 15, output: 75, provider: "anthropic" },
-  "claude-3-sonnet-20240229": { input: 3, output: 15, provider: "anthropic" },
-  "claude-3-haiku-20240307": { input: 0.25, output: 1.25, provider: "anthropic" },
+// Re-export a model→pricing view from the shared single source. The legacy
+// shape included a `provider` discriminator; we restore it on demand.
+export interface ModelPricingWithProvider {
+  input: number;
+  output: number;
+  provider: string;
+}
 
-  // OpenAI
-  "gpt-4o": { input: 2.5, output: 10, provider: "openai" },
-  "gpt-4o-mini": { input: 0.15, output: 0.6, provider: "openai" },
-  "gpt-4-turbo": { input: 10, output: 30, provider: "openai" },
-  "gpt-4": { input: 30, output: 60, provider: "openai" },
-  "gpt-3.5-turbo": { input: 0.5, output: 1.5, provider: "openai" },
-  "o1-preview": { input: 15, output: 60, provider: "openai" },
-  "o1-mini": { input: 3, output: 12, provider: "openai" },
+export function getModelPricingWithProvider(
+  model: string
+): ModelPricingWithProvider {
+  const p = getModelPricingByName(model);
+  return { input: p.input, output: p.output, provider: detectProvider(model) };
+}
 
-  // Google
-  "gemini-1.5-pro": { input: 1.25, output: 5, provider: "google" },
-  "gemini-1.5-flash": { input: 0.075, output: 0.3, provider: "google" },
-  "gemini-2.0-flash": { input: 0.1, output: 0.4, provider: "google" },
-};
+// Legacy provider-tagged map, derived from the shared single source.
+// Kept for backward compatibility with intelligence consumers and tests.
+export const MODEL_PRICING: Record<string, ModelPricingWithProvider> =
+  Object.fromEntries(
+    Object.entries(FLAT_PRICING).map(([model, p]) => [
+      model,
+      { input: p.input, output: p.output, provider: detectProvider(model) },
+    ])
+  );
 
 // Cheaper model suggestions for each model tier
 export const CHEAPER_MODEL_SUGGESTIONS: Record<

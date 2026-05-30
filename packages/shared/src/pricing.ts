@@ -1,8 +1,9 @@
 import type { Provider } from "./schemas/event.js";
 
-// Pricing per million tokens (as of 2024)
-// Format: { input: price_per_million, output: price_per_million, cached_input?: price_per_million }
-interface ModelPricing {
+// Pricing per million tokens.
+// Format: { input, output, cached_input? } — cached_input is the Anthropic
+// cache-read price tier (≈10% of input for ephemeral 5-minute TTL).
+export interface ModelPricing {
   input: number;
   output: number;
   cached_input?: number;
@@ -26,6 +27,16 @@ const ANTHROPIC_PRICING: Record<string, ModelPricing> = {
   "claude-3-sonnet-20240229": { input: 3, output: 15, cached_input: 0.375 },
   // Claude 3 Haiku
   "claude-3-haiku-20240307": { input: 0.25, output: 1.25, cached_input: 0.03 },
+
+  // Family-name aliases (stable identifiers used across the codebase before
+  // dated model IDs were introduced). Each alias points at current pricing
+  // for that family tier.
+  "claude-opus-4": { input: 15, output: 75, cached_input: 1.875 },
+  "claude-sonnet-4": { input: 3, output: 15, cached_input: 0.375 },
+  "claude-haiku-3.5": { input: 0.8, output: 4, cached_input: 0.08 },
+  "claude-3-opus": { input: 15, output: 75, cached_input: 1.875 },
+  "claude-3-sonnet": { input: 3, output: 15, cached_input: 0.375 },
+  "claude-3-haiku": { input: 0.25, output: 1.25, cached_input: 0.03 },
 };
 
 const OPENAI_PRICING: Record<string, ModelPricing> = {
@@ -71,14 +82,33 @@ const GOOGLE_PRICING: Record<string, ModelPricing> = {
   "gemini-1.0-pro": { input: 0.5, output: 1.5 },
 };
 
-const PRICING_BY_PROVIDER: Record<Provider, Record<string, ModelPricing>> = {
+export const PRICING_BY_PROVIDER: Record<Provider, Record<string, ModelPricing>> = {
   anthropic: ANTHROPIC_PRICING,
   openai: OPENAI_PRICING,
   google: GOOGLE_PRICING,
 };
 
-// Default pricing for unknown models (conservative estimate)
-const DEFAULT_PRICING: ModelPricing = { input: 3, output: 15 };
+// Flat lookup used by legacy callers (model id → pricing, no provider hint).
+// Order matters for conflict resolution: anthropic shadows openai shadows google,
+// but in practice the keys are disjoint.
+export const FLAT_PRICING: Record<string, ModelPricing> = {
+  ...GOOGLE_PRICING,
+  ...OPENAI_PRICING,
+  ...ANTHROPIC_PRICING,
+};
+
+// Default pricing for unknown models (conservative estimate).
+export const DEFAULT_PRICING: ModelPricing = { input: 3, output: 15 };
+
+const ANTHROPIC_PREFIXES = ["claude", "anthropic"];
+const GOOGLE_PREFIXES = ["gemini", "google"];
+
+export function detectProvider(model: string): Provider {
+  const m = model.toLowerCase();
+  if (ANTHROPIC_PREFIXES.some((p) => m.startsWith(p))) return "anthropic";
+  if (GOOGLE_PREFIXES.some((p) => m.startsWith(p))) return "google";
+  return "openai";
+}
 
 export function getModelPricing(
   provider: Provider,
@@ -86,6 +116,10 @@ export function getModelPricing(
 ): ModelPricing {
   const providerPricing = PRICING_BY_PROVIDER[provider];
   return providerPricing[model] ?? DEFAULT_PRICING;
+}
+
+export function getModelPricingByName(model: string): ModelPricing {
+  return FLAT_PRICING[model] ?? DEFAULT_PRICING;
 }
 
 export function calculateCost(
@@ -96,20 +130,28 @@ export function calculateCost(
   tokensCached: number = 0
 ): number {
   const pricing = getModelPricing(provider, model);
-
-  // Calculate non-cached input tokens
   const nonCachedInput = Math.max(0, tokensIn - tokensCached);
-
-  // Cost calculation (prices are per million tokens)
   const inputCost = (nonCachedInput / 1_000_000) * pricing.input;
   const cachedCost =
     (tokensCached / 1_000_000) * (pricing.cached_input ?? pricing.input);
   const outputCost = (tokensOut / 1_000_000) * pricing.output;
-
   return inputCost + cachedCost + outputCost;
 }
 
+export function estimateCost(
+  tokens: number,
+  model: string,
+  type: "input" | "output" = "input"
+): number {
+  // Legacy single-arg-by-name lookup. Falls back to gpt-4o for unknown models
+  // (the historical default before pricing was split per provider).
+  const pricing = FLAT_PRICING[model] ?? FLAT_PRICING["gpt-4o"];
+  const rate = type === "input" ? pricing.input : pricing.output;
+  return (tokens / 1_000_000) * rate;
+}
+
 export function formatCost(costUsd: number): string {
+  if (!Number.isFinite(costUsd)) return "$0.00";
   if (costUsd < 0.01) {
     return `$${costUsd.toFixed(4)}`;
   }
@@ -117,11 +159,12 @@ export function formatCost(costUsd: number): string {
 }
 
 export function formatTokens(tokens: number): string {
+  if (!Number.isFinite(tokens)) return "0";
   if (tokens >= 1_000_000) {
     return `${(tokens / 1_000_000).toFixed(1)}M`;
   }
   if (tokens >= 1_000) {
     return `${(tokens / 1_000).toFixed(1)}K`;
   }
-  return tokens.toString();
+  return Math.trunc(tokens).toString();
 }
