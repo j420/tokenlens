@@ -31,10 +31,19 @@ export function emitBlock(reason, extra = {}) {
 
 /**
  * Inject `additionalContext` for downstream messages. Non-blocking.
+ *
+ * Per the Claude Code hook protocol, `additionalContext` must be nested
+ * under `hookSpecificOutput` with the matching `hookEventName` — a
+ * top-level `additionalContext` field is silently ignored. Only
+ * `UserPromptSubmit` and `SessionStart` consume this field; for other
+ * events the harness will accept the JSON without effect.
  */
-export function emitAdditionalContext(additionalContext, extra = {}) {
+export function emitAdditionalContext(additionalContext, hookEventName, extra = {}) {
   process.stdout.write(
-    JSON.stringify({ additionalContext, ...extra }) + "\n"
+    JSON.stringify({
+      hookSpecificOutput: { hookEventName, additionalContext },
+      ...extra,
+    }) + "\n"
   );
   process.exit(0);
 }

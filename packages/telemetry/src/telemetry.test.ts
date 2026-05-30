@@ -29,34 +29,35 @@ describe("TranscriptReader", () => {
 });
 
 describe("groupIntoTurns", () => {
-  it("groups messages into 3 turns split at user messages", async () => {
+  it("groups messages into 2 turns — tool_result user-messages attach to the turn whose assistant invoked them", async () => {
     const { messages } = await new TranscriptReader(FIXTURE).readAll();
     const turns = groupIntoTurns(messages);
-    expect(turns).toHaveLength(3);
+    // u1 → a1 → u2(tool_result) → a2 is a single user prompt being answered
+    // via a tool round-trip; u2 must NOT start a new turn. u3 is a real
+    // follow-up prompt and starts turn 2.
+    expect(turns).toHaveLength(2);
     expect(turns[0].userMessage?.content).toContain("Read auth.ts");
-    expect(turns[0].assistantMessages).toHaveLength(1);
+    expect(turns[0].assistantMessages).toHaveLength(2);
     expect(turns[0].toolUses).toEqual([
       expect.objectContaining({ name: "Read", id: "tu_1" }),
     ]);
   });
 
-  it("accumulates per-turn usage including cache fields", async () => {
+  it("accumulates per-turn usage across the assistant's full reply, including tool round-trips", async () => {
     const { messages } = await new TranscriptReader(FIXTURE).readAll();
     const turns = groupIntoTurns(messages);
-    // Turn 1: a1 usage 1200/40 + tool result on u2 (no usage) + a2 80/160 + cache_create 1100.
-    // But u2 begins the assistant's chained reply — under our grouping
-    // (split on user role), u2 (tool_result) starts a new turn since it's
-    // role:user. Validate that's what we see.
-    expect(turns[0].usage.input).toBe(1200);
-    expect(turns[0].usage.output).toBe(40);
-    expect(turns[1].usage.cacheCreate).toBe(1100);
-    expect(turns[2].usage.cacheRead).toBe(1180);
+    // Turn 0 spans a1 (1200/40) + u2 (no usage) + a2 (80/160 + cache_create 1100).
+    expect(turns[0].usage.input).toBe(1280);
+    expect(turns[0].usage.output).toBe(200);
+    expect(turns[0].usage.cacheCreate).toBe(1100);
+    // Turn 1 is u3 → a3 (30/50 + cache_read 1180).
+    expect(turns[1].usage.cacheRead).toBe(1180);
   });
 
-  it("captures tool_result blocks on the user turn that delivers them", async () => {
+  it("captures tool_result blocks on the turn whose assistant invoked them", async () => {
     const { messages } = await new TranscriptReader(FIXTURE).readAll();
     const turns = groupIntoTurns(messages);
-    expect(turns[1].toolResults).toEqual([
+    expect(turns[0].toolResults).toEqual([
       expect.objectContaining({ tool_use_id: "tu_1" }),
     ]);
   });
@@ -92,10 +93,24 @@ describe("toTurnDataLike", () => {
     const { messages } = await new TranscriptReader(FIXTURE).readAll();
     const turns = groupIntoTurns(messages);
     const turn1 = toTurnDataLike(turns[0]);
-    const turn3 = toTurnDataLike(turns[2]);
+    const turn2 = toTurnDataLike(turns[1]);
     expect(turn1.filesRead).toEqual(["src/auth.ts"]);
     expect(turn1.filesWritten).toEqual([]);
-    expect(turn3.filesWritten).toEqual(["src/auth.test.ts"]);
-    expect(turn3.tokensIn).toBe(30 + 1180); // input + cacheRead
+    expect(turn2.filesWritten).toEqual(["src/auth.test.ts"]);
+    expect(turn2.tokensIn).toBe(30 + 1180); // input + cacheRead
+  });
+
+  it("projects tool_use blocks into responseContent so tool-only turns aren't classified as low-ROI", () => {
+    const turn = {
+      turnNumber: 1,
+      assistantMessages: [],
+      toolUses: [{ name: "Edit", input: { file_path: "src/x.ts" } }],
+      toolResults: [],
+      usage: { input: 0, output: 0, cacheRead: 0, cacheCreate: 0 },
+      textContent: "[tool_use:Edit(src/x.ts)]",
+    } as Parameters<typeof toTurnDataLike>[0];
+    const out = toTurnDataLike(turn);
+    expect(out.responseContent).toContain("tool_use:Edit");
+    expect(out.filesWritten).toEqual(["src/x.ts"]);
   });
 });

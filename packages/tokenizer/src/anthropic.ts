@@ -88,7 +88,22 @@ export class LruTokenCountCache implements TokenCountCache {
 const defaultCache = new LruTokenCountCache();
 
 function canonicalize(input: CountTokensInput): string {
-  return JSON.stringify(input, Object.keys(input).sort());
+  // Recursively sort object keys so semantically equivalent inputs hash to
+  // the same key. Passing an array as JSON.stringify's second argument is a
+  // recursive property *filter*, not a sort order — using it strips nested
+  // keys that aren't in the top-level set and collapses different payloads
+  // to the same string. Use a replacer function that returns a new object
+  // with sorted keys at every nesting level instead.
+  return JSON.stringify(input, (_key, value) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const sorted: Record<string, unknown> = {};
+      for (const k of Object.keys(value as object).sort()) {
+        sorted[k] = (value as Record<string, unknown>)[k];
+      }
+      return sorted;
+    }
+    return value;
+  });
 }
 
 function cacheKey(input: CountTokensInput): string {

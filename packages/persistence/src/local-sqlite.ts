@@ -9,7 +9,14 @@
  * Schema mirrors @prune/db (Drizzle/Postgres) so rows can be re-exported.
  */
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  existsSync,
+  mkdirSync,
+  renameSync,
+  unlinkSync,
+} from "node:fs";
 import { dirname } from "node:path";
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import type {
@@ -128,7 +135,23 @@ export class LocalSqliteSink implements PersistenceSink {
     const db = this.ensure();
     const buf = db.export();
     mkdirSync(dirname(this.opts.path), { recursive: true });
-    writeFileSync(this.opts.path, buf);
+    // Write to a temp file then atomically rename: a crash mid-write would
+    // otherwise leave a half-written .sqlite that fails to reopen. The
+    // process pid keeps two concurrent flushers from clobbering the same
+    // temp path; cross-process safety still requires external coordination
+    // (file lock or a single writer).
+    const tmp = `${this.opts.path}.tmp.${process.pid}`;
+    try {
+      writeFileSync(tmp, buf);
+      renameSync(tmp, this.opts.path);
+    } catch (err) {
+      try {
+        unlinkSync(tmp);
+      } catch {
+        // ignore — temp may not exist
+      }
+      throw err;
+    }
   }
 
   async recordEvent(r: EventRow): Promise<void> {

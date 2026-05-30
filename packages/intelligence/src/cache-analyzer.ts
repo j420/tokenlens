@@ -54,8 +54,15 @@ export interface CacheMetrics {
 }
 
 function pickPricing(model: string | undefined): ModelPricing {
-  if (!model) return getModelPricing("anthropic", "claude-sonnet-4-5-20250929");
-  return getModelPricing(detectProvider(model), model);
+  const pricing = !model
+    ? getModelPricing("anthropic", "claude-sonnet-4-5-20250929")
+    : getModelPricing(detectProvider(model), model);
+  if (pricing.cached_input !== undefined) return pricing;
+  // Unknown / new model IDs land on DEFAULT_PRICING (no cached_input),
+  // which would silently collapse the cached-read rate to the full input
+  // rate and flatten the cache-savings report to ~$0. Estimate at ~10% of
+  // input — the standard Anthropic ephemeral-cache ratio.
+  return { ...pricing, cached_input: pricing.input * 0.1 };
 }
 
 function turnCost(
@@ -161,7 +168,9 @@ export interface DiagnoseInput {
 const TIMESTAMP_PATTERNS = [
   /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/, // ISO 8601
   /\b\d{4}-\d{2}-\d{2}\b/, // date
-  /\b\d{1,2}:\d{2}(?::\d{2})?\b/, // time
+  // Bare HH:MM is too noisy (matches durations, port refs, "5:30 in the
+  // afternoon" examples) — require an adjacent time keyword.
+  /\b(?:current[ _-]?time|now|today|timestamp|at)\b[^\n]{0,20}?\b\d{1,2}:\d{2}(?::\d{2})?\b/i,
   /current[ _-]?time/i,
   /now\s*:/i,
 ];

@@ -122,6 +122,44 @@ describe("anthropicCountTokens — exact path", () => {
   });
 });
 
+describe("canonicalize cache key — regression for nested-key collision", () => {
+  it("derives distinct cache keys for inputs that differ only in nested message content", async () => {
+    // Before the fix, JSON.stringify(input, Object.keys(input).sort()) used
+    // the array as a recursive *property filter*, stripping nested keys
+    // like `role` and `content` and collapsing every payload that shared
+    // top-level keys to the same hash — so the second call would return
+    // the cached count from the first call.
+    const fetchMock = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string) as {
+        messages: { content: string }[];
+      };
+      const tokens = body.messages[0].content.length;
+      return new Response(JSON.stringify({ input_tokens: tokens }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    const cache = new LruTokenCountCache(8);
+    const small = await anthropicCountTokens(
+      {
+        model: "claude-sonnet-4-5-20250929",
+        messages: [{ role: "user", content: "hi" }],
+      },
+      { apiKey: "k", fetchImpl: fetchMock as unknown as typeof fetch, cache }
+    );
+    const big = await anthropicCountTokens(
+      {
+        model: "claude-sonnet-4-5-20250929",
+        messages: [{ role: "user", content: "a much longer prompt body" }],
+      },
+      { apiKey: "k", fetchImpl: fetchMock as unknown as typeof fetch, cache }
+    );
+    expect(small.input_tokens).toBe(2);
+    expect(big.input_tokens).toBe("a much longer prompt body".length);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
 describe("LruTokenCountCache", () => {
   it("evicts the least-recently-used entry past capacity", () => {
     const cache = new LruTokenCountCache(2);

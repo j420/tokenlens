@@ -42,8 +42,29 @@ function extractTextFromBlocks(blocks: ContentBlock[]): string {
     if (b.type === "text" && typeof b.text === "string") parts.push(b.text);
     else if (b.type === "thinking" && typeof b.thinking === "string")
       parts.push(b.thinking);
+    else if (b.type === "tool_use") {
+      // Tool-only assistant turns have no surrounding text; project the tool
+      // name (and a short input fingerprint) into the text stream so the ROI
+      // classifier sees the productive output rather than treating the turn
+      // as empty / low-ROI.
+      const name = (b as { name?: string }).name ?? "tool";
+      const input = (b as { input?: unknown }).input;
+      const fp = input ? `(${shortInputFingerprint(input)})` : "";
+      parts.push(`[tool_use:${name}${fp}]`);
+    }
   }
   return parts.join("\n");
+}
+
+function shortInputFingerprint(input: unknown): string {
+  if (input && typeof input === "object") {
+    const o = input as Record<string, unknown>;
+    if (typeof o.file_path === "string") return o.file_path;
+    if (typeof o.path === "string") return o.path;
+    if (typeof o.command === "string") return o.command.slice(0, 60);
+    if (typeof o.query === "string") return o.query.slice(0, 60);
+  }
+  return "";
 }
 
 function addUsage(acc: UsageTotals, u?: Usage): void {
@@ -80,11 +101,33 @@ export function groupIntoTurns(messages: FlatMessage[]): NormalizedTurn[] {
 
   for (const m of messages) {
     if (m.role === "user") {
+      const blocks = blocksOf(m.content);
+      // A user message that contains only tool_result blocks is the response
+      // to a prior assistant tool_use — it's part of the same turn, not a
+      // new prompt. Attach the tool results to the current turn rather than
+      // starting a new one (otherwise multi-tool agent runs inflate the
+      // turn count and the loop-breaker fires on legitimate work).
+      const isOnlyToolResult =
+        blocks.length > 0 && blocks.every((b) => b.type === "tool_result");
+      if (isOnlyToolResult && current) {
+        for (const b of blocks) {
+          current.toolResults.push({
+            tool_use_id:
+              typeof (b as { tool_use_id?: unknown }).tool_use_id === "string"
+                ? ((b as { tool_use_id?: string }).tool_use_id ?? undefined)
+                : undefined,
+            content: (b as { content?: unknown }).content,
+            is_error: (b as { is_error?: boolean }).is_error,
+          });
+        }
+        addUsage(current.usage, m.usage);
+        if (m.timestamp) current.endedAt = m.timestamp;
+        continue;
+      }
       if (current) turns.push(current);
       current = startTurn(m);
-      const blocks = blocksOf(m.content);
-      // user message often carries tool_result blocks from a prior assistant
-      // tool call — capture them so we can attribute tool outcomes.
+      // A user message may mix real prompt text with tool_result blocks
+      // (rare but possible) — still capture any tool_results on this turn.
       for (const b of blocks) {
         if (b.type === "tool_result") {
           current.toolResults.push({

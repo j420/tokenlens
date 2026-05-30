@@ -500,7 +500,8 @@ async function handleLoopStatus(args: {
 
   // If the caller didn't pass a model, infer from the most recent assistant turn.
   const inferredModel =
-    args.current_model ?? walk.lastTurn ? turns[turns.length - 1]?.model : undefined;
+    args.current_model ??
+    (walk.lastTurn ? turns[turns.length - 1]?.model : undefined);
 
   const decision = evaluateLoopBlock(walk, {
     consecutiveLowRoiThreshold: args.consecutive_low_roi_threshold ?? 3,

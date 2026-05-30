@@ -35,9 +35,15 @@ safeRun(async () => {
 
   const inputs = turns.map((t) => ({ model: t.model, usage: t.usage }));
   const metrics = computeCacheMetrics(inputs, "5m");
+  // Build a tools-by-turn projection so MCP tool drift can be detected.
+  // (UserPromptSubmit payloads don't carry the session's system prompt, so
+  // timestamp_in_system can only fire when we eventually wire SessionStart.)
+  const toolListsByTurn = turns
+    .map((t) => t.toolUses.map((u) => u.name))
+    .filter((list) => list.length > 0);
   const diagnoses = diagnoseCacheBust({
-    systemPrompt: payload.system_prompt,
     turns: inputs,
+    toolListsByTurn: toolListsByTurn.length >= 2 ? toolListsByTurn : undefined,
   });
 
   if (diagnoses.length === 0) return emitNoop();
@@ -48,5 +54,8 @@ safeRun(async () => {
   for (const d of diagnoses.slice(0, 3)) {
     lines.push(`• ${d.signal}: ${d.evidence}. ${d.suggestion}`);
   }
-  return emitAdditionalContext(lines.join("\n"));
+  return emitAdditionalContext(
+    lines.join("\n"),
+    payload.hook_event_name ?? "UserPromptSubmit"
+  );
 });

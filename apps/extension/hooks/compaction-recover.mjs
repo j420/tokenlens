@@ -71,5 +71,8 @@ safeRun(async () => {
     lines.push(`• ${r.item} (originally turn ${r.original_turn})`);
   }
   lines.push("Re-introduce them in the next request if they're still relevant.");
-  return emitAdditionalContext(lines.join("\n"));
+  return emitAdditionalContext(
+    lines.join("\n"),
+    payload.hook_event_name ?? "PostCompact"
+  );
 });
