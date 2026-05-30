@@ -56,6 +56,16 @@ export {
   type CompactionDiff,
 } from "./compaction-auditor.js";
 
+// Session Tracker (Phase 2: loop circuit-breaker)
+export {
+  replaySession,
+  evaluateLoopBlock,
+  formatLoopBlockMessage,
+  type SessionROIWalk,
+  type LoopBlockDecision,
+  type LoopBlockOptions,
+} from "./session-tracker.js";
+
 // Cache Analyzer
 export {
   computeCacheMetrics,

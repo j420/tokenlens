@@ -16,17 +16,24 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import * as fs from "fs";
 import * as path from "path";
+import * as crypto from "crypto";
 
 import { countTokens, countTokensBatch, estimateCost, formatTokens, formatCost } from "@prune/tokenizer";
 import { squeezeFile, type SqueezeTier } from "@prune/squeezer";
+import { detectCompaction, analyzeCompaction, MessageBuffer, createMessageSummary } from "@prune/intelligence";
 import { fetchCursorUsage } from "@prune/state-scraper";
 import {
   TranscriptReader,
   groupIntoTurns,
+  toTurnDataLike,
 } from "@prune/telemetry";
 import {
   computeCacheMetrics,
   diagnoseCacheBust,
+  evaluateLoopBlock,
+  formatLoopBlockMessage,
+  getModelRoutingSuggestion,
+  replaySession,
   type CacheTurnInput,
 } from "@prune/intelligence";
 
@@ -137,6 +144,123 @@ const TOOLS = [
           type: "string" as const,
           description:
             "Optional system-prompt text to scan for volatility (timestamps, etc.).",
+        },
+      },
+      required: ["transcript_path"],
+    },
+  },
+  {
+    name: "loop_status",
+    description:
+      "Replay a Claude Code session transcript and report the current ROI " +
+      "state: per-turn classification, consecutive-low-ROI streak, recursive " +
+      "signals, and (if a streak triggers) a model-routing suggestion. Useful " +
+      "before continuing a long agentic loop.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description:
+            "Absolute path to a Claude Code session transcript JSONL file.",
+        },
+        current_model: {
+          type: "string" as const,
+          description:
+            "The model the session is currently using; required for the routing suggestion.",
+        },
+        consecutive_low_roi_threshold: {
+          type: "number" as const,
+          description:
+            "Streak length that triggers a block decision (default 3).",
+          default: 3,
+        },
+      },
+      required: ["transcript_path"],
+    },
+  },
+  {
+    name: "routing_suggestion",
+    description:
+      "Suggest a cheaper model when a session has been in a recursive streak. " +
+      "Independent of any transcript — pass the current model and observed streak length.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        current_model: {
+          type: "string" as const,
+          description: "Currently-used model id (e.g. claude-sonnet-4-5-20250929).",
+        },
+        consecutive_low_roi_turns: {
+          type: "number" as const,
+          description: "Length of the current low-ROI streak.",
+        },
+      },
+      required: ["current_model", "consecutive_low_roi_turns"],
+    },
+  },
+  {
+    name: "diff_context",
+    description:
+      "Decide the cheapest faithful way to send a file to the model on a " +
+      "subsequent turn. Given the current content (or path) and an optional " +
+      "previously-seen SHA-256 + previously-seen content, returns one of: " +
+      "unchanged (zero new tokens), diff (only changed lines), signatures " +
+      "(structural compression via AST), or full. Reports the token budget " +
+      "for each option so callers can pick.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        file_path: { type: "string" as const, description: "Absolute path." },
+        content: {
+          type: "string" as const,
+          description:
+            "Optional: file content. If omitted, read from file_path.",
+        },
+        previously_seen_sha256: {
+          type: "string" as const,
+          description:
+            "SHA-256 hex digest of the version already in the model's context.",
+        },
+        previously_seen_content: {
+          type: "string" as const,
+          description:
+            "Optional previous content; enables diff computation.",
+        },
+        model: {
+          type: "string" as const,
+          description: "Model for token counting (default gpt-4o).",
+          default: "gpt-4o",
+        },
+        large_file_threshold: {
+          type: "number" as const,
+          description:
+            "Files above this token count fall back to AST signatures when no diff baseline exists (default 1500).",
+          default: 1500,
+        },
+      },
+      required: ["file_path"],
+    },
+  },
+  {
+    name: "compaction_check",
+    description:
+      "Inspect a Claude Code transcript window for a compaction event and " +
+      "report what tracked entities (decisions, file references, rules) are " +
+      "at risk of being lost when context is summarized. Use after a " +
+      "PreCompact / PostCompact hook fires.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description:
+            "Absolute path to a Claude Code session transcript JSONL.",
+        },
+        window_turns: {
+          type: "number" as const,
+          description:
+            "Compare the first N turns (pre-compaction) against the rest (post-compaction). Default: half-split.",
         },
       },
       required: ["transcript_path"],
@@ -358,6 +482,319 @@ async function handleCacheReport(args: {
   }, null, 2);
 }
 
+async function handleLoopStatus(args: {
+  transcript_path: string;
+  current_model?: string;
+  consecutive_low_roi_threshold?: number;
+}): Promise<string> {
+  const reader = new TranscriptReader(args.transcript_path);
+  if (!reader.exists()) {
+    return JSON.stringify({
+      error: `transcript not found: ${args.transcript_path}`,
+    });
+  }
+  const { messages, errors } = await reader.readAll();
+  const turns = groupIntoTurns(messages);
+  const turnData = turns.map((t) => toTurnDataLike(t));
+  const walk = replaySession(turnData);
+
+  // If the caller didn't pass a model, infer from the most recent assistant turn.
+  const inferredModel =
+    args.current_model ?? walk.lastTurn ? turns[turns.length - 1]?.model : undefined;
+
+  const decision = evaluateLoopBlock(walk, {
+    consecutiveLowRoiThreshold: args.consecutive_low_roi_threshold ?? 3,
+    currentModel: inferredModel,
+  });
+
+  return JSON.stringify(
+    {
+      transcript_path: args.transcript_path,
+      totalTurns: turns.length,
+      sessionROI: {
+        cumulativeRoiScore: walk.sessionROI.cumulativeRoiScore,
+        consecutiveLowRoiTurns: walk.sessionROI.consecutiveLowRoiTurns,
+        totalTokens: walk.sessionROI.totalTokens,
+        totalProductiveTokens: walk.sessionROI.totalProductiveTokens,
+        totalRecursiveTokens: walk.sessionROI.totalRecursiveTokens,
+      },
+      lastTurn: walk.lastAnalysis
+        ? {
+            turnNumber: walk.lastAnalysis.turnNumber,
+            classification: walk.lastAnalysis.classification,
+            roiScore: walk.lastAnalysis.roiScore,
+            signals: walk.lastAnalysis.signals,
+          }
+        : null,
+      decision,
+      blockMessage: decision.shouldBlock
+        ? formatLoopBlockMessage(decision)
+        : null,
+      parseErrors: errors.length,
+    },
+    null,
+    2
+  );
+}
+
+function handleRoutingSuggestion(args: {
+  current_model: string;
+  consecutive_low_roi_turns: number;
+}): string {
+  const suggestion = getModelRoutingSuggestion(
+    args.current_model,
+    args.consecutive_low_roi_turns
+  );
+  return JSON.stringify(suggestion, null, 2);
+}
+
+function sha256Hex(s: string): string {
+  return crypto.createHash("sha256").update(s).digest("hex");
+}
+
+interface LineDiff {
+  unified: string;
+  added: number;
+  removed: number;
+}
+
+function computeUnifiedDiff(before: string, after: string): LineDiff {
+  // Compact Myers-style line diff with no surrounding context — sufficient
+  // for token-cost estimation. (Full unified context only needed when the
+  // diff is actually surfaced to the model.)
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const n = beforeLines.length;
+  const m = afterLines.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () =>
+    new Array(m + 1).fill(0)
+  );
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      dp[i][j] =
+        beforeLines[i - 1] === afterLines[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  const out: string[] = [];
+  let added = 0;
+  let removed = 0;
+  let i = n;
+  let j = m;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && beforeLines[i - 1] === afterLines[j - 1]) {
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      out.push(`+${afterLines[j - 1]}`);
+      added++;
+      j--;
+    } else if (i > 0) {
+      out.push(`-${beforeLines[i - 1]}`);
+      removed++;
+      i--;
+    } else {
+      break;
+    }
+  }
+  out.reverse();
+  return { unified: out.join("\n"), added, removed };
+}
+
+async function handleDiffContext(args: {
+  file_path: string;
+  content?: string;
+  previously_seen_sha256?: string;
+  previously_seen_content?: string;
+  model?: string;
+  large_file_threshold?: number;
+}): Promise<string> {
+  const model = args.model ?? "gpt-4o";
+  let content = args.content;
+  if (content === undefined) {
+    try {
+      content = fs.readFileSync(args.file_path, "utf-8");
+    } catch (e) {
+      return JSON.stringify({
+        error: `cannot read ${args.file_path}: ${(e as Error).message}`,
+      });
+    }
+  }
+
+  const currentSha = sha256Hex(content);
+  const fullTokens = countTokens(content, model).tokens;
+  const threshold = args.large_file_threshold ?? 1500;
+
+  // Decision 1: unchanged since last send → tell caller it's already in
+  // context (zero new tokens).
+  if (
+    args.previously_seen_sha256 &&
+    args.previously_seen_sha256 === currentSha
+  ) {
+    return JSON.stringify(
+      {
+        file_path: args.file_path,
+        sha256: currentSha,
+        decision: "unchanged",
+        payload: null,
+        sentTokens: 0,
+        fullFileTokens: fullTokens,
+        message:
+          "File unchanged since last send — already in context. Skip the re-read.",
+      },
+      null,
+      2
+    );
+  }
+
+  // Decision 2: have previous content → try a diff.
+  if (args.previously_seen_content !== undefined) {
+    const diff = computeUnifiedDiff(args.previously_seen_content, content);
+    const diffTokens = countTokens(diff.unified, model).tokens;
+    if (diffTokens > 0 && diffTokens <= fullTokens * 0.3) {
+      return JSON.stringify(
+        {
+          file_path: args.file_path,
+          sha256: currentSha,
+          decision: "diff",
+          payload: diff.unified,
+          sentTokens: diffTokens,
+          fullFileTokens: fullTokens,
+          added: diff.added,
+          removed: diff.removed,
+          savingsPercent: Math.round((1 - diffTokens / fullTokens) * 100),
+        },
+        null,
+        2
+      );
+    }
+  }
+
+  // Decision 3: large file with no baseline → AST signatures.
+  if (fullTokens > threshold) {
+    try {
+      const squeezed = squeezeFile(content, args.file_path, {
+        tier: "structural",
+      });
+      return JSON.stringify(
+        {
+          file_path: args.file_path,
+          sha256: currentSha,
+          decision: "signatures",
+          payload: squeezed.compressedCode,
+          sentTokens: squeezed.compressedTokens,
+          fullFileTokens: fullTokens,
+          savingsPercent: squeezed.savingsPercent,
+        },
+        null,
+        2
+      );
+    } catch {
+      // fall through to full
+    }
+  }
+
+  return JSON.stringify(
+    {
+      file_path: args.file_path,
+      sha256: currentSha,
+      decision: "full",
+      payload: content,
+      sentTokens: fullTokens,
+      fullFileTokens: fullTokens,
+    },
+    null,
+    2
+  );
+}
+
+async function handleCompactionCheck(args: {
+  transcript_path: string;
+  window_turns?: number;
+}): Promise<string> {
+  const reader = new TranscriptReader(args.transcript_path);
+  if (!reader.exists()) {
+    return JSON.stringify({
+      error: `transcript not found: ${args.transcript_path}`,
+    });
+  }
+  const { messages } = await reader.readAll();
+  const turns = groupIntoTurns(messages);
+  if (turns.length < 2) {
+    return JSON.stringify({
+      transcript_path: args.transcript_path,
+      totalTurns: turns.length,
+      detected: false,
+      reason: "Not enough turns to compare.",
+    });
+  }
+  const splitAt =
+    args.window_turns && args.window_turns > 0
+      ? Math.min(args.window_turns, turns.length - 1)
+      : Math.floor(turns.length / 2);
+
+  const before = turns.slice(0, splitAt);
+  const after = turns.slice(splitAt);
+
+  // Build pre-compaction buffer from turn text (best-effort approximation —
+  // a real PreCompact hook would supply the exact transcript window).
+  const buffer = new MessageBuffer();
+  for (const t of before) {
+    if (t.userMessage) {
+      buffer.addMessage(
+        createMessageSummary(t.textContent, t.turnNumber, "user")
+      );
+    }
+    for (const a of t.assistantMessages) {
+      const text =
+        typeof a.content === "string"
+          ? a.content
+          : a.content
+              .map((b) => ("text" in b && b.text ? b.text : ""))
+              .join("\n");
+      buffer.addMessage(
+        createMessageSummary(text, t.turnNumber, "assistant")
+      );
+    }
+  }
+
+  const postContent = after
+    .map((t) => t.textContent)
+    .filter((s) => s)
+    .join("\n");
+
+  // detectCompaction takes NUMERIC sizes (tokens), not strings.
+  const detected = detectCompaction(
+    buffer.getTotalTokens(),
+    countTokens(postContent, "gpt-4o").tokens,
+    0.5
+  );
+
+  const diff = analyzeCompaction(buffer, postContent, splitAt);
+
+  return JSON.stringify(
+    {
+      transcript_path: args.transcript_path,
+      totalTurns: turns.length,
+      splitAt,
+      detected,
+      lostReferences: diff.lostReferences.map((r) => ({
+        item: r.item,
+        category: r.category,
+        original_turn: r.original_turn,
+      })),
+      tokensBefore: diff.tokensBefore,
+      tokensAfter: diff.tokensAfter,
+      tokensRemoved: diff.tokensRemoved,
+      overheadCostUsd: diff.overheadCostUsd,
+      summary: diff.summary,
+    },
+    null,
+    2
+  );
+}
+
 // ============================================================================
 // Request Handlers
 // ============================================================================
@@ -388,6 +825,35 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           window_turns?: number;
           ttl?: "5m" | "1h";
           system_prompt?: string;
+        });
+        break;
+      case "loop_status":
+        result = await handleLoopStatus(args as {
+          transcript_path: string;
+          current_model?: string;
+          consecutive_low_roi_threshold?: number;
+        });
+        break;
+      case "routing_suggestion":
+        result = handleRoutingSuggestion(args as {
+          current_model: string;
+          consecutive_low_roi_turns: number;
+        });
+        break;
+      case "diff_context":
+        result = await handleDiffContext(args as {
+          file_path: string;
+          content?: string;
+          previously_seen_sha256?: string;
+          previously_seen_content?: string;
+          model?: string;
+          large_file_threshold?: number;
+        });
+        break;
+      case "compaction_check":
+        result = await handleCompactionCheck(args as {
+          transcript_path: string;
+          window_turns?: number;
         });
         break;
       default:

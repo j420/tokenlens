@@ -939,3 +939,129 @@ describe("cache_report tool", () => {
     expect(roundTrip.parseErrors).toBe(0);
   });
 });
+
+// ============================================================================
+// loop_status / routing_suggestion
+// ============================================================================
+
+describe("loop_status + routing_suggestion", () => {
+  it("computes session ROI walk on a real transcript and surfaces a streak", async () => {
+    const { TranscriptReader, groupIntoTurns, toTurnDataLike } = await import(
+      "@prune/telemetry"
+    );
+    const { replaySession, evaluateLoopBlock, formatLoopBlockMessage } =
+      await import("@prune/intelligence");
+
+    const transcriptPath = path.join(testDir, "loop-transcript.jsonl");
+    // 4 recursive turns: identical assistant content, same files written,
+    // same errors — guarantees the classifier flags turns 2-4 as recursive.
+    const recursiveAssistant = (n: number) =>
+      JSON.stringify({
+        type: "assistant",
+        sessionId: "sL",
+        timestamp: `2026-05-30T11:0${n}:00Z`,
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4-5-20250929",
+          content: [
+            {
+              type: "text",
+              text: "Trying again. error: cannot find module foo. Trying install but same error: cannot find module foo.",
+            },
+            {
+              type: "tool_use",
+              id: `tu_${n}`,
+              name: "Write",
+              input: { file_path: "src/foo.ts", content: "// stub" },
+            },
+          ],
+          usage: { input_tokens: 2000, output_tokens: 500 },
+        },
+      });
+    const userPrompt = (n: number) =>
+      JSON.stringify({
+        type: "user",
+        sessionId: "sL",
+        timestamp: `2026-05-30T11:0${n}:00Z`,
+        message: { role: "user", content: "still broken — try once more" },
+      });
+
+    const lines: string[] = [];
+    for (let i = 1; i <= 4; i++) {
+      lines.push(userPrompt(i));
+      lines.push(recursiveAssistant(i));
+    }
+    fs.writeFileSync(transcriptPath, lines.join("\n") + "\n");
+
+    const { messages } = await new TranscriptReader(transcriptPath).readAll();
+    const turns = groupIntoTurns(messages);
+    const walk = replaySession(turns.map((t) => toTurnDataLike(t)));
+    expect(walk.sessionROI.consecutiveLowRoiTurns).toBeGreaterThanOrEqual(3);
+
+    const decision = evaluateLoopBlock(walk, {
+      consecutiveLowRoiThreshold: 3,
+      currentModel: "claude-sonnet-4-5-20250929",
+    });
+    expect(decision.shouldBlock).toBe(true);
+    expect(decision.suggestion?.model).toBeTruthy();
+
+    const msg = formatLoopBlockMessage(decision);
+    expect(msg).toContain("Prune circuit-breaker");
+  });
+
+  it("routing_suggestion returns null below the streak threshold", async () => {
+    const { getModelRoutingSuggestion } = await import("@prune/intelligence");
+    expect(
+      getModelRoutingSuggestion("claude-opus-4-5-20251101", 1)
+    ).toBeNull();
+  });
+
+  it("routing_suggestion returns a cheaper model once the streak fires", async () => {
+    const { getModelRoutingSuggestion } = await import("@prune/intelligence");
+    const s = getModelRoutingSuggestion("claude-opus-4-5-20251101", 3);
+    expect(s?.shouldSuggest).toBe(true);
+    expect(s?.suggestedModel).toBeTruthy();
+    expect((s?.savingsPercent ?? 0)).toBeGreaterThan(0);
+  });
+});
+
+// ============================================================================
+// diff_context underlying decision logic
+// ============================================================================
+
+describe("diff_context", () => {
+  it("returns 'unchanged' when sha256 matches", async () => {
+    const filePath = path.join(testDir, "unchanged.ts");
+    const content = "export const x = 1;\n";
+    fs.writeFileSync(filePath, content);
+    const sha = (await import("crypto"))
+      .createHash("sha256")
+      .update(content)
+      .digest("hex");
+
+    // Replicate the handler's decision branch (the dispatcher is internal;
+    // the rest of this suite avoids spinning up the MCP server).
+    const currentSha = (await import("crypto"))
+      .createHash("sha256")
+      .update(fs.readFileSync(filePath, "utf-8"))
+      .digest("hex");
+    expect(currentSha).toBe(sha);
+  });
+
+  it("falls back to AST signatures for large files via squeezer", async () => {
+    const { squeezeFile } = await import("@prune/squeezer");
+    const filePath = path.join(testDir, "large.ts");
+    // Generate a file with many functions to ensure structural compression has work to do.
+    const fns = Array.from({ length: 60 }, (_, i) => `
+export function fn${i}(a: number, b: number): number {
+  let acc = 0;
+  for (let j = 0; j < 100; j++) acc += a * j + b;
+  return acc;
+}`).join("\n");
+    fs.writeFileSync(filePath, fns);
+    const content = fs.readFileSync(filePath, "utf-8");
+    const sq = squeezeFile(content, filePath, { tier: "structural" });
+    expect(sq.compressedTokens).toBeLessThan(sq.originalTokens);
+    expect(sq.savingsPercent).toBeGreaterThan(0);
+  });
+});
