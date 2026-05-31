@@ -242,6 +242,81 @@ const TOOLS = [
     },
   },
   {
+    name: "slo_define",
+    description:
+      "Define a cost Service Level Objective (SLO) — the SRE Error " +
+      "Budget pattern for AI cost. Each task (default: one agent_id = " +
+      "one task) is expected to stay under target_usd_per_task. The team " +
+      "can absorb up to error_budget_usd of total excess in window_days " +
+      "before the slo_check breaker fires. " +
+      "https://sre.google/workbook/implementing-slos/",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" as const, description: "Unique SLO name." },
+        scope_envelope_name: {
+          type: "string" as const,
+          description: "Budget envelope this SLO measures over.",
+        },
+        target_usd_per_task: {
+          type: "number" as const,
+          description: "Per-task cost target ($).",
+        },
+        error_budget_usd: {
+          type: "number" as const,
+          description: "Total $ of excess the team can absorb before block.",
+        },
+        window_days: {
+          type: "number" as const,
+          description: "SLO window length in days.",
+        },
+        warning_pct: {
+          type: "number" as const,
+          description:
+            "0..1. WARN when remaining budget ≤ this fraction. Default 0.5.",
+        },
+        task_dimension: {
+          type: "string" as const,
+          description:
+            "Which field defines a task. Default 'agent_id'. Also 'model', " +
+            "'provider', 'envelope_id', or 'metadata.<key>' for attribution-aware SLOs.",
+        },
+        sqlite_path: { type: "string" as const, description: "Override the local sink path." },
+      },
+      required: ["name", "scope_envelope_name", "target_usd_per_task", "error_budget_usd", "window_days"],
+    },
+  },
+  {
+    name: "slo_check",
+    description:
+      "Compute the SLI for a named SLO and run the breaker policy. " +
+      "Returns allow / warn / block with rationale + remediations. " +
+      "Use as a pre-call gate when the breaker hook isn't wired.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" as const, description: "SLO name to evaluate." },
+        sqlite_path: { type: "string" as const, description: "Override the local sink path." },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "slo_status",
+    description:
+      "Read-only SLI report for a named SLO — full task list (sorted by " +
+      "cost descending), compliance ratio, p50/p95/p99 task cost, error " +
+      "budget burn percentage. Use for weekly SRE-style review.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" as const, description: "SLO name." },
+        sqlite_path: { type: "string" as const, description: "Override the local sink path." },
+      },
+      required: ["name"],
+    },
+  },
+  {
     name: "attribution_rollup",
     description:
       "Cross-vendor per-developer / per-PR / per-project / per-team cost " +
@@ -1214,6 +1289,114 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// SLO (SRE Error Budget pattern for AI cost)
+// ============================================================================
+
+import { SloManager } from "@prune/slo";
+
+async function withSloManager<T>(
+  sqlitePath: string | undefined,
+  fn: (mgr: SloManager, sink: LocalSqliteSink) => Promise<T>
+): Promise<T> {
+  const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(sqlitePath) });
+  await sink.init();
+  try {
+    return await fn(new SloManager(sink), sink);
+  } finally {
+    await sink.close();
+  }
+}
+
+async function handleSloDefine(args: {
+  name: string;
+  scope_envelope_name: string;
+  target_usd_per_task: number;
+  error_budget_usd: number;
+  window_days: number;
+  warning_pct?: number;
+  task_dimension?: string;
+  sqlite_path?: string;
+}): Promise<string> {
+  return withSloManager(args.sqlite_path, async (mgr) => {
+    const row = await mgr.define({
+      name: args.name,
+      scopeEnvelopeName: args.scope_envelope_name,
+      targetUsdPerTask: args.target_usd_per_task,
+      errorBudgetUsd: args.error_budget_usd,
+      windowDays: args.window_days,
+      warningPct: args.warning_pct,
+      taskDimension: args.task_dimension,
+    });
+    return JSON.stringify({ ok: true, slo: row }, null, 2);
+  });
+}
+
+async function handleSloCheck(args: {
+  name: string;
+  sqlite_path?: string;
+}): Promise<string> {
+  return withSloManager(args.sqlite_path, async (mgr) => {
+    const decision = await mgr.check(args.name);
+    return JSON.stringify(
+      {
+        slo: args.name,
+        verdict: decision.verdict,
+        rule: decision.rule,
+        rationale: decision.rationale,
+        remediations: decision.remediations,
+        sli: {
+          window_start: decision.sli.windowStart,
+          window_end: decision.sli.windowEnd,
+          total_task_count: decision.sli.totalTaskCount,
+          compliant_task_count: decision.sli.compliantTaskCount,
+          violating_task_count: decision.sli.violatingTaskCount,
+          compliance_ratio: decision.sli.complianceRatio,
+          excess_spend_usd: decision.sli.excessSpendUsd,
+          error_budget_remaining_usd: decision.sli.errorBudgetRemainingUsd,
+          error_budget_burn_pct: decision.sli.errorBudgetBurnPct,
+          p50_task_cost_usd: decision.sli.p50TaskCostUsd,
+          p95_task_cost_usd: decision.sli.p95TaskCostUsd,
+          p99_task_cost_usd: decision.sli.p99TaskCostUsd,
+          mean_task_cost_usd: decision.sli.meanTaskCostUsd,
+        },
+      },
+      null,
+      2
+    );
+  });
+}
+
+async function handleSloStatus(args: {
+  name: string;
+  sqlite_path?: string;
+}): Promise<string> {
+  return withSloManager(args.sqlite_path, async (mgr) => {
+    const sli = await mgr.sli(args.name);
+    return JSON.stringify(
+      {
+        slo: sli.slo,
+        window_start: sli.windowStart,
+        window_end: sli.windowEnd,
+        total_task_count: sli.totalTaskCount,
+        compliant_task_count: sli.compliantTaskCount,
+        violating_task_count: sli.violatingTaskCount,
+        compliance_ratio: sli.complianceRatio,
+        excess_spend_usd: sli.excessSpendUsd,
+        error_budget_remaining_usd: sli.errorBudgetRemainingUsd,
+        error_budget_burn_pct: sli.errorBudgetBurnPct,
+        p50_task_cost_usd: sli.p50TaskCostUsd,
+        p95_task_cost_usd: sli.p95TaskCostUsd,
+        p99_task_cost_usd: sli.p99TaskCostUsd,
+        mean_task_cost_usd: sli.meanTaskCostUsd,
+        tasks: sli.tasks,
+      },
+      null,
+      2
+    );
+  });
+}
+
+// ============================================================================
 // Attribution (cross-vendor per-developer / per-PR / per-project rollup)
 // ============================================================================
 
@@ -1790,6 +1973,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "slo_define":
+        result = await handleSloDefine(args as {
+          name: string;
+          scope_envelope_name: string;
+          target_usd_per_task: number;
+          error_budget_usd: number;
+          window_days: number;
+          warning_pct?: number;
+          task_dimension?: string;
+          sqlite_path?: string;
+        });
+        break;
+      case "slo_check":
+        result = await handleSloCheck(args as {
+          name: string;
+          sqlite_path?: string;
+        });
+        break;
+      case "slo_status":
+        result = await handleSloStatus(args as {
+          name: string;
+          sqlite_path?: string;
         });
         break;
       case "attribution_rollup":

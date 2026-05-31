@@ -113,6 +113,25 @@ export interface BudgetChargeRow {
 }
 
 /**
+ * SLO (Service Level Objective) — SRE Error Budget pattern for AI cost.
+ * One row per named SLO. The SLI is computed at read time from
+ * budget_charges, so adjusting an SLO's targetUsdPerTask doesn't rewrite
+ * history.
+ */
+export interface SloDefinitionRow {
+  slo_id: string;
+  name: string;
+  scope_envelope_id: string;
+  target_usd_per_task: number;
+  error_budget_usd: number;
+  window_days: number;
+  warning_pct: number;
+  /** Which charge field defines a "task". Default "agent_id". */
+  task_dimension: string;
+  metadata: Record<string, unknown>;
+}
+
+/**
  * Replay vault row — one tamper-evident audit record per (session, sequence).
  * Hash chain + ed25519 signature provided by @prune/replay-vault.
  */
@@ -144,6 +163,12 @@ export interface PersistenceSink {
   getBudgetEnvelope(name: string): Promise<BudgetEnvelopeRow | null>;
   /** Lookup by primary key; null if absent. Used for parent rollups. */
   getBudgetEnvelopeById(envelopeId: string): Promise<BudgetEnvelopeRow | null>;
+  /** Insert or update an SLO definition (idempotent on `name`). */
+  upsertSloDefinition(row: SloDefinitionRow): Promise<void>;
+  /** Read an SLO by name; null if absent. */
+  getSloDefinition(name: string): Promise<SloDefinitionRow | null>;
+  /** List all SLOs configured. */
+  listSloDefinitions(): Promise<SloDefinitionRow[]>;
   /** Sum of cost_usd against envelope_id in [since, now]. Excludes envelopes that have no charges (returns 0). */
   getBudgetSpend(envelopeId: string, since: Date): Promise<number>;
   /** Last N charges against an envelope (most recent first). For burn-rate computation and audit. */

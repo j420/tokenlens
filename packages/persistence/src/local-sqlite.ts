@@ -45,6 +45,7 @@ import type {
   EventRow,
   PersistenceSink,
   ReplayLogRow,
+  SloDefinitionRow,
 } from "./sink.js";
 
 const SCHEMA = `
@@ -141,6 +142,23 @@ CREATE TABLE IF NOT EXISTS budget_charges (
 );
 CREATE INDEX IF NOT EXISTS idx_charges_envelope_time ON budget_charges(envelope_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_charges_agent_time ON budget_charges(agent_id, timestamp);
+
+-- SLO definitions — SRE Error Budget pattern for AI cost.
+-- One row per named SLO. The SLI is computed at read time from
+-- budget_charges, so adjusting an SLO's targetUsdPerTask doesn't
+-- rewrite history.
+CREATE TABLE IF NOT EXISTS slo_definitions (
+  slo_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  scope_envelope_id TEXT NOT NULL,
+  target_usd_per_task REAL NOT NULL,
+  error_budget_usd REAL NOT NULL,
+  window_days INTEGER NOT NULL,
+  warning_pct REAL NOT NULL DEFAULT 0.5,
+  task_dimension TEXT NOT NULL DEFAULT 'agent_id',
+  metadata TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_slo_scope ON slo_definitions(scope_envelope_id);
 
 -- Replay vault: hash-chained, ed25519-signed audit log per session.
 -- Each row's record_hash is sha256 of the canonical JSON payload; the
@@ -517,6 +535,73 @@ export class LocalSqliteSink implements PersistenceSink {
         source: r.source as BudgetChargeRow["source"],
         metadata: JSON.parse((r.metadata as string) ?? "{}"),
       });
+    }
+    stmt.free();
+    return out;
+  }
+
+  async upsertSloDefinition(r: SloDefinitionRow): Promise<void> {
+    const db = this.ensure();
+    db.run(
+      `INSERT INTO slo_definitions VALUES (
+        $slo_id, $name, $scope_envelope_id, $target_usd_per_task,
+        $error_budget_usd, $window_days, $warning_pct, $task_dimension, $metadata
+      ) ON CONFLICT(slo_id) DO UPDATE SET
+         name = excluded.name,
+         scope_envelope_id = excluded.scope_envelope_id,
+         target_usd_per_task = excluded.target_usd_per_task,
+         error_budget_usd = excluded.error_budget_usd,
+         window_days = excluded.window_days,
+         warning_pct = excluded.warning_pct,
+         task_dimension = excluded.task_dimension,
+         metadata = excluded.metadata`,
+      {
+        $slo_id: r.slo_id,
+        $name: r.name,
+        $scope_envelope_id: r.scope_envelope_id,
+        $target_usd_per_task: r.target_usd_per_task,
+        $error_budget_usd: r.error_budget_usd,
+        $window_days: r.window_days,
+        $warning_pct: r.warning_pct,
+        $task_dimension: r.task_dimension,
+        $metadata: JSON.stringify(r.metadata),
+      }
+    );
+    if (this.opts.autoFlush) this.flushSync();
+  }
+
+  private hydrateSloRow(r: Record<string, unknown>): SloDefinitionRow {
+    return {
+      slo_id: r.slo_id as string,
+      name: r.name as string,
+      scope_envelope_id: r.scope_envelope_id as string,
+      target_usd_per_task: r.target_usd_per_task as number,
+      error_budget_usd: r.error_budget_usd as number,
+      window_days: r.window_days as number,
+      warning_pct: r.warning_pct as number,
+      task_dimension: r.task_dimension as string,
+      metadata: JSON.parse((r.metadata as string) ?? "{}"),
+    };
+  }
+
+  async getSloDefinition(name: string): Promise<SloDefinitionRow | null> {
+    const db = this.ensure();
+    const stmt = db.prepare(`SELECT * FROM slo_definitions WHERE name = $n`);
+    stmt.bind({ $n: name });
+    let row: SloDefinitionRow | null = null;
+    if (stmt.step()) {
+      row = this.hydrateSloRow(stmt.getAsObject() as Record<string, unknown>);
+    }
+    stmt.free();
+    return row;
+  }
+
+  async listSloDefinitions(): Promise<SloDefinitionRow[]> {
+    const db = this.ensure();
+    const stmt = db.prepare(`SELECT * FROM slo_definitions ORDER BY name ASC`);
+    const out: SloDefinitionRow[] = [];
+    while (stmt.step()) {
+      out.push(this.hydrateSloRow(stmt.getAsObject() as Record<string, unknown>));
     }
     stmt.free();
     return out;
