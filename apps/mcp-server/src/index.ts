@@ -242,6 +242,41 @@ const TOOLS = [
     },
   },
   {
+    name: "repo_map",
+    description:
+      "Symbol-level repository map. Walks the project (TS/JS via TS Compiler " +
+      "API, no regex), builds a directed reference graph, runs PageRank, and " +
+      "returns the top-K ranked symbols with signatures-only. Optionally biases " +
+      "the ranking toward a task query (personalized PageRank). Productizes " +
+      "Aider's repo-map discipline cross-agent — Aider's published benchmark " +
+      "shows 4.2× fewer tokens than Claude Code on the same 47-file task " +
+      "(morphllm.com/comparisons/morph-vs-aider-diff).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        root: {
+          type: "string" as const,
+          description: "Absolute path to the repository root.",
+        },
+        task_query: {
+          type: "string" as const,
+          description:
+            "Optional free-text task; biases the ranking via personalized PageRank " +
+            "toward symbols whose name or signature contains query tokens.",
+        },
+        top_k: {
+          type: "number" as const,
+          description: "Max ranked symbols to return. Default 50.",
+        },
+        damping: {
+          type: "number" as const,
+          description: "PageRank damping. Default 0.85.",
+        },
+      },
+      required: ["root"],
+    },
+  },
+  {
     name: "replay_verify",
     description:
       "Verify the integrity of the replay vault for a session. Re-hashes " +
@@ -999,6 +1034,38 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Repo Map (Aider-class symbol graph)
+// ============================================================================
+
+import { indexRepo, queryMap } from "@prune/repo-map";
+
+async function handleRepoMap(args: {
+  root: string;
+  task_query?: string;
+  top_k?: number;
+  damping?: number;
+}): Promise<string> {
+  const map = await indexRepo(args.root);
+  const ranked = queryMap(map, {
+    taskQuery: args.task_query,
+    topK: args.top_k ?? 50,
+    damping: args.damping,
+  });
+  return JSON.stringify(
+    {
+      root: map.root,
+      files_scanned: map.filesScanned,
+      bytes_scanned: map.bytesScanned,
+      total_symbols: map.symbols.length,
+      ranked_count: ranked.length,
+      ranked,
+    },
+    null,
+    2
+  );
+}
+
+// ============================================================================
 // Replay Vault (audit/attestation front-end)
 // ============================================================================
 
@@ -1338,6 +1405,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "repo_map":
+        result = await handleRepoMap(args as {
+          root: string;
+          task_query?: string;
+          top_k?: number;
+          damping?: number;
         });
         break;
       case "replay_verify":
