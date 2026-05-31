@@ -98,3 +98,22 @@ export {
   type ModelWeights,
   type TrainingDataPoint,
 } from "./cost-predictor.js";
+
+// Subagent activity + policy (Phase 5+: subagent budget enforcer)
+export {
+  analyzeSubagents,
+  SUBAGENT_CONSTANTS,
+  type SubagentWalkTurn,
+  type SubagentInvocation,
+  type SubagentBurst,
+  type SubagentActivity,
+  type AnalyzeSubagentsOptions,
+} from "./subagent-walk.js";
+
+export {
+  evaluateSubagentBlock,
+  formatSubagentBlockMessage,
+  type SubagentBlockDecision,
+  type SubagentPattern,
+  type SubagentPolicyOptions,
+} from "./subagent-policy.js";

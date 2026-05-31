@@ -242,6 +242,49 @@ const TOOLS = [
     },
   },
   {
+    name: "subagent_status",
+    description:
+      "Inspect current subagent activity (active fan-outs, bursts, longest-running " +
+      "subagent, peak parallel in one turn) and apply the runaway-prevention policy. " +
+      "Use BEFORE issuing a Task fan-out — the response says whether the proposed " +
+      "spawn would be blocked by the subagent-warden hook. Patterns: " +
+      "FAN_OUT_RUNAWAY, UNATTENDED_LOOP, CONCURRENT_CAP, PEAK_PARALLEL_IN_TURN.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description: "Absolute path to a Claude Code session transcript JSONL.",
+        },
+        proposed_task_count: {
+          type: "number" as const,
+          description:
+            "Number of additional Task spawns to model. Pass the count you're " +
+            "about to issue to see if the policy would block. Default 0 " +
+            "(read-only inspection).",
+          default: 0,
+        },
+        max_concurrent: {
+          type: "number" as const,
+          description: "Override the concurrent-subagent cap (default 15).",
+        },
+        max_burst: {
+          type: "number" as const,
+          description: "Override the per-60s burst cap (default 10).",
+        },
+        max_parallel_in_turn: {
+          type: "number" as const,
+          description: "Override the per-turn parallel cap (default 12).",
+        },
+        max_subagent_minutes: {
+          type: "number" as const,
+          description: "Override the per-subagent lifetime ceiling (default 30).",
+        },
+      },
+      required: ["transcript_path"],
+    },
+  },
+  {
     name: "budget_status",
     description:
       "Read current budget envelope state — spent, remaining, pct, burn-rate $/day, " +
@@ -878,6 +921,58 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Subagent Status (runaway-prevention front-end)
+// ============================================================================
+
+import {
+  analyzeSubagents,
+  evaluateSubagentBlock,
+} from "@prune/intelligence";
+
+async function handleSubagentStatus(args: {
+  transcript_path: string;
+  proposed_task_count?: number;
+  max_concurrent?: number;
+  max_burst?: number;
+  max_parallel_in_turn?: number;
+  max_subagent_minutes?: number;
+}): Promise<string> {
+  const { turns } = await loadCachedSessionView(args.transcript_path);
+  const activity = analyzeSubagents(turns);
+  const decision = evaluateSubagentBlock(activity, {
+    proposedTaskCount: args.proposed_task_count ?? 0,
+    maxConcurrentSubagents: args.max_concurrent,
+    maxBurstCount: args.max_burst,
+    maxParallelInOneTurn: args.max_parallel_in_turn,
+    maxSubagentMinutes: args.max_subagent_minutes,
+  });
+  return JSON.stringify(
+    {
+      activity: {
+        active_count: activity.activeCount,
+        total_count: activity.totalCount,
+        longest_active_minutes: activity.longestActiveMinutes,
+        peak_parallel_in_one_turn: activity.peakParallelInOneTurn,
+        bursts: activity.bursts.map((b) => ({
+          window_start: b.windowStart.toISOString(),
+          window_end: b.windowEnd.toISOString(),
+          count: b.count,
+        })),
+      },
+      decision: {
+        should_block: decision.shouldBlock,
+        pattern: decision.pattern,
+        reason: decision.reason,
+        warnings: decision.warnings,
+        suggestion: decision.suggestion ?? null,
+      },
+    },
+    null,
+    2
+  );
+}
+
+// ============================================================================
 // Budget Status / Configure (BudgetGate front-end)
 // ============================================================================
 
@@ -1053,6 +1148,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "subagent_status":
+        result = await handleSubagentStatus(args as {
+          transcript_path: string;
+          proposed_task_count?: number;
+          max_concurrent?: number;
+          max_burst?: number;
+          max_parallel_in_turn?: number;
+          max_subagent_minutes?: number;
         });
         break;
       case "budget_status":
