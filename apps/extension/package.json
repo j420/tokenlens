@@ -207,7 +207,8 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
-    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --loader:.wasm=file",
+    "build": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --loader:.wasm=file && npm run copy-wasm",
+    "copy-wasm": "node -e \"require('fs').copyFileSync('wasm/sql-wasm.wasm', 'dist/sql-wasm.wasm')\"",
     "watch": "npm run build -- --watch",
     "package": "vsce package --no-dependencies",
     "publish": "vsce publish",

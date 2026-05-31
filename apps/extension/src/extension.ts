@@ -166,6 +166,15 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // sql.js (used by @prune/state-scraper) needs sql-wasm.wasm next to
+  // the bundled JS — i.e. inside dist/. The build script
+  // (npm run copy-wasm, invoked after esbuild) copies the file from
+  // wasm/sql-wasm.wasm into dist/sql-wasm.wasm so sql.js's default
+  // Node.js lookup finds it without needing a locateFile override.
+  // (Passing locateFile or wasmBinary triggers a LinkError on certain
+  // Node versions; the default path-relative lookup is the safe codepath.)
+  log("sql.js: relying on dist/sql-wasm.wasm (copied by build step)");
+
   // Initialize Intelligence Engine
   intelligenceEngine = new PruneIntelligenceEngine();
   log("Prune Intelligence Engine initialized");
