@@ -242,6 +242,44 @@ const TOOLS = [
     },
   },
   {
+    name: "routing_decide",
+    description:
+      "Classify a coding-agent request (intent + difficulty) and return a " +
+      "three-tier routing decision (FAST/STD/STRONG → Haiku 4.5 / Sonnet 4.6 / " +
+      "Opus 4.8 by default). Reproduces Skywork.ai's documented 66% cost " +
+      "saving. Every decision carries a rule id, rationale, and the signals " +
+      "that fired — fully auditable. Pair with routing_ledger to track " +
+      "actual-vs-baseline savings.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prompt: { type: "string" as const, description: "The user's prompt text." },
+        estimated_tokens_in: {
+          type: "number" as const,
+          description: "Estimated input tokens (system + tools + context + user).",
+        },
+        files_in_context: {
+          type: "number" as const,
+          description: "Optional. Number of files in the edit context.",
+        },
+        recent_error: {
+          type: "boolean" as const,
+          description: "Optional. True if the most recent turn surfaced an error.",
+        },
+        floor: {
+          type: "string" as const,
+          enum: ["FAST", "STD", "STRONG"],
+          description:
+            "Optional. Minimum tier; FAST is never picked if floor='STD'.",
+        },
+        fast_model: { type: "string" as const, description: "Override default FAST model id." },
+        std_model: { type: "string" as const, description: "Override default STD model id." },
+        strong_model: { type: "string" as const, description: "Override default STRONG model id." },
+      },
+      required: ["prompt", "estimated_tokens_in"],
+    },
+  },
+  {
     name: "repo_map",
     description:
       "Symbol-level repository map. Walks the project (TS/JS via TS Compiler " +
@@ -1034,6 +1072,49 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Router (three-tier deterministic classifier + policy)
+// ============================================================================
+
+import { classifyRequest, route } from "@prune/router";
+
+async function handleRoutingDecide(args: {
+  prompt: string;
+  estimated_tokens_in: number;
+  files_in_context?: number;
+  recent_error?: boolean;
+  floor?: "FAST" | "STD" | "STRONG";
+  fast_model?: string;
+  std_model?: string;
+  strong_model?: string;
+}): Promise<string> {
+  const classification = classifyRequest({
+    prompt: args.prompt,
+    estimatedTokensIn: args.estimated_tokens_in,
+    filesInContext: args.files_in_context,
+    recentError: args.recent_error,
+  });
+  const decision = route(classification, {
+    floor: args.floor,
+    tierMap: {
+      ...(args.fast_model ? { FAST: args.fast_model } : {}),
+      ...(args.std_model ? { STD: args.std_model } : {}),
+      ...(args.strong_model ? { STRONG: args.strong_model } : {}),
+    },
+  });
+  return JSON.stringify(
+    {
+      tier: decision.tier,
+      model: decision.model,
+      rule: decision.rule,
+      rationale: decision.rationale,
+      classification: decision.classification,
+    },
+    null,
+    2
+  );
+}
+
+// ============================================================================
 // Repo Map (Aider-class symbol graph)
 // ============================================================================
 
@@ -1405,6 +1486,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "routing_decide":
+        result = await handleRoutingDecide(args as {
+          prompt: string;
+          estimated_tokens_in: number;
+          files_in_context?: number;
+          recent_error?: boolean;
+          floor?: "FAST" | "STD" | "STRONG";
+          fast_model?: string;
+          std_model?: string;
+          strong_model?: string;
         });
         break;
       case "repo_map":

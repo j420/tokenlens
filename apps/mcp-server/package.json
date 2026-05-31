@@ -24,7 +24,8 @@
     "@prune/persistence": "0.1.0",
     "@prune/budget-gate": "0.1.0",
     "@prune/replay-vault": "0.1.0",
-    "@prune/repo-map": "0.1.0"
+    "@prune/repo-map": "0.1.0",
+    "@prune/router": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
