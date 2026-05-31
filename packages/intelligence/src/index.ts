@@ -74,6 +74,9 @@ export {
 export {
   computeCacheMetrics,
   diagnoseCacheBust,
+  detectSilentCacheFailures,
+  detectTTLPenalty,
+  analyzeCacheCoPilot,
   type CacheTurnInput,
   type CacheTTL,
   type CacheMetrics,
@@ -81,6 +84,10 @@ export {
   type CacheBustSignal,
   type CacheBustDiagnosis,
   type DiagnoseInput,
+  type SilentCacheFailure,
+  type TTLPenalty,
+  type CoPilotInput,
+  type CacheCoPilotReport,
 } from "./cache-analyzer.js";
 
 // Cost Predictor

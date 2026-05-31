@@ -117,3 +117,188 @@ describe("diagnoseCacheBust", () => {
     expect(result).toEqual([]);
   });
 });
+
+// ============================================================================
+// Cache Co-Pilot
+// ============================================================================
+
+import {
+  detectSilentCacheFailures,
+  detectTTLPenalty,
+  analyzeCacheCoPilot,
+} from "./cache-analyzer.js";
+
+describe("detectSilentCacheFailures", () => {
+  const big = (input: number) => ({
+    model: "claude-sonnet-4",
+    usage: { input, output: 200, cacheRead: 0, cacheCreate: 0 },
+  });
+  const withCache = () => ({
+    model: "claude-sonnet-4",
+    usage: { input: 100, output: 200, cacheRead: 5000, cacheCreate: 0 },
+  });
+
+  it("fires on 3 consecutive big-input zero-cache turns", () => {
+    const out = detectSilentCacheFailures({
+      turns: [big(5000), big(5000), big(5000)],
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].consecutiveTurns).toBe(3);
+    expect(out[0].uncachedInputTokens).toBe(15000);
+    expect(out[0].estimatedExtraCostUsd).toBeGreaterThan(0);
+    expect(out[0].suggestion).toMatch(/cache_control/);
+  });
+
+  it("does not fire on a run shorter than the threshold", () => {
+    const out = detectSilentCacheFailures({
+      turns: [big(5000), big(5000)],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("respects minConsecutiveTurnsForSilentFailure override", () => {
+    const out = detectSilentCacheFailures({
+      turns: [big(5000), big(5000)],
+      minConsecutiveTurnsForSilentFailure: 2,
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  it("breaks the run at the first turn with cache activity", () => {
+    const out = detectSilentCacheFailures({
+      turns: [big(5000), big(5000), withCache(), big(5000), big(5000), big(5000)],
+    });
+    // The second run (positions 3..5) has 3 turns → flagged.
+    expect(out).toHaveLength(1);
+    expect(out[0].startTurnIndex).toBe(3);
+    expect(out[0].endTurnIndex).toBe(5);
+  });
+
+  it("respects minCacheablePrefixTokens override", () => {
+    const small = () => ({
+      model: "claude-sonnet-4",
+      usage: { input: 100, output: 50, cacheRead: 0, cacheCreate: 0 },
+    });
+    const out = detectSilentCacheFailures({
+      turns: [small(), small(), small()],
+      minCacheablePrefixTokens: 50,
+    });
+    expect(out).toHaveLength(1);
+    // With default threshold 2048, nothing would fire.
+    expect(detectSilentCacheFailures({ turns: [small(), small(), small()] })).toEqual([]);
+  });
+
+  it("estimated cost is positive and proportional to uncached tokens", () => {
+    const smaller = detectSilentCacheFailures({
+      turns: [big(3000), big(3000), big(3000)],
+    });
+    const larger = detectSilentCacheFailures({
+      turns: [big(10000), big(10000), big(10000)],
+    });
+    expect(smaller[0].estimatedExtraCostUsd).toBeGreaterThan(0);
+    expect(larger[0].estimatedExtraCostUsd).toBeGreaterThan(smaller[0].estimatedExtraCostUsd);
+  });
+});
+
+describe("detectTTLPenalty", () => {
+  const turnAt = (cacheCreate: number) => ({
+    model: "claude-sonnet-4",
+    usage: { input: 100, output: 200, cacheRead: 0, cacheCreate },
+  });
+
+  it("fires when same-magnitude cache_creates are >5min apart", () => {
+    const out = detectTTLPenalty({
+      turns: [turnAt(10000), turnAt(10000)],
+      turnTimestamps: [
+        "2026-05-15T10:00:00.000Z",
+        "2026-05-15T10:10:00.000Z", // 10 min later
+      ],
+    });
+    expect(out).toHaveLength(1);
+    expect(out[0].gapMinutes).toBeCloseTo(10, 0);
+    expect(out[0].cacheCreateTokens).toBe(10000);
+    expect(out[0].estimatedExtraCostUsd).toBeGreaterThan(0);
+    expect(out[0].suggestion).toMatch(/1h/);
+    expect(out[0].suggestion).toMatch(/March 2026/);
+  });
+
+  it("does not fire when gap is <=5min", () => {
+    const out = detectTTLPenalty({
+      turns: [turnAt(10000), turnAt(10000)],
+      turnTimestamps: [
+        "2026-05-15T10:00:00.000Z",
+        "2026-05-15T10:04:00.000Z", // 4 min — still within default TTL
+      ],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("does not fire when cache_create magnitudes differ wildly", () => {
+    const out = detectTTLPenalty({
+      turns: [turnAt(10000), turnAt(200)],
+      turnTimestamps: [
+        "2026-05-15T10:00:00.000Z",
+        "2026-05-15T10:10:00.000Z",
+      ],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("returns [] when timestamps are absent", () => {
+    const out = detectTTLPenalty({
+      turns: [turnAt(10000), turnAt(10000)],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("returns [] when timestamps length doesn't match turns", () => {
+    const out = detectTTLPenalty({
+      turns: [turnAt(10000), turnAt(10000)],
+      turnTimestamps: ["2026-05-15T10:00:00.000Z"],
+    });
+    expect(out).toEqual([]);
+  });
+});
+
+describe("analyzeCacheCoPilot", () => {
+  it("composes both detectors and sums lost dollars", () => {
+    const big = () => ({
+      model: "claude-sonnet-4",
+      usage: { input: 5000, output: 200, cacheRead: 0, cacheCreate: 0 },
+    });
+    const cachy = (cc: number) => ({
+      model: "claude-sonnet-4",
+      usage: { input: 100, output: 200, cacheRead: 0, cacheCreate: cc },
+    });
+    const report = analyzeCacheCoPilot({
+      turns: [big(), big(), big(), cachy(10000), cachy(10000)],
+      turnTimestamps: [
+        "2026-05-15T10:00:00.000Z",
+        "2026-05-15T10:01:00.000Z",
+        "2026-05-15T10:02:00.000Z",
+        "2026-05-15T10:03:00.000Z",
+        "2026-05-15T10:15:00.000Z", // 12 min after prior cache_create
+      ],
+    });
+    expect(report.silentFailures).toHaveLength(1);
+    expect(report.ttlPenalties).toHaveLength(1);
+    expect(report.totalLostUsd).toBeGreaterThan(0);
+    expect(report.recommendedActions.length).toBe(2);
+    expect(report.recommendedActions[0]).toMatch(/silent-cache-failure/);
+    expect(report.recommendedActions[1]).toMatch(/ttl='1h'/);
+  });
+
+  it("returns no findings on a clean session", () => {
+    const clean = () => ({
+      model: "claude-sonnet-4",
+      usage: { input: 100, output: 200, cacheRead: 8000, cacheCreate: 0 },
+    });
+    const report = analyzeCacheCoPilot({
+      turns: [clean(), clean(), clean()],
+    });
+    expect(report.silentFailures).toEqual([]);
+    expect(report.ttlPenalties).toEqual([]);
+    expect(report.totalLostUsd).toBe(0);
+    expect(report.recommendedActions).toEqual([]);
+  });
+});

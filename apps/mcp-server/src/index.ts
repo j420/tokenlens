@@ -242,6 +242,39 @@ const TOOLS = [
     },
   },
   {
+    name: "cache_copilot",
+    description:
+      "Detect prompt-cache silent failures and TTL-penalty patterns in a " +
+      "Claude Code session. SILENT_FAILURE: 3+ consecutive turns with " +
+      "large input but zero cache activity (caching not enabled, or prefix " +
+      "below Anthropic's minimum). TTL_PENALTY: same-shape cache_creation " +
+      "events >5 min apart, where ttl='1h' would have converted the second " +
+      "write into a read (relevant after the March 2026 default-TTL " +
+      "regression). Returns dollar-quantified findings.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description: "Absolute path to a Claude Code session transcript JSONL.",
+        },
+        min_cacheable_prefix_tokens: {
+          type: "number" as const,
+          description:
+            "Min `input` tokens for a turn to be considered cacheable. " +
+            "Default 2048 (matches Anthropic's typical minimum-prefix threshold).",
+        },
+        min_consecutive_turns_for_silent_failure: {
+          type: "number" as const,
+          description:
+            "Min consecutive turns of zero cache activity before flagging silent failure. " +
+            "Default 3.",
+        },
+      },
+      required: ["transcript_path"],
+    },
+  },
+  {
     name: "subagent_status",
     description:
       "Inspect current subagent activity (active fan-outs, bursts, longest-running " +
@@ -927,7 +960,50 @@ async function handleCompactionCheck(args: {
 import {
   analyzeSubagents,
   evaluateSubagentBlock,
+  analyzeCacheCoPilot,
 } from "@prune/intelligence";
+
+async function handleCacheCoPilot(args: {
+  transcript_path: string;
+  min_cacheable_prefix_tokens?: number;
+  min_consecutive_turns_for_silent_failure?: number;
+}): Promise<string> {
+  const { turns } = await loadCachedSessionView(args.transcript_path);
+  const inputs = turns.map((t) => ({ model: t.model, usage: t.usage }));
+  const timestamps = turns.map((t) => t.endedAt ?? t.startedAt ?? "");
+  const allTimestamped = timestamps.every((s) => s !== "");
+  const report = analyzeCacheCoPilot({
+    turns: inputs,
+    turnTimestamps: allTimestamped ? timestamps : undefined,
+    minCacheablePrefixTokens: args.min_cacheable_prefix_tokens,
+    minConsecutiveTurnsForSilentFailure: args.min_consecutive_turns_for_silent_failure,
+  });
+  return JSON.stringify(
+    {
+      silent_failures: report.silentFailures.map((s) => ({
+        start_turn_index: s.startTurnIndex,
+        end_turn_index: s.endTurnIndex,
+        consecutive_turns: s.consecutiveTurns,
+        uncached_input_tokens: s.uncachedInputTokens,
+        estimated_extra_cost_usd: s.estimatedExtraCostUsd,
+        suggestion: s.suggestion,
+      })),
+      ttl_penalties: report.ttlPenalties.map((t) => ({
+        from_turn_index: t.fromTurnIndex,
+        to_turn_index: t.toTurnIndex,
+        gap_minutes: t.gapMinutes,
+        cache_create_tokens: t.cacheCreateTokens,
+        estimated_extra_cost_usd: t.estimatedExtraCostUsd,
+        suggestion: t.suggestion,
+      })),
+      total_lost_usd: report.totalLostUsd,
+      recommended_actions: report.recommendedActions,
+      ttl_penalty_inspection_possible: allTimestamped,
+    },
+    null,
+    2
+  );
+}
 
 async function handleSubagentStatus(args: {
   transcript_path: string;
@@ -1148,6 +1224,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "cache_copilot":
+        result = await handleCacheCoPilot(args as {
+          transcript_path: string;
+          min_cacheable_prefix_tokens?: number;
+          min_consecutive_turns_for_silent_failure?: number;
         });
         break;
       case "subagent_status":
