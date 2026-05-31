@@ -20,6 +20,11 @@ import type {
   PersistenceSink,
 } from "@prune/persistence";
 import type { Provider } from "@prune/shared";
+import {
+  detectDimensions,
+  encodeDimensions,
+  type AttributionDimensions,
+} from "@prune/attribution";
 
 import {
   computeRecordedCost,
@@ -68,6 +73,9 @@ export interface RecordRequest {
   /**
    * Optional metadata to attach to the charge row (call id, session id,
    * which tool was invoked, etc.). Stored verbatim in the audit log.
+   * Note: attribution dimensions are merged in automatically by the
+   * gate (unless `skipAttribution` is set) — caller doesn't need to
+   * stamp them by hand.
    */
   metadata?: Record<string, unknown>;
   /** Override the `now` recorded on the charge. Mostly for tests. */
@@ -80,6 +88,13 @@ export interface RecordRequest {
    * `${chargeId}#roll:${parentId}` so they're also idempotent.
    */
   chargeId?: string;
+  /**
+   * Explicit attribution dimensions to stamp on the charge. Merged with
+   * detectDimensions() output unless `skipAttribution` is true.
+   */
+  attribution?: AttributionDimensions;
+  /** Skip the auto-detect attribution probe (useful in tests / CI). */
+  skipAttribution?: boolean;
 }
 
 export class BudgetGateError extends Error {
@@ -233,6 +248,13 @@ export class BudgetGate {
     }
     const cost = computeRecordedCost(req.usage);
     const baseChargeId = req.chargeId ?? randomUUID();
+    // Stamp attribution dimensions on every charge so the per-dev / per-PR /
+    // per-project rollup works without callers having to instrument by hand.
+    // Skip when explicitly requested (tests, CI hot paths).
+    const dims: AttributionDimensions = req.skipAttribution
+      ? (req.attribution ?? {})
+      : { ...detectDimensions(), ...(req.attribution ?? {}) };
+    const attributionMeta = encodeDimensions(dims);
     const charge: BudgetChargeRow = {
       charge_id: baseChargeId,
       envelope_id: envelope.envelope_id,
@@ -246,7 +268,7 @@ export class BudgetGate {
       tokens_cache_creation: req.usage.tokensCacheCreation ?? 0,
       cost_usd: cost.costUsd,
       source: "recorded",
-      metadata: req.metadata ?? {},
+      metadata: { ...attributionMeta, ...(req.metadata ?? {}) },
     };
     await this.sink.recordBudgetCharge(charge);
 

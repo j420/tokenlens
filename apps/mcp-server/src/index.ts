@@ -242,6 +242,45 @@ const TOOLS = [
     },
   },
   {
+    name: "attribution_rollup",
+    description:
+      "Cross-vendor per-developer / per-PR / per-project / per-team cost " +
+      "rollup over a budget envelope's charges. Local-first; works across " +
+      "every coding agent (Claude Code, Cursor, Cline, Codex CLI, Aider). " +
+      "Competes with Anthropic's Enterprise-plan-only Enterprise Analytics " +
+      "API on every plan. groupBy accepts 'developer', 'project', 'branch', " +
+      "'prNumber', 'commitSha', 'model', 'provider', or 'extra.<key>'.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        envelope_name: {
+          type: "string" as const,
+          description: "Source envelope.",
+        },
+        group_by: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description:
+            "Dimensions to group by (composite key, in order). Defaults to ['developer'].",
+        },
+        since: {
+          type: "string" as const,
+          description: "ISO 8601 lower bound on charge timestamps.",
+        },
+        until: {
+          type: "string" as const,
+          description: "ISO 8601 upper bound on charge timestamps.",
+        },
+        sqlite_path: { type: "string" as const, description: "Override the local sink path." },
+        limit: {
+          type: "number" as const,
+          description: "Max charges to scan (newest first). Default 5000.",
+        },
+      },
+      required: ["envelope_name"],
+    },
+  },
+  {
     name: "export_focus_csv",
     description:
       "Export a budget envelope's charges as FOCUS v1.3 CSV. Drops " +
@@ -1175,6 +1214,52 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Attribution (cross-vendor per-developer / per-PR / per-project rollup)
+// ============================================================================
+
+import { rollup, type RollupKey } from "@prune/attribution";
+
+async function handleAttributionRollup(args: {
+  envelope_name: string;
+  group_by?: string[];
+  since?: string;
+  until?: string;
+  sqlite_path?: string;
+  limit?: number;
+}): Promise<string> {
+  const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(args.sqlite_path) });
+  await sink.init();
+  try {
+    const env = await sink.getBudgetEnvelope(args.envelope_name);
+    if (!env) {
+      return JSON.stringify({ error: `envelope "${args.envelope_name}" not found` });
+    }
+    const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 5000);
+    const groupBy = (args.group_by ?? ["developer"]) as RollupKey[];
+    const groups = rollup(charges, {
+      groupBy,
+      since: args.since,
+      until: args.until,
+    });
+    return JSON.stringify(
+      {
+        envelope: args.envelope_name,
+        group_by: groupBy,
+        since: args.since ?? null,
+        until: args.until ?? null,
+        charge_count: charges.length,
+        group_count: groups.length,
+        groups,
+      },
+      null,
+      2
+    );
+  } finally {
+    await sink.close();
+  }
+}
+
+// ============================================================================
 // Exporters (OTel GenAI semconv + FOCUS v1.3)
 // ============================================================================
 
@@ -1705,6 +1790,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "attribution_rollup":
+        result = await handleAttributionRollup(args as {
+          envelope_name: string;
+          group_by?: string[];
+          since?: string;
+          until?: string;
+          sqlite_path?: string;
+          limit?: number;
         });
         break;
       case "export_focus_csv":

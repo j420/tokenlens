@@ -1,7 +1,7 @@
 {
-  "name": "@prune/budget-gate",
+  "name": "@prune/attribution",
   "version": "0.1.0",
-  "description": "Active budget tracking and enforcement for AI coding-agent spend",
+  "description": "Cross-vendor per-developer / per-PR / per-project cost attribution. Local-first; auto-detects from git + env. Competes with Anthropic Enterprise Analytics on every plan, across every coding agent.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,9 +16,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "@prune/persistence": "0.1.0",
-    "@prune/shared": "0.1.0",
-    "@prune/attribution": "0.1.0"
+    "@prune/persistence": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
