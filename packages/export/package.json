@@ -1,0 +1,27 @@
+{
+  "name": "@prune/export",
+  "version": "0.1.0",
+  "description": "Open-standard exporters for AI cost telemetry — OpenTelemetry GenAI semantic conventions + FOCUS v1.3 FinOps spec.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/shared": "0.1.0",
+    "@prune/persistence": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

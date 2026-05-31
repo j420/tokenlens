@@ -242,6 +242,53 @@ const TOOLS = [
     },
   },
   {
+    name: "export_focus_csv",
+    description:
+      "Export a budget envelope's charges as FOCUS v1.3 CSV. Drops " +
+      "directly into FinOps platforms (CloudHealth, Apptio, Vantage, " +
+      "Finout, CloudZero). Spec ratified Dec 4 2025; 68% of $100M+ orgs " +
+      "consume FOCUS-formatted data (Amnic FOCUS 2026 guide). " +
+      "https://focus.finops.org/focus-specification/v1-2/",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        envelope_name: { type: "string" as const, description: "Source envelope." },
+        sqlite_path: { type: "string" as const, description: "Override the local sink path." },
+        sub_account_id: {
+          type: "string" as const,
+          description: "Optional: stamp every row with this SubAccountId.",
+        },
+        sub_account_name: { type: "string" as const, description: "Optional sub-account label." },
+        limit: {
+          type: "number" as const,
+          description: "Max charges to export (newest first). Default 1000.",
+        },
+      },
+      required: ["envelope_name"],
+    },
+  },
+  {
+    name: "export_otel_genai",
+    description:
+      "Export a budget envelope's charges as an OpenTelemetry GenAI " +
+      "semantic-conventions payload (OTLP-compatible JSON). Pipe to any " +
+      "OTel Collector for ingestion into Langfuse, Phoenix, Honeycomb, " +
+      "Datadog, New Relic. Spec: " +
+      "https://opentelemetry.io/docs/specs/semconv/gen-ai/",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        envelope_name: { type: "string" as const, description: "Source envelope." },
+        sqlite_path: { type: "string" as const, description: "Override the local sink path." },
+        limit: {
+          type: "number" as const,
+          description: "Max charges to export. Default 1000.",
+        },
+      },
+      required: ["envelope_name"],
+    },
+  },
+  {
     name: "sentinel_scan_prompt",
     description:
       "Pre-prompt scan: detect API keys, private keys, connection " +
@@ -1128,6 +1175,71 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Exporters (OTel GenAI semconv + FOCUS v1.3)
+// ============================================================================
+
+import {
+  mapChargesToFocus,
+  mapChargesToOtel,
+  rowsToCsv,
+  FOCUS_COLUMNS,
+} from "@prune/export";
+
+async function handleExportFocusCsv(args: {
+  envelope_name: string;
+  sqlite_path?: string;
+  sub_account_id?: string;
+  sub_account_name?: string;
+  limit?: number;
+}): Promise<string> {
+  return withBudgetGate(args.sqlite_path, async (gate) => {
+    const env = await gate.getEnvelope(args.envelope_name);
+    if (!env) {
+      return JSON.stringify({ error: `envelope "${args.envelope_name}" not found` });
+    }
+    const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(args.sqlite_path) });
+    await sink.init();
+    try {
+      const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 1000);
+      const rows = mapChargesToFocus(charges, {
+        subAccountId: args.sub_account_id,
+        subAccountName: args.sub_account_name,
+      });
+      // Coerce: FocusRow has strict types but rowsToCsv accepts any
+      // Record<string, unknown>. The shape is compatible at runtime.
+      const csv = rowsToCsv(
+        rows as unknown as Array<Record<string, unknown>>,
+        FOCUS_COLUMNS as unknown as ReadonlyArray<string>
+      );
+      return csv;
+    } finally {
+      await sink.close();
+    }
+  });
+}
+
+async function handleExportOtel(args: {
+  envelope_name: string;
+  sqlite_path?: string;
+  limit?: number;
+}): Promise<string> {
+  return withBudgetGate(args.sqlite_path, async (gate) => {
+    const env = await gate.getEnvelope(args.envelope_name);
+    if (!env) {
+      return JSON.stringify({ error: `envelope "${args.envelope_name}" not found` });
+    }
+    const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(args.sqlite_path) });
+    await sink.init();
+    try {
+      const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 1000);
+      return JSON.stringify(mapChargesToOtel(charges), null, 2);
+    } finally {
+      await sink.close();
+    }
+  });
+}
+
+// ============================================================================
 // Sentinel (pre-prompt secret scan + MCP-response injection shield)
 // ============================================================================
 
@@ -1593,6 +1705,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "export_focus_csv":
+        result = await handleExportFocusCsv(args as {
+          envelope_name: string;
+          sqlite_path?: string;
+          sub_account_id?: string;
+          sub_account_name?: string;
+          limit?: number;
+        });
+        break;
+      case "export_otel_genai":
+        result = await handleExportOtel(args as {
+          envelope_name: string;
+          sqlite_path?: string;
+          limit?: number;
         });
         break;
       case "sentinel_scan_prompt":
