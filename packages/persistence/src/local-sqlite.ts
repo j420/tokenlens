@@ -44,6 +44,7 @@ import type {
   CompactionEventRow,
   EventRow,
   PersistenceSink,
+  ReplayLogRow,
 } from "./sink.js";
 
 const SCHEMA = `
@@ -140,6 +141,28 @@ CREATE TABLE IF NOT EXISTS budget_charges (
 );
 CREATE INDEX IF NOT EXISTS idx_charges_envelope_time ON budget_charges(envelope_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_charges_agent_time ON budget_charges(agent_id, timestamp);
+
+-- Replay vault: hash-chained, ed25519-signed audit log per session.
+-- Each row's record_hash is sha256 of the canonical JSON payload; the
+-- chain links via prev_record_hash. Tampering with any row breaks the
+-- chain at that point. signature is ed25519 over (prev_record_hash ||
+-- record_hash) so unauthorized appends are caught even if the chain is
+-- recomputed. (sequence) is per-session monotonic for cheap audits.
+CREATE TABLE IF NOT EXISTS replay_log (
+  record_id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  sequence INTEGER NOT NULL,
+  timestamp TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  payload_canonical TEXT NOT NULL,
+  record_hash TEXT NOT NULL,
+  prev_record_hash TEXT,
+  signature TEXT NOT NULL,
+  signer_fingerprint TEXT NOT NULL,
+  metadata TEXT NOT NULL DEFAULT '{}',
+  UNIQUE (session_id, sequence)
+);
+CREATE INDEX IF NOT EXISTS idx_replay_session_seq ON replay_log(session_id, sequence);
 `;
 
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
@@ -497,6 +520,75 @@ export class LocalSqliteSink implements PersistenceSink {
     }
     stmt.free();
     return out;
+  }
+
+  async appendReplayLog(r: ReplayLogRow): Promise<void> {
+    const db = this.ensure();
+    db.run(
+      `INSERT INTO replay_log VALUES (
+        $record_id, $session_id, $sequence, $timestamp, $kind,
+        $payload_canonical, $record_hash, $prev_record_hash,
+        $signature, $signer_fingerprint, $metadata
+      )`,
+      {
+        $record_id: r.record_id,
+        $session_id: r.session_id,
+        $sequence: r.sequence,
+        $timestamp: r.timestamp,
+        $kind: r.kind,
+        $payload_canonical: r.payload_canonical,
+        $record_hash: r.record_hash,
+        $prev_record_hash: r.prev_record_hash,
+        $signature: r.signature,
+        $signer_fingerprint: r.signer_fingerprint,
+        $metadata: JSON.stringify(r.metadata),
+      }
+    );
+    if (this.opts.autoFlush) this.flushSync();
+  }
+
+  private hydrateReplayRow(r: Record<string, unknown>): ReplayLogRow {
+    return {
+      record_id: r.record_id as string,
+      session_id: r.session_id as string,
+      sequence: r.sequence as number,
+      timestamp: r.timestamp as string,
+      kind: r.kind as string,
+      payload_canonical: r.payload_canonical as string,
+      record_hash: r.record_hash as string,
+      prev_record_hash: (r.prev_record_hash as string | null) ?? null,
+      signature: r.signature as string,
+      signer_fingerprint: r.signer_fingerprint as string,
+      metadata: JSON.parse((r.metadata as string) ?? "{}"),
+    };
+  }
+
+  async getReplayLogBySession(sessionId: string): Promise<ReplayLogRow[]> {
+    const db = this.ensure();
+    const stmt = db.prepare(
+      `SELECT * FROM replay_log WHERE session_id = $s ORDER BY sequence ASC`
+    );
+    stmt.bind({ $s: sessionId });
+    const out: ReplayLogRow[] = [];
+    while (stmt.step()) {
+      out.push(this.hydrateReplayRow(stmt.getAsObject() as Record<string, unknown>));
+    }
+    stmt.free();
+    return out;
+  }
+
+  async getLatestReplayLog(sessionId: string): Promise<ReplayLogRow | null> {
+    const db = this.ensure();
+    const stmt = db.prepare(
+      `SELECT * FROM replay_log WHERE session_id = $s ORDER BY sequence DESC LIMIT 1`
+    );
+    stmt.bind({ $s: sessionId });
+    let row: ReplayLogRow | null = null;
+    if (stmt.step()) {
+      row = this.hydrateReplayRow(stmt.getAsObject() as Record<string, unknown>);
+    }
+    stmt.free();
+    return row;
   }
 
   async getRecentEvents(

@@ -112,6 +112,24 @@ export interface BudgetChargeRow {
   metadata: Record<string, unknown>;
 }
 
+/**
+ * Replay vault row — one tamper-evident audit record per (session, sequence).
+ * Hash chain + ed25519 signature provided by @prune/replay-vault.
+ */
+export interface ReplayLogRow {
+  record_id: string;
+  session_id: string;
+  sequence: number;
+  timestamp: string;
+  kind: string;
+  payload_canonical: string;
+  record_hash: string;
+  prev_record_hash: string | null;
+  signature: string;
+  signer_fingerprint: string;
+  metadata: Record<string, unknown>;
+}
+
 export interface PersistenceSink {
   init(): Promise<void>;
   recordEvent(row: EventRow): Promise<void>;
@@ -130,6 +148,15 @@ export interface PersistenceSink {
   getBudgetSpend(envelopeId: string, since: Date): Promise<number>;
   /** Last N charges against an envelope (most recent first). For burn-rate computation and audit. */
   getRecentBudgetCharges(envelopeId: string, limit?: number): Promise<BudgetChargeRow[]>;
+  /**
+   * Append a row to the replay log. Throws if the (session_id, sequence)
+   * is already taken — the vault expects monotonic sequence per session.
+   */
+  appendReplayLog(row: ReplayLogRow): Promise<void>;
+  /** Read all rows for a session, ordered by sequence ascending. */
+  getReplayLogBySession(sessionId: string): Promise<ReplayLogRow[]>;
+  /** Read the most recent row for a session — used to chain the next append. */
+  getLatestReplayLog(sessionId: string): Promise<ReplayLogRow | null>;
   getRecentEvents(sessionId: string, limit?: number): Promise<EventRow[]>;
   /**
    * Commit pending writes to durable storage. Implementations are free to

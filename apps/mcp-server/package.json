@@ -22,7 +22,8 @@
     "@prune/intelligence": "0.1.0",
     "@prune/telemetry": "0.1.0",
     "@prune/persistence": "0.1.0",
-    "@prune/budget-gate": "0.1.0"
+    "@prune/budget-gate": "0.1.0",
+    "@prune/replay-vault": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

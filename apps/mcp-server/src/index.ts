@@ -242,6 +242,51 @@ const TOOLS = [
     },
   },
   {
+    name: "replay_verify",
+    description:
+      "Verify the integrity of the replay vault for a session. Re-hashes " +
+      "every canonical payload, re-checks the chain links, and re-verifies " +
+      "the ed25519 signatures against trusted public keys. Returns an " +
+      "end-to-end pass/fail plus the first breaking sequence and per-row " +
+      "diagnostics. Use this to satisfy EU AI Act Art 12 / ISO 42001 A.6.1.6 " +
+      "/ NIST AI RMF Measure 2.5 audit asks.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        session_id: { type: "string" as const, description: "Session id to verify." },
+        sqlite_path: {
+          type: "string" as const,
+          description:
+            "Override the local sink path (default: $PRUNE_VAULT_SQLITE or ~/.prune/vault.sqlite).",
+        },
+        key_path: {
+          type: "string" as const,
+          description:
+            "Override the signer keystore PEM path (default: $PRUNE_VAULT_KEY or ~/.prune/keys/replay.pem).",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
+    name: "replay_list",
+    description:
+      "List vault records for a session in canonical (sequence-ascending) " +
+      "order. Each row contains the canonical payload, record hash, signer " +
+      "fingerprint, and chain prev-hash for offline verification.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        session_id: { type: "string" as const, description: "Session id to list." },
+        sqlite_path: {
+          type: "string" as const,
+          description: "Override the local sink path.",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
+  {
     name: "cache_copilot",
     description:
       "Detect prompt-cache silent failures and TTL-penalty patterns in a " +
@@ -954,6 +999,75 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Replay Vault (audit/attestation front-end)
+// ============================================================================
+
+import { ReplayVault } from "@prune/replay-vault";
+
+function defaultVaultSqlitePath(override?: string): string {
+  const p =
+    override ||
+    process.env.PRUNE_VAULT_SQLITE ||
+    joinPath(homedir(), ".prune", "vault.sqlite");
+  mkdirSync(dirname(p), { recursive: true });
+  return p;
+}
+
+async function withVault<T>(
+  sqlitePath: string | undefined,
+  keyPath: string | undefined,
+  fn: (vault: ReplayVault, sink: LocalSqliteSink) => Promise<T>
+): Promise<T> {
+  const sink = new LocalSqliteSink({ path: defaultVaultSqlitePath(sqlitePath) });
+  await sink.init();
+  try {
+    return await fn(new ReplayVault(sink, { keyPath }), sink);
+  } finally {
+    await sink.close();
+  }
+}
+
+async function handleReplayVerify(args: {
+  session_id: string;
+  sqlite_path?: string;
+  key_path?: string;
+}): Promise<string> {
+  return withVault(args.sqlite_path, args.key_path, async (vault) => {
+    const result = await vault.verify(args.session_id);
+    return JSON.stringify(
+      {
+        session_id: args.session_id,
+        ok: result.ok,
+        broke_at_sequence: result.brokeAtSequence,
+        records_checked: result.recordsChecked,
+        signer_fingerprint: vault.fingerprint(),
+        per_row: result.perRow,
+      },
+      null,
+      2
+    );
+  });
+}
+
+async function handleReplayList(args: {
+  session_id: string;
+  sqlite_path?: string;
+}): Promise<string> {
+  return withVault(args.sqlite_path, undefined, async (vault) => {
+    const rows = await vault.list(args.session_id);
+    return JSON.stringify(
+      {
+        session_id: args.session_id,
+        count: rows.length,
+        records: rows,
+      },
+      null,
+      2
+    );
+  });
+}
+
+// ============================================================================
 // Subagent Status (runaway-prevention front-end)
 // ============================================================================
 
@@ -1224,6 +1338,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "replay_verify":
+        result = await handleReplayVerify(args as {
+          session_id: string;
+          sqlite_path?: string;
+          key_path?: string;
+        });
+        break;
+      case "replay_list":
+        result = await handleReplayList(args as {
+          session_id: string;
+          sqlite_path?: string;
         });
         break;
       case "cache_copilot":
