@@ -38,6 +38,8 @@ import lockfile from "proper-lockfile";
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import type {
   AlertRow,
+  BudgetChargeRow,
+  BudgetEnvelopeRow,
   BudgetUsageRow,
   CompactionEventRow,
   EventRow,
@@ -106,6 +108,38 @@ CREATE TABLE IF NOT EXISTS budget_usage (
   limit_usd REAL NOT NULL,
   PRIMARY KEY (team_id, period)
 );
+
+CREATE TABLE IF NOT EXISTS budget_envelopes (
+  envelope_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  period_kind TEXT NOT NULL,
+  period_start TEXT NOT NULL,
+  period_end TEXT NOT NULL,
+  limit_usd REAL NOT NULL,
+  soft_cap_pct REAL NOT NULL DEFAULT 0.75,
+  hard_cap_pct REAL NOT NULL DEFAULT 1.0,
+  parent_envelope_id TEXT,
+  metadata TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_envelopes_parent ON budget_envelopes(parent_envelope_id);
+
+CREATE TABLE IF NOT EXISTS budget_charges (
+  charge_id TEXT PRIMARY KEY,
+  envelope_id TEXT NOT NULL,
+  timestamp TEXT NOT NULL,
+  agent_id TEXT,
+  model TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  tokens_in INTEGER NOT NULL,
+  tokens_out INTEGER NOT NULL,
+  tokens_cached INTEGER NOT NULL DEFAULT 0,
+  tokens_cache_creation INTEGER NOT NULL DEFAULT 0,
+  cost_usd REAL NOT NULL,
+  source TEXT NOT NULL,
+  metadata TEXT NOT NULL DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS idx_charges_envelope_time ON budget_charges(envelope_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_charges_agent_time ON budget_charges(agent_id, timestamp);
 `;
 
 let sqlJsPromise: Promise<SqlJsStatic> | null = null;
@@ -304,6 +338,165 @@ export class LocalSqliteSink implements PersistenceSink {
       }
     );
     if (this.opts.autoFlush) this.flushSync();
+  }
+
+  async upsertBudgetEnvelope(r: BudgetEnvelopeRow): Promise<void> {
+    const db = this.ensure();
+    db.run(
+      `INSERT INTO budget_envelopes VALUES (
+        $envelope_id, $name, $period_kind, $period_start, $period_end,
+        $limit_usd, $soft_cap_pct, $hard_cap_pct, $parent_envelope_id, $metadata
+      ) ON CONFLICT(envelope_id) DO UPDATE SET
+         name = excluded.name,
+         period_kind = excluded.period_kind,
+         period_start = excluded.period_start,
+         period_end = excluded.period_end,
+         limit_usd = excluded.limit_usd,
+         soft_cap_pct = excluded.soft_cap_pct,
+         hard_cap_pct = excluded.hard_cap_pct,
+         parent_envelope_id = excluded.parent_envelope_id,
+         metadata = excluded.metadata`,
+      {
+        $envelope_id: r.envelope_id,
+        $name: r.name,
+        $period_kind: r.period_kind,
+        $period_start: r.period_start,
+        $period_end: r.period_end,
+        $limit_usd: r.limit_usd,
+        $soft_cap_pct: r.soft_cap_pct,
+        $hard_cap_pct: r.hard_cap_pct,
+        $parent_envelope_id: r.parent_envelope_id,
+        $metadata: JSON.stringify(r.metadata),
+      }
+    );
+    if (this.opts.autoFlush) this.flushSync();
+  }
+
+  async recordBudgetCharge(r: BudgetChargeRow): Promise<void> {
+    const db = this.ensure();
+    db.run(
+      `INSERT OR REPLACE INTO budget_charges VALUES (
+        $charge_id, $envelope_id, $timestamp, $agent_id, $model, $provider,
+        $tokens_in, $tokens_out, $tokens_cached, $tokens_cache_creation,
+        $cost_usd, $source, $metadata
+      )`,
+      {
+        $charge_id: r.charge_id,
+        $envelope_id: r.envelope_id,
+        $timestamp: r.timestamp,
+        $agent_id: r.agent_id,
+        $model: r.model,
+        $provider: r.provider,
+        $tokens_in: r.tokens_in,
+        $tokens_out: r.tokens_out,
+        $tokens_cached: r.tokens_cached,
+        $tokens_cache_creation: r.tokens_cache_creation,
+        $cost_usd: r.cost_usd,
+        $source: r.source,
+        $metadata: JSON.stringify(r.metadata),
+      }
+    );
+    if (this.opts.autoFlush) this.flushSync();
+  }
+
+  async getBudgetEnvelope(name: string): Promise<BudgetEnvelopeRow | null> {
+    const db = this.ensure();
+    const stmt = db.prepare(`SELECT * FROM budget_envelopes WHERE name = $n`);
+    stmt.bind({ $n: name });
+    let row: BudgetEnvelopeRow | null = null;
+    if (stmt.step()) {
+      const r = stmt.getAsObject() as Record<string, unknown>;
+      row = {
+        envelope_id: r.envelope_id as string,
+        name: r.name as string,
+        period_kind: r.period_kind as BudgetEnvelopeRow["period_kind"],
+        period_start: r.period_start as string,
+        period_end: r.period_end as string,
+        limit_usd: r.limit_usd as number,
+        soft_cap_pct: r.soft_cap_pct as number,
+        hard_cap_pct: r.hard_cap_pct as number,
+        parent_envelope_id: (r.parent_envelope_id as string | null) ?? null,
+        metadata: JSON.parse((r.metadata as string) ?? "{}"),
+      };
+    }
+    stmt.free();
+    return row;
+  }
+
+  async getBudgetEnvelopeById(
+    envelopeId: string
+  ): Promise<BudgetEnvelopeRow | null> {
+    const db = this.ensure();
+    const stmt = db.prepare(`SELECT * FROM budget_envelopes WHERE envelope_id = $id`);
+    stmt.bind({ $id: envelopeId });
+    let row: BudgetEnvelopeRow | null = null;
+    if (stmt.step()) {
+      const r = stmt.getAsObject() as Record<string, unknown>;
+      row = {
+        envelope_id: r.envelope_id as string,
+        name: r.name as string,
+        period_kind: r.period_kind as BudgetEnvelopeRow["period_kind"],
+        period_start: r.period_start as string,
+        period_end: r.period_end as string,
+        limit_usd: r.limit_usd as number,
+        soft_cap_pct: r.soft_cap_pct as number,
+        hard_cap_pct: r.hard_cap_pct as number,
+        parent_envelope_id: (r.parent_envelope_id as string | null) ?? null,
+        metadata: JSON.parse((r.metadata as string) ?? "{}"),
+      };
+    }
+    stmt.free();
+    return row;
+  }
+
+  async getBudgetSpend(envelopeId: string, since: Date): Promise<number> {
+    const db = this.ensure();
+    const stmt = db.prepare(
+      `SELECT COALESCE(SUM(cost_usd), 0) AS total
+       FROM budget_charges
+       WHERE envelope_id = $e AND timestamp >= $s`
+    );
+    stmt.bind({ $e: envelopeId, $s: since.toISOString() });
+    let total = 0;
+    if (stmt.step()) {
+      const r = stmt.getAsObject() as Record<string, unknown>;
+      total = (r.total as number) ?? 0;
+    }
+    stmt.free();
+    return total;
+  }
+
+  async getRecentBudgetCharges(
+    envelopeId: string,
+    limit: number = 100
+  ): Promise<BudgetChargeRow[]> {
+    const db = this.ensure();
+    const stmt = db.prepare(
+      `SELECT * FROM budget_charges WHERE envelope_id = $e
+       ORDER BY timestamp DESC LIMIT $l`
+    );
+    stmt.bind({ $e: envelopeId, $l: limit });
+    const out: BudgetChargeRow[] = [];
+    while (stmt.step()) {
+      const r = stmt.getAsObject() as Record<string, unknown>;
+      out.push({
+        charge_id: r.charge_id as string,
+        envelope_id: r.envelope_id as string,
+        timestamp: r.timestamp as string,
+        agent_id: (r.agent_id as string | null) ?? null,
+        model: r.model as string,
+        provider: r.provider as BudgetChargeRow["provider"],
+        tokens_in: r.tokens_in as number,
+        tokens_out: r.tokens_out as number,
+        tokens_cached: r.tokens_cached as number,
+        tokens_cache_creation: r.tokens_cache_creation as number,
+        cost_usd: r.cost_usd as number,
+        source: r.source as BudgetChargeRow["source"],
+        metadata: JSON.parse((r.metadata as string) ?? "{}"),
+      });
+    }
+    stmt.free();
+    return out;
   }
 
   async getRecentEvents(

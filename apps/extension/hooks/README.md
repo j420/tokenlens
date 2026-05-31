@@ -19,6 +19,7 @@ echo '{"hook_event_name":"Stop","transcript_path":"/abs/path/to/session.jsonl"}'
 | `loop-breaker.mjs` | `Stop`, `PostToolUse` | Replay the transcript ROI; if 3 consecutive low-ROI turns, exit 2 with a block message and routing suggestion. |
 | `cache-stabilize.mjs` | `UserPromptSubmit` | Inspect the recent window for cache-bust signals (timestamps, MCP tool drift, low hit rate) and emit advisory `additionalContext`. |
 | `compaction-recover.mjs` | `PostCompact` | Analyze what entities were lost on compaction; emit a recovery reminder as `additionalContext`. |
+| `budget-gate.mjs` | `Stop` | Active budget enforcement. Records each new turn's usage as a charge against a named envelope; emits `decision:block` on hard-cap breach, `additionalContext` on soft-cap / burn-rate warning. Configure via env vars `PRUNE_BUDGET_ENVELOPE`, `PRUNE_BUDGET_SQLITE`, `PRUNE_BUDGET_DISABLED`. Create the envelope first via the `budget_configure` MCP tool. |
 
 Install (manual for now): point a Claude Code hook entry at the script
 path. A future `prune.installHooks` extension command will automate

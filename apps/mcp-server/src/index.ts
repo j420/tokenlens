@@ -242,6 +242,83 @@ const TOOLS = [
     },
   },
   {
+    name: "budget_status",
+    description:
+      "Read current budget envelope state — spent, remaining, pct, burn-rate $/day, " +
+      "and projected exhaustion date. Use before kicking off expensive subagent fans " +
+      "or long-running automation. Designed for the post-June-15-2026 Agent SDK " +
+      "metered-credit world. If `name` is omitted, no result is returned — first " +
+      "call budget_configure to create an envelope.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: {
+          type: "string" as const,
+          description:
+            "Envelope name to inspect. Must exist (create via budget_configure first).",
+        },
+        sqlite_path: {
+          type: "string" as const,
+          description:
+            "Override the local sink path (default: $PRUNE_BUDGET_SQLITE or " +
+            "~/.prune/budget.sqlite).",
+        },
+      },
+      required: ["name"],
+    },
+  },
+  {
+    name: "budget_configure",
+    description:
+      "Create or update a budget envelope. Supports day/week/month/custom periods, " +
+      "soft + hard caps, and parent envelopes for team→dev rollups. Idempotent on " +
+      "the (name) key — calling twice with the same name updates the existing row.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        name: { type: "string" as const, description: "Unique envelope name." },
+        limit_usd: {
+          type: "number" as const,
+          description:
+            "Hard $ limit for the period. e.g. 200 for the $200 Max-20x Agent SDK credit pool.",
+        },
+        period_kind: {
+          type: "string" as const,
+          enum: ["day", "week", "month", "custom"],
+          description: "Period rollover rule.",
+        },
+        period_start: {
+          type: "string" as const,
+          description: "ISO 8601 start (required when period_kind='custom').",
+        },
+        period_end: {
+          type: "string" as const,
+          description: "ISO 8601 end (required when period_kind='custom').",
+        },
+        soft_cap_pct: {
+          type: "number" as const,
+          description: "0..1 (default 0.75). Warn threshold.",
+        },
+        hard_cap_pct: {
+          type: "number" as const,
+          description: "0..1 (default 1.0). Block threshold.",
+        },
+        parent_envelope_name: {
+          type: "string" as const,
+          description:
+            "Optional parent for rollup (charges to this envelope also count against the parent).",
+        },
+        sqlite_path: {
+          type: "string" as const,
+          description:
+            "Override the local sink path (default: $PRUNE_BUDGET_SQLITE or " +
+            "~/.prune/budget.sqlite).",
+        },
+      },
+      required: ["name", "limit_usd", "period_kind"],
+    },
+  },
+  {
     name: "compaction_check",
     description:
       "Inspect a Claude Code transcript window for a compaction event and " +
@@ -801,6 +878,123 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Budget Status / Configure (BudgetGate front-end)
+// ============================================================================
+
+import { homedir } from "node:os";
+import { mkdirSync } from "node:fs";
+import { dirname, join as joinPath } from "node:path";
+import { LocalSqliteSink } from "@prune/persistence";
+import { BudgetGate } from "@prune/budget-gate";
+
+function defaultBudgetSqlitePath(override?: string): string {
+  const p =
+    override ||
+    process.env.PRUNE_BUDGET_SQLITE ||
+    joinPath(homedir(), ".prune", "budget.sqlite");
+  mkdirSync(dirname(p), { recursive: true });
+  return p;
+}
+
+async function withBudgetGate<T>(
+  sqlitePath: string | undefined,
+  fn: (gate: BudgetGate) => Promise<T>
+): Promise<T> {
+  const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(sqlitePath) });
+  await sink.init();
+  try {
+    return await fn(new BudgetGate(sink));
+  } finally {
+    await sink.close();
+  }
+}
+
+async function handleBudgetStatus(args: {
+  name: string;
+  sqlite_path?: string;
+}): Promise<string> {
+  return withBudgetGate(args.sqlite_path, async (gate) => {
+    const env = await gate.getEnvelope(args.name);
+    if (!env) {
+      return JSON.stringify(
+        {
+          error: `envelope "${args.name}" not found`,
+          hint: 'Create one with the budget_configure tool, e.g. { "name": "default", "limit_usd": 200, "period_kind": "month" }',
+        },
+        null,
+        2
+      );
+    }
+    const state = await gate.getState(args.name);
+    return JSON.stringify(
+      {
+        envelope: {
+          name: state.envelope.name,
+          limit_usd: state.envelope.limit_usd,
+          period_kind: state.envelope.period_kind,
+          period_start: state.envelope.period_start,
+          period_end: state.envelope.period_end,
+          soft_cap_pct: state.envelope.soft_cap_pct,
+          hard_cap_pct: state.envelope.hard_cap_pct,
+          parent_envelope_id: state.envelope.parent_envelope_id,
+        },
+        state: {
+          spent_usd: state.spentUsd,
+          remaining_usd: state.remainingUsd,
+          pct_spent: state.pctSpent,
+          pct_time_elapsed: state.pctTimeElapsed,
+          is_expired: state.isExpired,
+          burn_rate_per_day_usd: state.burnRatePerDay,
+          days_left_in_period: state.daysLeftInPeriod,
+          projected_spend_at_period_end_usd: state.projectedSpendAtPeriodEnd,
+          projected_exhaustion_at: state.projectedExhaustionAt?.toISOString() ?? null,
+          as_of: state.asOf.toISOString(),
+        },
+      },
+      null,
+      2
+    );
+  });
+}
+
+async function handleBudgetConfigure(args: {
+  name: string;
+  limit_usd: number;
+  period_kind: "day" | "week" | "month" | "custom";
+  period_start?: string;
+  period_end?: string;
+  soft_cap_pct?: number;
+  hard_cap_pct?: number;
+  parent_envelope_name?: string;
+  sqlite_path?: string;
+}): Promise<string> {
+  return withBudgetGate(args.sqlite_path, async (gate) => {
+    const row = await gate.createEnvelope({
+      name: args.name,
+      limitUsd: args.limit_usd,
+      periodKind: args.period_kind,
+      periodStart: args.period_start ? new Date(args.period_start) : undefined,
+      periodEnd: args.period_end ? new Date(args.period_end) : undefined,
+      softCapPct: args.soft_cap_pct,
+      hardCapPct: args.hard_cap_pct,
+      parentEnvelopeName: args.parent_envelope_name,
+    });
+    return JSON.stringify(
+      {
+        ok: true,
+        envelope: row,
+        hint:
+          "Wire the budget-gate hook (apps/extension/hooks/budget-gate.mjs) " +
+          "as a Stop hook in Claude Code to enforce this envelope, or call " +
+          "budget_status to inspect spend.",
+      },
+      null,
+      2
+    );
+  });
+}
+
+// ============================================================================
 // Request Handlers
 // ============================================================================
 
@@ -859,6 +1053,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "budget_status":
+        result = await handleBudgetStatus(args as {
+          name: string;
+          sqlite_path?: string;
+        });
+        break;
+      case "budget_configure":
+        result = await handleBudgetConfigure(args as {
+          name: string;
+          limit_usd: number;
+          period_kind: "day" | "week" | "month" | "custom";
+          period_start?: string;
+          period_end?: string;
+          soft_cap_pct?: number;
+          hard_cap_pct?: number;
+          parent_envelope_name?: string;
+          sqlite_path?: string;
         });
         break;
       default:

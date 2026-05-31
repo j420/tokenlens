@@ -252,3 +252,126 @@ describe("LocalSqliteSink — multi-process lock", () => {
     await b.close();
   });
 });
+
+describe("LocalSqliteSink — budget envelopes & charges", () => {
+  let bdir = "";
+  let bsink: LocalSqliteSink;
+
+  beforeEach(async () => {
+    bdir = mkdtempSync(join(tmpdir(), "prune-budget-"));
+    bsink = new LocalSqliteSink({ path: join(bdir, "b.sqlite") });
+    await bsink.init();
+  });
+
+  afterEach(async () => {
+    await bsink.close();
+    rmSync(bdir, { recursive: true, force: true });
+  });
+
+  const baseEnvelope = {
+    envelope_id: "11111111-1111-1111-1111-111111111111",
+    name: "test",
+    period_kind: "month" as const,
+    period_start: "2026-05-01T00:00:00.000Z",
+    period_end: "2026-05-31T23:59:59.999Z",
+    limit_usd: 200,
+    soft_cap_pct: 0.75,
+    hard_cap_pct: 1.0,
+    parent_envelope_id: null,
+    metadata: { team: "platform" },
+  };
+
+  const baseCharge = {
+    charge_id: "22222222-2222-2222-2222-222222222222",
+    envelope_id: "11111111-1111-1111-1111-111111111111",
+    timestamp: "2026-05-15T10:00:00.000Z",
+    agent_id: null,
+    model: "claude-sonnet-4",
+    provider: "anthropic" as const,
+    tokens_in: 1000,
+    tokens_out: 200,
+    tokens_cached: 0,
+    tokens_cache_creation: 0,
+    cost_usd: 1.25,
+    source: "recorded" as const,
+    metadata: { call_id: "abc" },
+  };
+
+  it("upsertBudgetEnvelope persists and round-trips via getBudgetEnvelope", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    const got = await bsink.getBudgetEnvelope("test");
+    expect(got).not.toBeNull();
+    expect(got!.envelope_id).toBe(baseEnvelope.envelope_id);
+    expect(got!.limit_usd).toBe(200);
+    expect(got!.metadata).toEqual({ team: "platform" });
+  });
+
+  it("upsert is idempotent and updates mutable fields", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    await bsink.upsertBudgetEnvelope({ ...baseEnvelope, limit_usd: 500 });
+    const got = await bsink.getBudgetEnvelope("test");
+    expect(got!.limit_usd).toBe(500);
+  });
+
+  it("getBudgetEnvelopeById returns same row as getBudgetEnvelope", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    const byName = await bsink.getBudgetEnvelope("test");
+    const byId = await bsink.getBudgetEnvelopeById(baseEnvelope.envelope_id);
+    expect(byId).toEqual(byName);
+  });
+
+  it("recordBudgetCharge persists; getRecentBudgetCharges returns it", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    await bsink.recordBudgetCharge(baseCharge);
+    const charges = await bsink.getRecentBudgetCharges(baseEnvelope.envelope_id);
+    expect(charges).toHaveLength(1);
+    expect(charges[0].cost_usd).toBe(1.25);
+    expect(charges[0].metadata).toEqual({ call_id: "abc" });
+  });
+
+  it("getBudgetSpend sums charges in the time window", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    await bsink.recordBudgetCharge(baseCharge);
+    await bsink.recordBudgetCharge({
+      ...baseCharge,
+      charge_id: "33333333-3333-3333-3333-333333333333",
+      cost_usd: 2.5,
+      timestamp: "2026-05-20T10:00:00.000Z",
+    });
+    // Both inside the period.
+    const total = await bsink.getBudgetSpend(
+      baseEnvelope.envelope_id,
+      new Date("2026-05-01T00:00:00.000Z")
+    );
+    expect(total).toBeCloseTo(3.75, 6);
+    // Only the second is inside the narrower window.
+    const recent = await bsink.getBudgetSpend(
+      baseEnvelope.envelope_id,
+      new Date("2026-05-18T00:00:00.000Z")
+    );
+    expect(recent).toBeCloseTo(2.5, 6);
+  });
+
+  it("getBudgetSpend returns 0 for an envelope with no charges (rather than NULL)", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    const total = await bsink.getBudgetSpend(
+      baseEnvelope.envelope_id,
+      new Date("2026-05-01T00:00:00.000Z")
+    );
+    expect(total).toBe(0);
+  });
+
+  it("budget rows survive flush + reopen (durability)", async () => {
+    await bsink.upsertBudgetEnvelope(baseEnvelope);
+    await bsink.recordBudgetCharge(baseCharge);
+    await bsink.close();
+    const reopened = new LocalSqliteSink({ path: join(bdir, "b.sqlite") });
+    await reopened.init();
+    const env = await reopened.getBudgetEnvelope("test");
+    expect(env).not.toBeNull();
+    expect(env!.metadata).toEqual({ team: "platform" });
+    const charges = await reopened.getRecentBudgetCharges(env!.envelope_id);
+    expect(charges).toHaveLength(1);
+    await reopened.close();
+  });
+});

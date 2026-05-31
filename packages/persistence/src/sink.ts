@@ -69,12 +69,67 @@ export interface BudgetUsageRow {
   limit_usd: number;
 }
 
+/**
+ * A named budget envelope. Tracks a fixed-period spend cap. A parent
+ * envelope id allows nesting (per-team → per-project → per-agent
+ * sub-budgets) where a child's spend rolls up to the parent.
+ *
+ * Designed to map cleanly onto Anthropic's June 15 2026 Agent SDK
+ * separate-credit-pool model: the user's `$200` Max-20x envelope is one
+ * `budget_envelopes` row; per-agent sub-budgets are children.
+ */
+export interface BudgetEnvelopeRow {
+  envelope_id: string;
+  name: string;                // unique; user-facing label
+  period_kind: "day" | "week" | "month" | "custom";
+  period_start: string;        // ISO 8601
+  period_end: string;          // ISO 8601 (inclusive)
+  limit_usd: number;
+  soft_cap_pct: number;        // 0..1, warn threshold (default 0.75)
+  hard_cap_pct: number;        // 0..1, block threshold (default 1.0)
+  parent_envelope_id: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/**
+ * A single charge against an envelope. May come from either a recorded
+ * post-call usage report (`source: "recorded"`) or a pre-flight reserve
+ * (`source: "reserved"`) that is later replaced when the real call lands.
+ */
+export interface BudgetChargeRow {
+  charge_id: string;
+  envelope_id: string;
+  timestamp: string;
+  agent_id: string | null;
+  model: string;
+  provider: Provider;
+  tokens_in: number;
+  tokens_out: number;
+  tokens_cached: number;
+  tokens_cache_creation: number;
+  cost_usd: number;
+  source: "reserved" | "recorded";
+  metadata: Record<string, unknown>;
+}
+
 export interface PersistenceSink {
   init(): Promise<void>;
   recordEvent(row: EventRow): Promise<void>;
   recordCompaction(row: CompactionEventRow): Promise<void>;
   recordAlert(row: AlertRow): Promise<void>;
   upsertBudgetUsage(row: BudgetUsageRow): Promise<void>;
+  /** Insert a new envelope or update existing limits/caps. */
+  upsertBudgetEnvelope(row: BudgetEnvelopeRow): Promise<void>;
+  /** Append a charge against an envelope. */
+  recordBudgetCharge(row: BudgetChargeRow): Promise<void>;
+  /** Lookup by unique name; returns null if absent. */
+  getBudgetEnvelope(name: string): Promise<BudgetEnvelopeRow | null>;
+  /** Lookup by primary key; null if absent. Used for parent rollups. */
+  getBudgetEnvelopeById(envelopeId: string): Promise<BudgetEnvelopeRow | null>;
+  /** Sum of cost_usd against envelope_id in [since, now]. Excludes envelopes that have no charges (returns 0). */
+  getBudgetSpend(envelopeId: string, since: Date): Promise<number>;
+  /** Last N charges against an envelope (most recent first). For burn-rate computation and audit. */
+  getRecentBudgetCharges(envelopeId: string, limit?: number): Promise<BudgetChargeRow[]>;
   getRecentEvents(sessionId: string, limit?: number): Promise<EventRow[]>;
   /**
    * Commit pending writes to durable storage. Implementations are free to
