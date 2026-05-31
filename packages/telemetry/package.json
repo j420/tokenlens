@@ -15,6 +15,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@prune/intelligence": "0.1.0",
     "@prune/shared": "0.1.0",
     "zod": "^3.24.0"
   },

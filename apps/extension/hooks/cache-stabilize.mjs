@@ -7,10 +7,7 @@
  * rate) and injects an advisory `additionalContext` line.
  */
 
-import {
-  TranscriptReader,
-  groupIntoTurns,
-} from "@prune/telemetry";
+import { loadCachedSessionView } from "@prune/telemetry";
 import {
   computeCacheMetrics,
   diagnoseCacheBust,
@@ -26,11 +23,7 @@ safeRun(async () => {
   const payload = await readHookPayload();
   if (!payload.transcript_path) return emitNoop();
 
-  const reader = new TranscriptReader(payload.transcript_path);
-  if (!reader.exists()) return emitNoop();
-
-  const { messages } = await reader.readAll();
-  const turns = groupIntoTurns(messages);
+  const { turns } = await loadCachedSessionView(payload.transcript_path);
   if (turns.length < 2) return emitNoop();
 
   const inputs = turns.map((t) => ({ model: t.model, usage: t.usage }));

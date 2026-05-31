@@ -9,14 +9,10 @@
  */
 
 import {
-  TranscriptReader,
-  groupIntoTurns,
+  loadCachedSessionView,
+  projectTurnsToBuffer,
 } from "@prune/telemetry";
-import {
-  MessageBuffer,
-  analyzeCompaction,
-  createMessageSummary,
-} from "@prune/intelligence";
+import { analyzeCompaction } from "@prune/intelligence";
 import {
   emitAdditionalContext,
   emitNoop,
@@ -28,37 +24,14 @@ safeRun(async () => {
   const payload = await readHookPayload();
   if (!payload.transcript_path) return emitNoop();
 
-  const reader = new TranscriptReader(payload.transcript_path);
-  if (!reader.exists()) return emitNoop();
-
-  const { messages } = await reader.readAll();
-  const turns = groupIntoTurns(messages);
+  const { turns } = await loadCachedSessionView(payload.transcript_path);
   if (turns.length < 2) return emitNoop();
 
   const splitAt = Math.floor(turns.length / 2);
   const before = turns.slice(0, splitAt);
   const after = turns.slice(splitAt);
 
-  const buffer = new MessageBuffer();
-  for (const t of before) {
-    if (t.userMessage) {
-      buffer.addMessage(
-        createMessageSummary(t.textContent, t.turnNumber, "user")
-      );
-    }
-    for (const a of t.assistantMessages) {
-      const text =
-        typeof a.content === "string"
-          ? a.content
-          : a.content
-              .map((b) => (b?.text ?? ""))
-              .join("\n");
-      buffer.addMessage(
-        createMessageSummary(text, t.turnNumber, "assistant")
-      );
-    }
-  }
-
+  const { buffer } = projectTurnsToBuffer(before);
   const postContent = after.map((t) => t.textContent).join("\n");
   const diff = analyzeCompaction(buffer, postContent, splitAt);
   if (diff.lostReferences.length === 0) return emitNoop();

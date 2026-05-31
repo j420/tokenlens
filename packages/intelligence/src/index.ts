@@ -59,9 +59,13 @@ export {
 // Session Tracker (Phase 2: loop circuit-breaker)
 export {
   replaySession,
+  appendToSession,
+  serializeWalk,
+  deserializeWalk,
   evaluateLoopBlock,
   formatLoopBlockMessage,
   type SessionROIWalk,
+  type SerializedSessionROIWalk,
   type LoopBlockDecision,
   type LoopBlockOptions,
 } from "./session-tracker.js";

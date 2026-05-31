@@ -10,6 +10,10 @@
 
 import { encode } from "gpt-tokenizer";
 import { createHash } from "node:crypto";
+// Note: would prefer to source sha256Hex from @prune/shared/node, but this
+// package compiles to CommonJS where `moduleResolution: bundler` (required
+// to consume the subpath) isn't allowed. The function is one line — the
+// duplication cost is lower than reshaping the build.
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const ANTHROPIC_VERSION = "2023-06-01";

@@ -28,6 +28,21 @@ export interface TranscriptReadResult {
   errors: TranscriptParseError[];
 }
 
+export interface AppendedReadResult {
+  messages: FlatMessage[];
+  errors: TranscriptParseError[];
+  /** Byte offset of the first unread byte; pass back as `fromByteOffset` on next call. */
+  newOffset: number;
+  /** Cumulative line number reached so far (= prior + lines parsed this call). */
+  newLineNumber: number;
+  /**
+   * True if the file is shorter than `fromByteOffset` (truncated, rotated,
+   * or replaced). The caller should invalidate any state derived from prior
+   * reads and start over from offset 0.
+   */
+  stale: boolean;
+}
+
 export class TranscriptReader {
   constructor(private readonly path: string) {}
 
@@ -79,6 +94,112 @@ export class TranscriptReader {
       if (flat) messages.push(flat);
     }
     return { messages, rawMessages, errors };
+  }
+
+  /**
+   * Read only the bytes appended since the previous call. Use this for
+   * incremental processing where you've already consumed messages up to
+   * `fromByteOffset` and want to pick up where you left off without
+   * re-reading the entire transcript.
+   *
+   * If the file ends mid-line (a write is in progress), the partial line
+   * is left unread: `newOffset` points to the start of the partial line,
+   * so the next call sees that line as part of its appended slice.
+   *
+   * If `fromByteOffset` exceeds the current file size, `stale: true` is
+   * returned (no messages) — the caller must reset their derived state.
+   */
+  async readAppended(
+    fromByteOffset: number,
+    priorLineNumber: number = 0
+  ): Promise<AppendedReadResult> {
+    const messages: FlatMessage[] = [];
+    const errors: TranscriptParseError[] = [];
+    if (!this.exists()) {
+      return {
+        messages,
+        errors,
+        newOffset: 0,
+        newLineNumber: priorLineNumber,
+        stale: fromByteOffset > 0,
+      };
+    }
+    const current = statSync(this.path).size;
+    if (fromByteOffset > current) {
+      return {
+        messages,
+        errors,
+        newOffset: 0,
+        newLineNumber: 0,
+        stale: true,
+      };
+    }
+    if (fromByteOffset === current) {
+      return {
+        messages,
+        errors,
+        newOffset: current,
+        newLineNumber: priorLineNumber,
+        stale: false,
+      };
+    }
+
+    let buffer = "";
+    const decoder = new StringDecoder("utf8");
+    const stream = createReadStream(this.path, {
+      start: fromByteOffset,
+      end: current - 1,
+    });
+    for await (const chunk of stream) {
+      buffer += decoder.write(chunk as Buffer);
+    }
+    buffer += decoder.end();
+
+    // Don't consume a trailing partial line — leave it for the next call.
+    const lastNl = buffer.lastIndexOf("\n");
+    const consumable = lastNl >= 0 ? buffer.slice(0, lastNl + 1) : "";
+    const consumedBytes = Buffer.byteLength(consumable, "utf8");
+
+    let lineNumber = priorLineNumber;
+    for (const raw of consumable.split("\n")) {
+      // Note: split on the final "\n" leaves a trailing empty string we skip.
+      if (!raw) continue;
+      lineNumber++;
+      const line = raw.trim();
+      if (!line) continue;
+      let json: unknown;
+      try {
+        json = JSON.parse(line);
+      } catch (e) {
+        errors.push({
+          lineNumber,
+          raw: line,
+          reason: `invalid JSON: ${(e as Error).message}`,
+        });
+        continue;
+      }
+      const parsed = TranscriptMessageSchema.safeParse(json);
+      if (!parsed.success) {
+        errors.push({
+          lineNumber,
+          raw: line,
+          reason: parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; "),
+        });
+        continue;
+      }
+      const flat = flattenMessage(parsed.data);
+      if (flat) messages.push(flat);
+    }
+
+    return {
+      messages,
+      errors,
+      newOffset: fromByteOffset + consumedBytes,
+      newLineNumber: lineNumber,
+      stale: false,
+    };
   }
 
   /**

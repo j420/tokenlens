@@ -7,15 +7,10 @@
  * with a human-readable reason and a routing suggestion.
  */
 
-import {
-  TranscriptReader,
-  groupIntoTurns,
-  toTurnDataLike,
-} from "@prune/telemetry";
+import { loadCachedSessionView } from "@prune/telemetry";
 import {
   evaluateLoopBlock,
   formatLoopBlockMessage,
-  replaySession,
 } from "@prune/intelligence";
 import {
   emitBlock,
@@ -28,14 +23,9 @@ safeRun(async () => {
   const payload = await readHookPayload();
   if (!payload.transcript_path) return emitNoop();
 
-  const reader = new TranscriptReader(payload.transcript_path);
-  if (!reader.exists()) return emitNoop();
+  const { turns, walk } = await loadCachedSessionView(payload.transcript_path);
+  if (turns.length < 3 || !walk) return emitNoop();
 
-  const { messages } = await reader.readAll();
-  const turns = groupIntoTurns(messages);
-  if (turns.length < 3) return emitNoop();
-
-  const walk = replaySession(turns.map((t) => toTurnDataLike(t)));
   const decision = evaluateLoopBlock(walk, {
     consecutiveLowRoiThreshold: 3,
     currentModel: turns[turns.length - 1]?.model,

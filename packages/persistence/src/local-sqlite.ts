@@ -16,9 +16,11 @@
  *
  * Crash safety: `flush()` writes to `${path}.tmp.${pid}` then renames over
  * `path`, so a crash mid-write leaves either the old image or the new one,
- * never a half-written file that fails to reopen. Multi-process safety
- * still requires external coordination (file lock or a single writer
- * process).
+ * never a half-written file that fails to reopen. Multi-process safety:
+ * `init()` acquires an exclusive lock on `${path}.lock` via proper-lockfile
+ * and holds it until `close()`; a second writer trying to open the same
+ * path will get a clear "already held" error rather than silently
+ * clobbering the first writer's events on flush.
  *
  * Schema mirrors @prune/db (Drizzle/Postgres) so rows can be re-exported.
  */
@@ -32,6 +34,7 @@ import {
   unlinkSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import lockfile from "proper-lockfile";
 import initSqlJs, { type Database, type SqlJsStatic } from "sql.js";
 import type {
   AlertRow,
@@ -125,12 +128,37 @@ export interface LocalSqliteSinkOptions {
 export class LocalSqliteSink implements PersistenceSink {
   private db: Database | null = null;
   private readonly opts: Required<LocalSqliteSinkOptions>;
+  private releaseLock: (() => Promise<void>) | null = null;
 
   constructor(opts: LocalSqliteSinkOptions) {
     this.opts = { autoFlush: false, ...opts };
   }
 
   async init(): Promise<void> {
+    if (this.opts.path !== ":memory:") {
+      // Exclusive single-writer lock. sql.js loads the whole DB into memory
+      // and only re-serializes on flush(), so two concurrent writers would
+      // each hold a stale snapshot and the second flusher's image would
+      // clobber the first's writes silently. A per-method lock can't fix
+      // that — only restricting init→close to one process at a time can.
+      // The sentinel `${path}.lock` exists so we can lock before the DB
+      // file does (proper-lockfile requires an existing target).
+      const sentinel = `${this.opts.path}.lock`;
+      mkdirSync(dirname(this.opts.path), { recursive: true });
+      if (!existsSync(sentinel)) writeFileSync(sentinel, "");
+      try {
+        this.releaseLock = await lockfile.lock(sentinel, {
+          retries: { retries: 5, factor: 1.5, minTimeout: 50, maxTimeout: 500 },
+          stale: 30_000,
+        });
+      } catch (err) {
+        const cause = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `LocalSqliteSink: another process is writing to ${this.opts.path} ` +
+            `(lock held). Close the other writer or use a different path. (${cause})`
+        );
+      }
+    }
     const SQL = await getSqlJs();
     if (this.opts.path !== ":memory:" && existsSync(this.opts.path)) {
       const buf = readFileSync(this.opts.path);
@@ -321,10 +349,17 @@ export class LocalSqliteSink implements PersistenceSink {
   }
 
   async close(): Promise<void> {
-    if (this.db) {
-      if (this.opts.path !== ":memory:") this.flushSync();
-      this.db.close();
-      this.db = null;
+    try {
+      if (this.db) {
+        if (this.opts.path !== ":memory:") this.flushSync();
+        this.db.close();
+        this.db = null;
+      }
+    } finally {
+      if (this.releaseLock) {
+        await this.releaseLock().catch(() => {});
+        this.releaseLock = null;
+      }
     }
   }
 }

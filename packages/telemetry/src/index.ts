@@ -12,3 +12,5 @@ export * from "./schema.js";
 export * from "./transcript-reader.js";
 export * from "./turn-mapper.js";
 export * from "./cache-fields.js";
+export * from "./projection.js";
+export * from "./session-cache.js";

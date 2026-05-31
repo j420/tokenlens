@@ -203,3 +203,52 @@ describe("LocalSqliteSink", () => {
     await sink2.close();
   });
 });
+
+describe("LocalSqliteSink — multi-process lock", () => {
+  let lockDir = "";
+
+  beforeEach(() => {
+    lockDir = mkdtempSync(join(tmpdir(), "prune-lock-"));
+  });
+
+  afterEach(() => {
+    rmSync(lockDir, { recursive: true, force: true });
+  });
+
+  it("rejects a second init() while the first writer holds the lock", async () => {
+    const p = join(lockDir, "exclusive.sqlite");
+    const a = new LocalSqliteSink({ path: p });
+    await a.init();
+    const b = new LocalSqliteSink({ path: p });
+    await expect(b.init()).rejects.toThrow(/another process is writing/i);
+    await a.close();
+  });
+
+  it("a second writer can acquire the lock after the first closes", async () => {
+    const p = join(lockDir, "sequential.sqlite");
+    const a = new LocalSqliteSink({ path: p });
+    await a.init();
+    await a.recordEvent(baseEvent);
+    await a.close();
+
+    const b = new LocalSqliteSink({ path: p });
+    await b.init();
+    const second: EventRow = { ...baseEvent, event_id: "44444444-4444-4444-4444-444444444444" };
+    await b.recordEvent(second);
+    const recent = await b.getRecentEvents(baseEvent.session_id, 10);
+    expect(recent.map((r) => r.event_id).sort()).toEqual([
+      baseEvent.event_id,
+      second.event_id,
+    ]);
+    await b.close();
+  });
+
+  it("does not lock :memory: databases", async () => {
+    const a = new LocalSqliteSink({ path: ":memory:" });
+    const b = new LocalSqliteSink({ path: ":memory:" });
+    await a.init();
+    await b.init();
+    await a.close();
+    await b.close();
+  });
+});

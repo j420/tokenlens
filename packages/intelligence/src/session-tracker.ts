@@ -44,6 +44,94 @@ export function replaySession(turns: TurnData[]): SessionROIWalk {
   };
 }
 
+/**
+ * Incremental sibling of `replaySession`. Given an existing walk and a
+ * batch of new turns to append, run `classifyTurnROI` + `updateSessionROI`
+ * only on the new turns. `priorHistory` must contain the TurnData for
+ * every turn that produced `walk` — the classifier needs it to compute
+ * similarity, redundant reads, and error resolution against past turns.
+ *
+ * Mathematically equivalent to
+ * `replaySession([...priorHistory, ...newTurns])` — see
+ * `session-tracker.test.ts:"appendToSession ≡ replaySession"`.
+ */
+export function appendToSession(
+  walk: SessionROIWalk,
+  newTurns: TurnData[],
+  priorHistory: TurnData[]
+): SessionROIWalk {
+  let session = walk.sessionROI;
+  const perTurn = [...walk.perTurn];
+  const history = [...priorHistory];
+  let lastAnalysis = walk.lastAnalysis;
+  let lastTurn = walk.lastTurn;
+  for (const t of newTurns) {
+    const analysis = classifyTurnROI(t, history);
+    session = updateSessionROI(session, analysis, t);
+    perTurn.push(analysis);
+    history.push(t);
+    lastAnalysis = analysis;
+    lastTurn = t;
+  }
+  return { sessionROI: session, perTurn, lastTurn, lastAnalysis };
+}
+
+/**
+ * JSON-safe shape of a SessionROIWalk. Dates are stringified to ISO and
+ * rehydrated by `deserializeWalk`. Round-trip equivalent to the original.
+ */
+export interface SerializedSessionROIWalk {
+  sessionROI: {
+    cumulativeRoiScore: number;
+    totalProductiveTokens: number;
+    totalRecursiveTokens: number;
+    totalTokens: number;
+    consecutiveLowRoiTurns: number;
+    lowRoiStreak: SerializedTurnData[];
+  };
+  perTurn: ROIAnalysis[];
+  lastTurn?: SerializedTurnData;
+  lastAnalysis?: ROIAnalysis;
+}
+
+interface SerializedTurnData extends Omit<TurnData, "timestamp"> {
+  timestamp: string;
+}
+
+function serializeTurn(t: TurnData): SerializedTurnData {
+  return { ...t, timestamp: t.timestamp.toISOString() };
+}
+
+function deserializeTurn(t: SerializedTurnData): TurnData {
+  return { ...t, timestamp: new Date(t.timestamp) };
+}
+
+export function serializeWalk(walk: SessionROIWalk): SerializedSessionROIWalk {
+  return {
+    sessionROI: {
+      ...walk.sessionROI,
+      lowRoiStreak: walk.sessionROI.lowRoiStreak.map(serializeTurn),
+    },
+    perTurn: walk.perTurn,
+    lastTurn: walk.lastTurn ? serializeTurn(walk.lastTurn) : undefined,
+    lastAnalysis: walk.lastAnalysis,
+  };
+}
+
+export function deserializeWalk(
+  walk: SerializedSessionROIWalk
+): SessionROIWalk {
+  return {
+    sessionROI: {
+      ...walk.sessionROI,
+      lowRoiStreak: walk.sessionROI.lowRoiStreak.map(deserializeTurn),
+    },
+    perTurn: walk.perTurn,
+    lastTurn: walk.lastTurn ? deserializeTurn(walk.lastTurn) : undefined,
+    lastAnalysis: walk.lastAnalysis,
+  };
+}
+
 export interface LoopBlockDecision {
   shouldBlock: boolean;
   reason?: string;

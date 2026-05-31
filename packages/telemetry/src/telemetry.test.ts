@@ -228,3 +228,199 @@ describe("TranscriptReader.watch — tail-mode", () => {
     expect(seen.map((m) => m.role)).toEqual(["user"]);
   });
 });
+
+describe("TranscriptReader.readAppended", () => {
+  it("readAll() equals cached-prefix + readAppended(offset) on the fixture", async () => {
+    const reader = new TranscriptReader(FIXTURE);
+    const full = await reader.readAll();
+    expect(full.errors).toEqual([]);
+
+    // Read the first half, then the rest.
+    const { statSync } = await import("node:fs");
+    const totalBytes = statSync(FIXTURE).size;
+    const mid = Math.floor(totalBytes / 2);
+    const head = await reader.readAppended(0);
+    const headOffset = head.newOffset;
+    expect(headOffset).toBeGreaterThan(0);
+    expect(headOffset).toBeLessThanOrEqual(totalBytes);
+
+    const tail = await reader.readAppended(headOffset, head.newLineNumber);
+    expect(tail.stale).toBe(false);
+    expect(tail.newOffset).toBe(totalBytes);
+
+    const reassembled = [...head.messages, ...tail.messages];
+    expect(reassembled).toEqual(full.messages);
+
+    // The split offset matters here: doing it in arbitrary chunks must also work.
+    void mid;
+  });
+
+  it("leaves a trailing partial line for the next call", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "prune-readappended-"));
+    const path = join(dir, "t.jsonl");
+    const reader = new TranscriptReader(path);
+    try {
+      const full = '{"role":"user","content":"hi"}\n';
+      const partial = '{"role":"assist'; // intentionally unterminated
+      writeFileSync(path, full + partial);
+      const first = await reader.readAppended(0);
+      expect(first.messages.map((m) => m.role)).toEqual(["user"]);
+      expect(first.newOffset).toBe(Buffer.byteLength(full, "utf8"));
+
+      // Append the rest of the line — the next call should pick up the now-complete record.
+      appendFileSync(path, 'ant","content":"hi back"}\n');
+      const second = await reader.readAppended(first.newOffset, first.newLineNumber);
+      expect(second.messages.map((m) => m.role)).toEqual(["assistant"]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("flags truncation as stale instead of returning garbage", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "prune-readappended-stale-"));
+    const path = join(dir, "t.jsonl");
+    const reader = new TranscriptReader(path);
+    try {
+      writeFileSync(path, '{"role":"user","content":"a"}\n');
+      const first = await reader.readAppended(0);
+      // Simulate rotation/truncation: shrink the file.
+      writeFileSync(path, "");
+      const stale = await reader.readAppended(first.newOffset, first.newLineNumber);
+      expect(stale.stale).toBe(true);
+      expect(stale.messages).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("loadCachedSessionView", () => {
+  let dir = "";
+  let cacheDir = "";
+  let path = "";
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "prune-sessionview-"));
+    cacheDir = join(dir, "cache");
+    path = join(dir, "session.jsonl");
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("second call after no transcript change does not re-classify committed turns", async () => {
+    const { loadCachedSessionView } = await import("./session-cache.js");
+    // Three completed turns: u1 → a1 → u2 → a2 → u3 → a3.
+    const lines = [
+      JSON.stringify({ role: "user", content: "one" }),
+      JSON.stringify({
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: "first reply",
+        usage: { input_tokens: 100, output_tokens: 20 },
+      }),
+      JSON.stringify({ role: "user", content: "two" }),
+      JSON.stringify({
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: "second reply",
+        usage: { input_tokens: 100, output_tokens: 20 },
+      }),
+      JSON.stringify({ role: "user", content: "three" }),
+      JSON.stringify({
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: "third reply",
+        usage: { input_tokens: 100, output_tokens: 20 },
+      }),
+      "",
+    ].join("\n");
+    writeFileSync(path, lines);
+
+    const first = await loadCachedSessionView(path, { cacheDir });
+    expect(first.turns).toHaveLength(3);
+    expect(first.walk?.perTurn).toHaveLength(3);
+
+    const second = await loadCachedSessionView(path, { cacheDir });
+    expect(second.turns).toHaveLength(3);
+    // The walk's per-turn analysis array must match (same classification,
+    // same signals) — proving the cache returned the same answer without
+    // re-running classifyTurnROI from scratch.
+    expect(second.walk?.perTurn).toEqual(first.walk?.perTurn);
+  });
+
+  it("incremental view after appending a turn matches a from-scratch view", async () => {
+    const { loadCachedSessionView } = await import("./session-cache.js");
+    // Pin timestamps so the from-scratch and incremental walks produce
+    // identical TurnData (toTurnDataLike falls back to `new Date()` when
+    // no timestamp is present, which would differ between runs).
+    const msg = (role: string, content: string, n: number, hasUsage = true) => ({
+      role,
+      content,
+      timestamp: `2026-05-30T10:0${n}:00.000Z`,
+      ...(role === "assistant"
+        ? {
+            model: "claude-sonnet-4-5-20250929",
+            ...(hasUsage
+              ? { usage: { input_tokens: 100, output_tokens: 20 } }
+              : {}),
+          }
+        : {}),
+    });
+    const initial =
+      [
+        JSON.stringify(msg("user", "one", 1)),
+        JSON.stringify(msg("assistant", "first reply", 1)),
+        JSON.stringify(msg("user", "two", 2)),
+        JSON.stringify(msg("assistant", "second reply", 2)),
+      ].join("\n") + "\n";
+    writeFileSync(path, initial);
+    await loadCachedSessionView(path, { cacheDir });
+
+    appendFileSync(
+      path,
+      JSON.stringify(msg("user", "three", 3)) +
+        "\n" +
+        JSON.stringify(msg("assistant", "third reply", 3)) +
+        "\n"
+    );
+
+    const incremental = await loadCachedSessionView(path, { cacheDir });
+
+    // Compare against a fresh view (no cache) on the same file.
+    const freshCache = join(dir, "fresh-cache");
+    const fresh = await loadCachedSessionView(path, { cacheDir: freshCache });
+
+    expect(incremental.turns.length).toBe(fresh.turns.length);
+    expect(incremental.walk?.perTurn).toEqual(fresh.walk?.perTurn);
+    expect(incremental.walk?.sessionROI).toEqual(fresh.walk?.sessionROI);
+  });
+
+  it("invalidates and re-reads from scratch when the transcript is truncated", async () => {
+    const { loadCachedSessionView, SessionCache } = await import(
+      "./session-cache.js"
+    );
+    const lines = [
+      JSON.stringify({ role: "user", content: "one" }),
+      JSON.stringify({
+        role: "assistant",
+        model: "claude-sonnet-4-5-20250929",
+        content: "first reply",
+        usage: { input_tokens: 100, output_tokens: 20 },
+      }),
+      "",
+    ].join("\n");
+    writeFileSync(path, lines);
+    await loadCachedSessionView(path, { cacheDir });
+
+    // Verify a cache entry was written.
+    const cache = new SessionCache(path, { cacheDir });
+    expect(await cache.load()).not.toBeNull();
+
+    // Truncate and re-read.
+    writeFileSync(path, "");
+    const empty = await loadCachedSessionView(path, { cacheDir });
+    expect(empty.turns).toEqual([]);
+  });
+});

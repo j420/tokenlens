@@ -1031,20 +1031,15 @@ describe("loop_status + routing_suggestion", () => {
 
 describe("diff_context", () => {
   it("returns 'unchanged' when sha256 matches", async () => {
+    const { sha256Hex } = await import("@prune/shared/node");
     const filePath = path.join(testDir, "unchanged.ts");
     const content = "export const x = 1;\n";
     fs.writeFileSync(filePath, content);
-    const sha = (await import("crypto"))
-      .createHash("sha256")
-      .update(content)
-      .digest("hex");
+    const sha = sha256Hex(content);
 
     // Replicate the handler's decision branch (the dispatcher is internal;
     // the rest of this suite avoids spinning up the MCP server).
-    const currentSha = (await import("crypto"))
-      .createHash("sha256")
-      .update(fs.readFileSync(filePath, "utf-8"))
-      .digest("hex");
+    const currentSha = sha256Hex(fs.readFileSync(filePath, "utf-8"));
     expect(currentSha).toBe(sha);
   });
 

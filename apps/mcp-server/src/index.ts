@@ -16,16 +16,16 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import * as fs from "fs";
 import * as path from "path";
-import * as crypto from "crypto";
 
+import { sha256Hex } from "@prune/shared/node";
 import { countTokens, countTokensBatch, estimateCost, formatTokens, formatCost } from "@prune/tokenizer";
 import { squeezeFile, type SqueezeTier } from "@prune/squeezer";
-import { detectCompaction, analyzeCompaction, MessageBuffer, createMessageSummary } from "@prune/intelligence";
+import { detectCompaction, analyzeCompaction } from "@prune/intelligence";
 import { fetchCursorUsage } from "@prune/state-scraper";
 import {
   TranscriptReader,
-  groupIntoTurns,
-  toTurnDataLike,
+  loadCachedSessionView,
+  projectTurnsToBuffer,
 } from "@prune/telemetry";
 import {
   computeCacheMetrics,
@@ -33,7 +33,6 @@ import {
   evaluateLoopBlock,
   formatLoopBlockMessage,
   getModelRoutingSuggestion,
-  replaySession,
   type CacheTurnInput,
 } from "@prune/intelligence";
 
@@ -438,8 +437,7 @@ async function handleCacheReport(args: {
       error: `transcript not found: ${args.transcript_path}`,
     });
   }
-  const { messages, errors } = await reader.readAll();
-  const allTurns = groupIntoTurns(messages);
+  const { turns: allTurns } = await loadCachedSessionView(args.transcript_path);
   const window =
     args.window_turns && args.window_turns > 0
       ? allTurns.slice(-args.window_turns)
@@ -478,7 +476,6 @@ async function handleCacheReport(args: {
       savedVsNoCache: formatCost(metrics.cost.savedVsNoCache),
     },
     diagnoses,
-    parseErrors: errors.length,
   }, null, 2);
 }
 
@@ -493,10 +490,19 @@ async function handleLoopStatus(args: {
       error: `transcript not found: ${args.transcript_path}`,
     });
   }
-  const { messages, errors } = await reader.readAll();
-  const turns = groupIntoTurns(messages);
-  const turnData = turns.map((t) => toTurnDataLike(t));
-  const walk = replaySession(turnData);
+  const view = await loadCachedSessionView(args.transcript_path);
+  const turns = view.turns;
+  const walk = view.walk ?? {
+    sessionROI: {
+      cumulativeRoiScore: 0,
+      totalProductiveTokens: 0,
+      totalRecursiveTokens: 0,
+      totalTokens: 0,
+      consecutiveLowRoiTurns: 0,
+      lowRoiStreak: [],
+    },
+    perTurn: [],
+  };
 
   // If the caller didn't pass a model, infer from the most recent assistant turn.
   const inferredModel =
@@ -531,7 +537,6 @@ async function handleLoopStatus(args: {
       blockMessage: decision.shouldBlock
         ? formatLoopBlockMessage(decision)
         : null,
-      parseErrors: errors.length,
     },
     null,
     2
@@ -547,10 +552,6 @@ function handleRoutingSuggestion(args: {
     args.consecutive_low_roi_turns
   );
   return JSON.stringify(suggestion, null, 2);
-}
-
-function sha256Hex(s: string): string {
-  return crypto.createHash("sha256").update(s).digest("hex");
 }
 
 interface LineDiff {
@@ -740,8 +741,7 @@ async function handleCompactionCheck(args: {
       error: `transcript not found: ${args.transcript_path}`,
     });
   }
-  const { messages } = await reader.readAll();
-  const turns = groupIntoTurns(messages);
+  const { turns } = await loadCachedSessionView(args.transcript_path);
   if (turns.length < 2) {
     return JSON.stringify({
       transcript_path: args.transcript_path,
@@ -760,34 +760,12 @@ async function handleCompactionCheck(args: {
 
   // Build pre-compaction buffer from turn text (best-effort approximation —
   // a real PreCompact hook would supply the exact transcript window).
-  // We also build a parallel `beforeContent` string so we can tokenize the
-  // before/after sides with the SAME function — MessageBuffer.getTotalTokens
-  // is a heuristic count and would otherwise disagree with countTokens by
-  // tens of percent, triggering spurious "compaction detected" verdicts.
-  const buffer = new MessageBuffer();
-  const beforeParts: string[] = [];
-  for (const t of before) {
-    if (t.userMessage) {
-      buffer.addMessage(
-        createMessageSummary(t.textContent, t.turnNumber, "user")
-      );
-      if (t.textContent) beforeParts.push(t.textContent);
-    }
-    for (const a of t.assistantMessages) {
-      const text =
-        typeof a.content === "string"
-          ? a.content
-          : a.content
-              .map((b) => ("text" in b && b.text ? b.text : ""))
-              .join("\n");
-      buffer.addMessage(
-        createMessageSummary(text, t.turnNumber, "assistant")
-      );
-      if (text) beforeParts.push(text);
-    }
-  }
+  // The helper also yields `beforeContent` so both sides go through the
+  // SAME tokenizer (MessageBuffer.getTotalTokens is heuristic and would
+  // disagree with countTokens by tens of percent, triggering spurious
+  // "compaction detected" verdicts).
+  const { buffer, beforeContent } = projectTurnsToBuffer(before);
 
-  const beforeContent = beforeParts.join("\n");
   const postContent = after
     .map((t) => t.textContent)
     .filter((s) => s)

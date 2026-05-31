@@ -1,9 +1,12 @@
 import { describe, it, expect } from "vitest";
 import type { TurnData } from "./roi-classifier.js";
 import {
+  appendToSession,
+  deserializeWalk,
   evaluateLoopBlock,
   formatLoopBlockMessage,
   replaySession,
+  serializeWalk,
 } from "./session-tracker.js";
 
 function recursiveTurn(n: number): TurnData {
@@ -107,5 +110,52 @@ describe("evaluateLoopBlock", () => {
     const walk = replaySession([productiveTurn(1)]);
     const d = evaluateLoopBlock(walk, { currentModel: "gpt-4o" });
     expect(formatLoopBlockMessage(d)).toBe("");
+  });
+});
+
+describe("appendToSession", () => {
+  it("incremental ≡ batch — appending turns one by one matches replaySession", () => {
+    const allTurns: TurnData[] = [
+      productiveTurn(1),
+      recursiveTurn(2),
+      recursiveTurn(3),
+      productiveTurn(4),
+      recursiveTurn(5),
+    ];
+    const batch = replaySession(allTurns);
+
+    // Incremental: walk the first 2, then append the rest one by one.
+    let walk = replaySession(allTurns.slice(0, 2));
+    const history: TurnData[] = allTurns.slice(0, 2);
+    for (const t of allTurns.slice(2)) {
+      walk = appendToSession(walk, [t], history);
+      history.push(t);
+    }
+
+    expect(walk.perTurn).toEqual(batch.perTurn);
+    expect(walk.sessionROI).toEqual(batch.sessionROI);
+    expect(walk.lastTurn).toEqual(batch.lastTurn);
+    expect(walk.lastAnalysis).toEqual(batch.lastAnalysis);
+  });
+
+  it("(de)serializeWalk round-trips a walk exactly", () => {
+    const walk = replaySession([
+      recursiveTurn(1),
+      recursiveTurn(2),
+      recursiveTurn(3),
+      recursiveTurn(4),
+    ]);
+    const round = deserializeWalk(JSON.parse(JSON.stringify(serializeWalk(walk))));
+    expect(round.perTurn).toEqual(walk.perTurn);
+    expect(round.sessionROI.cumulativeRoiScore).toBe(
+      walk.sessionROI.cumulativeRoiScore
+    );
+    expect(round.sessionROI.consecutiveLowRoiTurns).toBe(
+      walk.sessionROI.consecutiveLowRoiTurns
+    );
+    expect(round.sessionROI.lowRoiStreak.map((t) => t.turnNumber)).toEqual(
+      walk.sessionROI.lowRoiStreak.map((t) => t.turnNumber)
+    );
+    expect(round.sessionROI.lowRoiStreak[0]?.timestamp).toBeInstanceOf(Date);
   });
 });
