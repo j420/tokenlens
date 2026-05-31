@@ -2,6 +2,7 @@
   "name": "@prune/mcp-server",
   "version": "0.1.0",
   "description": "MCP server for AI self-regulation with Prune tools",
+  "type": "module",
   "main": "dist/index.js",
   "bin": {
     "prune-mcp": "./dist/index.js"
