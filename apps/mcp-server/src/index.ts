@@ -242,6 +242,62 @@ const TOOLS = [
     },
   },
   {
+    name: "sentinel_scan_prompt",
+    description:
+      "Pre-prompt scan: detect API keys, private keys, connection " +
+      "URLs, and high-entropy tokens in a payload BEFORE sending it " +
+      "to a cloud model. Pattern-based (gitleaks/TruffleHog-style). " +
+      "Responds to GitGuardian's documented 3.2% AI-commit leak rate " +
+      "vs 1.5% human baseline (https://oecd.ai/en/incidents/2026-03-17-2273). " +
+      "Returns a verdict (allow/warn/block), the per-finding location, " +
+      "and a length-preserving redacted payload.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        payload: { type: "string" as const, description: "Text to scan." },
+        block_on_pattern_ids: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description:
+            "Optional explicit list of pattern ids that must block. Defaults " +
+            "to all vendor keys + private keys + connection URLs.",
+        },
+        min_entropy: {
+          type: "number" as const,
+          description: "Override entropy threshold (default 4.5).",
+        },
+      },
+      required: ["payload"],
+    },
+  },
+  {
+    name: "sentinel_scan_mcp",
+    description:
+      "Post-tool scan: inspect an MCP tool response (or any untrusted " +
+      "external payload) for prompt-injection signatures. Categories: " +
+      "SHADOWING, PATH_TRAVERSAL, ARGUMENT_INJECTION, HIDDEN_HTML, " +
+      "INDIRECT_MARKUP. Pattern matches the documented Jan 20 2026 RCE " +
+      "in Anthropic's Git MCP server (arXiv 2601.17548). Default policy " +
+      "blocks the first three categories.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        payload: { type: "string" as const, description: "Text to scan." },
+        block_on_categories: {
+          type: "array" as const,
+          items: {
+            type: "string" as const,
+            enum: ["SHADOWING", "PATH_TRAVERSAL", "ARGUMENT_INJECTION", "HIDDEN_HTML", "INDIRECT_MARKUP"],
+          },
+          description:
+            "Optional override of categories that force a block. Defaults " +
+            "to SHADOWING + PATH_TRAVERSAL + ARGUMENT_INJECTION.",
+        },
+      },
+      required: ["payload"],
+    },
+  },
+  {
     name: "routing_decide",
     description:
       "Classify a coding-agent request (intent + difficulty) and return a " +
@@ -1072,6 +1128,57 @@ async function handleCompactionCheck(args: {
 }
 
 // ============================================================================
+// Sentinel (pre-prompt secret scan + MCP-response injection shield)
+// ============================================================================
+
+import {
+  scanPromptForSecrets,
+  scanMcpResponseForInjection,
+} from "@prune/sentinel";
+
+async function handleSentinelScanPrompt(args: {
+  payload: string;
+  block_on_pattern_ids?: string[];
+  min_entropy?: number;
+}): Promise<string> {
+  const report = scanPromptForSecrets(args.payload, {
+    blockOnPatternIds: args.block_on_pattern_ids,
+    entropy: args.min_entropy !== undefined ? { minEntropy: args.min_entropy } : undefined,
+  });
+  return JSON.stringify(
+    {
+      verdict: report.verdict,
+      reason: report.reason,
+      secret_findings: report.secretFindings,
+      entropy_findings: report.entropyFindings,
+      redacted_payload: report.redactedPayload,
+    },
+    null,
+    2
+  );
+}
+
+async function handleSentinelScanMcp(args: {
+  payload: string;
+  block_on_categories?: Array<
+    "SHADOWING" | "PATH_TRAVERSAL" | "ARGUMENT_INJECTION" | "HIDDEN_HTML" | "INDIRECT_MARKUP"
+  >;
+}): Promise<string> {
+  const report = scanMcpResponseForInjection(args.payload, {
+    blockOnCategories: args.block_on_categories,
+  });
+  return JSON.stringify(
+    {
+      verdict: report.verdict,
+      reason: report.reason,
+      injection_findings: report.injectionFindings,
+    },
+    null,
+    2
+  );
+}
+
+// ============================================================================
 // Router (three-tier deterministic classifier + policy)
 // ============================================================================
 
@@ -1486,6 +1593,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = await handleCompactionCheck(args as {
           transcript_path: string;
           window_turns?: number;
+        });
+        break;
+      case "sentinel_scan_prompt":
+        result = await handleSentinelScanPrompt(args as {
+          payload: string;
+          block_on_pattern_ids?: string[];
+          min_entropy?: number;
+        });
+        break;
+      case "sentinel_scan_mcp":
+        result = await handleSentinelScanMcp(args as {
+          payload: string;
+          block_on_categories?: Array<
+            "SHADOWING" | "PATH_TRAVERSAL" | "ARGUMENT_INJECTION" | "HIDDEN_HTML" | "INDIRECT_MARKUP"
+          >;
         });
         break;
       case "routing_decide":
