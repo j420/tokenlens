@@ -20,6 +20,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { createPrivateKey, createPublicKey } from "node:crypto";
 
 import { generateEd25519KeyPair } from "./digest.js";
 
@@ -73,8 +74,6 @@ export function loadOrCreateKey(opts: LoadKeyOptions = {}): KeystoreKey {
 function derivePublicPem(privatePem: string): string {
   // Round-trip via node:crypto so we don't depend on the caller having
   // already-paired keys saved.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { createPrivateKey, createPublicKey } = require("node:crypto") as typeof import("node:crypto");
   const priv = createPrivateKey(privatePem);
   const pub = createPublicKey(priv);
   return pub.export({ format: "pem", type: "spki" }).toString();

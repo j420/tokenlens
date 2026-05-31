@@ -1460,29 +1460,23 @@ async function handleExportFocusCsv(args: {
   sub_account_name?: string;
   limit?: number;
 }): Promise<string> {
-  return withBudgetGate(args.sqlite_path, async (gate) => {
+  return withBudgetGate(args.sqlite_path, async (gate, sink) => {
     const env = await gate.getEnvelope(args.envelope_name);
     if (!env) {
       return JSON.stringify({ error: `envelope "${args.envelope_name}" not found` });
     }
-    const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(args.sqlite_path) });
-    await sink.init();
-    try {
-      const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 1000);
-      const rows = mapChargesToFocus(charges, {
-        subAccountId: args.sub_account_id,
-        subAccountName: args.sub_account_name,
-      });
-      // Coerce: FocusRow has strict types but rowsToCsv accepts any
-      // Record<string, unknown>. The shape is compatible at runtime.
-      const csv = rowsToCsv(
-        rows as unknown as Array<Record<string, unknown>>,
-        FOCUS_COLUMNS as unknown as ReadonlyArray<string>
-      );
-      return csv;
-    } finally {
-      await sink.close();
-    }
+    const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 1000);
+    const rows = mapChargesToFocus(charges, {
+      subAccountId: args.sub_account_id,
+      subAccountName: args.sub_account_name,
+    });
+    // Coerce: FocusRow has strict types but rowsToCsv accepts any
+    // Record<string, unknown>. The shape is compatible at runtime.
+    const csv = rowsToCsv(
+      rows as unknown as Array<Record<string, unknown>>,
+      FOCUS_COLUMNS as unknown as ReadonlyArray<string>
+    );
+    return csv;
   });
 }
 
@@ -1491,19 +1485,13 @@ async function handleExportOtel(args: {
   sqlite_path?: string;
   limit?: number;
 }): Promise<string> {
-  return withBudgetGate(args.sqlite_path, async (gate) => {
+  return withBudgetGate(args.sqlite_path, async (gate, sink) => {
     const env = await gate.getEnvelope(args.envelope_name);
     if (!env) {
       return JSON.stringify({ error: `envelope "${args.envelope_name}" not found` });
     }
-    const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(args.sqlite_path) });
-    await sink.init();
-    try {
-      const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 1000);
-      return JSON.stringify(mapChargesToOtel(charges), null, 2);
-    } finally {
-      await sink.close();
-    }
+    const charges = await sink.getRecentBudgetCharges(env.envelope_id, args.limit ?? 1000);
+    return JSON.stringify(mapChargesToOtel(charges), null, 2);
   });
 }
 
@@ -1818,12 +1806,12 @@ function defaultBudgetSqlitePath(override?: string): string {
 
 async function withBudgetGate<T>(
   sqlitePath: string | undefined,
-  fn: (gate: BudgetGate) => Promise<T>
+  fn: (gate: BudgetGate, sink: LocalSqliteSink) => Promise<T>
 ): Promise<T> {
   const sink = new LocalSqliteSink({ path: defaultBudgetSqlitePath(sqlitePath) });
   await sink.init();
   try {
-    return await fn(new BudgetGate(sink));
+    return await fn(new BudgetGate(sink), sink);
   } finally {
     await sink.close();
   }

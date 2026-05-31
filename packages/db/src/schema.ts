@@ -583,3 +583,116 @@ export type NewPredictionModel = typeof predictionModels.$inferInsert;
 
 export type Prediction = typeof predictions.$inferSelect;
 export type NewPrediction = typeof predictions.$inferInsert;
+
+// ============================================================================
+// Phase 5+ — cost-intelligence platform tables.
+// These mirror the schema added to @prune/persistence/local-sqlite.ts so a
+// team can roll up local TokenLens data into Postgres without rewriting.
+// Column types match the SQLite schema 1:1 (TEXT → text, REAL → real,
+// INTEGER → integer, JSON → jsonb).
+// ============================================================================
+
+// budget_envelopes — named spend caps (BudgetGate). Parent-envelope linkage
+// supports team → dev → agent rollups. Period bounds are stored as ISO
+// strings (text) to match the SQLite shape exactly.
+export const budgetEnvelopes = pgTable(
+  "budget_envelopes",
+  {
+    envelope_id: uuid("envelope_id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    period_kind: text("period_kind").notNull(),
+    period_start: timestamp("period_start", { withTimezone: true }).notNull(),
+    period_end: timestamp("period_end", { withTimezone: true }).notNull(),
+    limit_usd: real("limit_usd").notNull(),
+    soft_cap_pct: real("soft_cap_pct").notNull().default(0.75),
+    hard_cap_pct: real("hard_cap_pct").notNull().default(1.0),
+    parent_envelope_id: uuid("parent_envelope_id"),
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => ({
+    parentIdx: index("idx_envelopes_parent").on(table.parent_envelope_id),
+  })
+);
+
+// budget_charges — append-only ledger of per-call cost charges with
+// attribution metadata stamped by @prune/budget-gate.
+export const budgetCharges = pgTable(
+  "budget_charges",
+  {
+    charge_id: uuid("charge_id").primaryKey().defaultRandom(),
+    envelope_id: uuid("envelope_id").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    agent_id: text("agent_id"),
+    model: text("model").notNull(),
+    provider: providerEnum("provider").notNull(),
+    tokens_in: integer("tokens_in").notNull(),
+    tokens_out: integer("tokens_out").notNull(),
+    tokens_cached: integer("tokens_cached").notNull().default(0),
+    tokens_cache_creation: integer("tokens_cache_creation").notNull().default(0),
+    cost_usd: real("cost_usd").notNull(),
+    source: text("source").notNull(),
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => ({
+    envelopeTimeIdx: index("idx_charges_envelope_time").on(
+      table.envelope_id,
+      table.timestamp
+    ),
+    agentTimeIdx: index("idx_charges_agent_time").on(table.agent_id, table.timestamp),
+  })
+);
+
+// replay_log — hash-chained, ed25519-signed audit log per session
+// (@prune/replay-vault). Sequence is per-session monotonic. payload_canonical
+// is the RFC 8785 JCS canonical form over which record_hash is computed.
+export const replayLog = pgTable(
+  "replay_log",
+  {
+    record_id: uuid("record_id").primaryKey().defaultRandom(),
+    session_id: text("session_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    kind: text("kind").notNull(),
+    payload_canonical: text("payload_canonical").notNull(),
+    record_hash: text("record_hash").notNull(),
+    prev_record_hash: text("prev_record_hash"),
+    signature: text("signature").notNull(),
+    signer_fingerprint: text("signer_fingerprint").notNull(),
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => ({
+    sessionSeqIdx: index("idx_replay_session_seq").on(table.session_id, table.sequence),
+  })
+);
+
+// slo_definitions — SRE Error Budget rows (@prune/slo). SLI is computed at
+// read time from budget_charges, so adjusting targets doesn't rewrite history.
+export const sloDefinitions = pgTable(
+  "slo_definitions",
+  {
+    slo_id: uuid("slo_id").primaryKey().defaultRandom(),
+    name: text("name").notNull().unique(),
+    scope_envelope_id: uuid("scope_envelope_id").notNull(),
+    target_usd_per_task: real("target_usd_per_task").notNull(),
+    error_budget_usd: real("error_budget_usd").notNull(),
+    window_days: integer("window_days").notNull(),
+    warning_pct: real("warning_pct").notNull().default(0.5),
+    task_dimension: text("task_dimension").notNull().default("agent_id"),
+    metadata: jsonb("metadata").notNull().default({}),
+  },
+  (table) => ({
+    scopeIdx: index("idx_slo_scope").on(table.scope_envelope_id),
+  })
+);
+
+export type BudgetEnvelope = typeof budgetEnvelopes.$inferSelect;
+export type NewBudgetEnvelope = typeof budgetEnvelopes.$inferInsert;
+
+export type BudgetCharge = typeof budgetCharges.$inferSelect;
+export type NewBudgetCharge = typeof budgetCharges.$inferInsert;
+
+export type ReplayLogRow = typeof replayLog.$inferSelect;
+export type NewReplayLogRow = typeof replayLog.$inferInsert;
+
+export type SloDefinition = typeof sloDefinitions.$inferSelect;
+export type NewSloDefinition = typeof sloDefinitions.$inferInsert;

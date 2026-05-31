@@ -25,69 +25,60 @@ function check(name, cond, detail) {
 }
 
 /**
- * Speak JSON-RPC to the MCP server over stdio. Sends initialize +
- * notifications/initialized + the requested call, returns parsed
- * responses. Matches the MCP protocol's required handshake.
+ * Speak JSON-RPC to the MCP server. Sends each call only after the
+ * previous response lands — avoids killing the server mid-flight.
+ * Same pattern as tests/integration/mcp-invoke.mjs.
  */
-function jsonrpc(messages) {
-  return new Promise((resolve, reject) => {
+function rpcOnce(toolCall) {
+  return new Promise((resolve) => {
     const proc = spawn("node", [SERVER], {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, NO_COLOR: "1" },
     });
     let out = "";
-    let err = "";
-    proc.stdout.on("data", (d) => (out += d.toString()));
-    proc.stderr.on("data", (d) => (err += d.toString()));
-    proc.on("error", reject);
-    proc.on("exit", () => {
-      const responses = out
-        .split("\n")
-        .filter(Boolean)
-        .map((l) => {
-          try {
-            return JSON.parse(l);
-          } catch {
-            return null;
+    const pending = new Map();
+    const waitFor = (id) => new Promise((r) => pending.set(id, r));
+
+    proc.stdout.on("data", (d) => {
+      out += d.toString();
+      let nl;
+      while ((nl = out.indexOf("\n")) !== -1) {
+        const line = out.slice(0, nl);
+        out = out.slice(nl + 1);
+        if (!line.trim()) continue;
+        try {
+          const msg = JSON.parse(line);
+          if (msg.id !== undefined && pending.has(msg.id)) {
+            const r = pending.get(msg.id);
+            pending.delete(msg.id);
+            r(msg);
           }
-        })
-        .filter(Boolean);
-      resolve({ responses, err });
-    });
-    // Stagger writes so the server processes init before list.
-    const writeWithDelay = async () => {
-      for (const m of messages) {
-        proc.stdin.write(JSON.stringify(m) + "\n");
-        await new Promise((r) => setTimeout(r, 100));
+        } catch {
+          // Skip non-JSON banner.
+        }
       }
-      // Give the server time to flush all responses before we kill.
-      await new Promise((r) => setTimeout(r, 500));
+    });
+    proc.on("exit", () => resolve(null));
+
+    (async () => {
+      proc.stdin.write(JSON.stringify({
+        jsonrpc: "2.0", id: 1, method: "initialize",
+        params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "x", version: "0" } },
+      }) + "\n");
+      await waitFor(1);
+      proc.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
+      proc.stdin.write(JSON.stringify(toolCall) + "\n");
+      const resp = await waitFor(toolCall.id);
       proc.kill();
-    };
-    writeWithDelay();
-    setTimeout(() => proc.kill(), 5000);
+      resolve(resp);
+    })();
+    setTimeout(() => proc.kill(), 15_000);
   });
 }
 
 async function listTools() {
-  const init = {
-    jsonrpc: "2.0",
-    id: 1,
-    method: "initialize",
-    params: {
-      protocolVersion: "2024-11-05",
-      capabilities: {},
-      clientInfo: { name: "smoke", version: "0.0.0" },
-    },
-  };
-  const initialized = {
-    jsonrpc: "2.0",
-    method: "notifications/initialized",
-  };
-  const list = { jsonrpc: "2.0", id: 2, method: "tools/list" };
-  const r = await jsonrpc([init, initialized, list]);
-  const listResp = r.responses.find((x) => x.id === 2);
-  return listResp?.result?.tools ?? [];
+  const resp = await rpcOnce({ jsonrpc: "2.0", id: 2, method: "tools/list" });
+  return resp?.result?.tools ?? [];
 }
 
 console.log("=== MCP tool surface ===");

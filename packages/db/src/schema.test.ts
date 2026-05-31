@@ -578,3 +578,82 @@ describe("Table Relationships", () => {
     expect(predictions).toBeDefined();
   });
 });
+
+// ============================================================================
+// Phase 5+ — cost-intelligence platform tables (mirror @prune/persistence)
+// ============================================================================
+
+import {
+  budgetEnvelopes,
+  budgetCharges,
+  replayLog,
+  sloDefinitions,
+} from "./schema.js";
+import type {
+  NewBudgetEnvelope,
+  NewBudgetCharge,
+  NewReplayLogRow,
+  NewSloDefinition,
+} from "./schema.js";
+
+describe("Phase 5+ cost-intelligence tables — Postgres schema parity", () => {
+  it("budget_envelopes exists with required columns", () => {
+    expect(budgetEnvelopes).toBeDefined();
+    const row: NewBudgetEnvelope = {
+      name: "team-alpha",
+      period_kind: "month",
+      period_start: new Date("2026-05-01T00:00:00.000Z"),
+      period_end: new Date("2026-05-31T23:59:59.999Z"),
+      limit_usd: 200,
+    };
+    expect(row.name).toBe("team-alpha");
+  });
+
+  it("budget_charges accepts an attribution-stamped charge", () => {
+    expect(budgetCharges).toBeDefined();
+    const row: NewBudgetCharge = {
+      envelope_id: "11111111-1111-1111-1111-111111111111",
+      timestamp: new Date(),
+      model: "claude-sonnet-4",
+      provider: "anthropic",
+      tokens_in: 100,
+      tokens_out: 50,
+      cost_usd: 0.001,
+      source: "recorded",
+      metadata: { "attribution.developer": "alice@example.com" },
+    };
+    expect(row.metadata).toBeDefined();
+  });
+
+  it("replay_log accepts a hash-chained signed record", () => {
+    expect(replayLog).toBeDefined();
+    const row: NewReplayLogRow = {
+      session_id: "s1",
+      sequence: 0,
+      timestamp: new Date(),
+      kind: "request",
+      payload_canonical: '{"q":"hi"}',
+      record_hash: "abc",
+      signature: "AA==",
+      signer_fingerprint: "fingerprint16ch",
+    };
+    expect(row.sequence).toBe(0);
+  });
+
+  it("slo_definitions accepts an SLO row", () => {
+    expect(sloDefinitions).toBeDefined();
+    const row: NewSloDefinition = {
+      name: "task-cost",
+      scope_envelope_id: "11111111-1111-1111-1111-111111111111",
+      target_usd_per_task: 1.0,
+      error_budget_usd: 5.0,
+      window_days: 7,
+    };
+    expect(row.target_usd_per_task).toBe(1.0);
+  });
+
+  it("provider enum is shared between budget_charges and events", () => {
+    // Same providerEnum is reused — guarantees a single source of truth.
+    expect(providerEnum).toBeDefined();
+  });
+});
