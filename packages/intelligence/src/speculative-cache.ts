@@ -57,11 +57,32 @@ const PURE_READ_BASH = [
   /^rg\s/,
 ];
 
-const SHELL_WRITE_METACHARS = /[|;&><`]|\$\(/;
+// Shell metacharacters that can chain, redirect, or substitute another
+// command. Includes newline/carriage-return: a cacheable read is a single
+// command, and a newline could smuggle `cat a\nrm b`.
+const SHELL_WRITE_METACHARS = /[|;&><`\n\r]|\$\(/;
 
-/** An opaque freshness token. Equal tokens ⇒ identical underlying bytes. */
+// `find` is a read primary ONLY without an action that executes or mutates.
+// These primaries run commands or modify the filesystem and must disqualify.
+const FIND_DANGEROUS_PRIMARY =
+  /\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/;
+
+/**
+ * An opaque freshness token. Equal tokens ⇒ the underlying source is unchanged.
+ *
+ * SOUNDNESS HIERARCHY (strongest → weakest):
+ *   - "content-sha"    hash of the exact bytes. SOUND for Read: identical token
+ *                      guarantees byte-identical content, zero false matches.
+ *   - "filelist-stat"  hash of per-file (path, mtime, size) over the scanned
+ *                      set. Catches in-place edits (mtime/size change) that a
+ *                      bare directory stat misses. Recommended for Grep/Glob.
+ *   - "dir-stat"       directory mtime + entry count only. Detects add/remove/
+ *                      rename but NOT in-place content edits — a WEAK signal.
+ *                      Use only for LS-style listings, and rely on shadow
+ *                      verification + auto-disable to catch its failures.
+ */
 export interface FreshnessToken {
-  kind: "content-sha" | "dir-stat" | "worktree-sha";
+  kind: "content-sha" | "filelist-stat" | "dir-stat" | "worktree-sha";
   value: string;
 }
 
@@ -118,6 +139,11 @@ export function isEligibleTool(name: string): boolean {
 export function isPureReadBash(command: string): boolean {
   const trimmed = command.trim();
   if (SHELL_WRITE_METACHARS.test(trimmed)) return false;
+  // `find` with an executing/mutating action primary is NOT a read, even
+  // though it matches the `-type f` read pattern (e.g. `find . -type f -delete`).
+  if (/^find\b/.test(trimmed) && FIND_DANGEROUS_PRIMARY.test(trimmed)) {
+    return false;
+  }
   return PURE_READ_BASH.some((re) => re.test(trimmed));
 }
 
@@ -351,9 +377,25 @@ export function contentToken(content: string): FreshnessToken {
   return { kind: "content-sha", value: sha256Hex(content) };
 }
 
-/** Build a directory-stat token from mtime + entry count. */
+/** Build a directory-stat token from mtime + entry count (WEAK — see hierarchy). */
 export function dirStatToken(mtimeMs: number, entryCount: number): FreshnessToken {
   return { kind: "dir-stat", value: `${Math.trunc(mtimeMs)}:${entryCount}` };
+}
+
+/**
+ * Build a strong file-list token from per-file (path, mtime, size). Catches
+ * in-place content edits that a bare directory stat misses. Recommended for
+ * Grep/Glob substitution. Entries are sorted so ordering can't change the
+ * token.
+ */
+export function fileListStatToken(
+  entries: Array<{ path: string; mtimeMs: number; size: number }>
+): FreshnessToken {
+  const canonical = entries
+    .map((e) => `${e.path} ${Math.trunc(e.mtimeMs)} ${e.size}`)
+    .sort()
+    .join("");
+  return { kind: "filelist-stat", value: sha256Hex(canonical) };
 }
 
 /** Build a worktree token from `git ls-files -s` output (or any state hash). */

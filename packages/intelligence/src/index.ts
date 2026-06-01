@@ -148,6 +148,7 @@ export {
   canonicalizeInput,
   contentToken,
   dirStatToken,
+  fileListStatToken,
   worktreeToken,
   ELIGIBLE_TOOLS,
   type SubstitutionScope,
