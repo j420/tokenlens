@@ -1,0 +1,25 @@
+{
+  "name": "@prune/equivalence",
+  "version": "0.1.0",
+  "description": "Output-equivalence relations for TCRP. Proves a cost-reduction transform (cached substitution, dieted trajectory, cheaper model) produced an equivalent result — structurally for code, by distance for prose, by coverage for mixed output.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "vitest": "^2.1.0"
+  }
+}
