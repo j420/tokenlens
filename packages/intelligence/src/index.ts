@@ -124,3 +124,17 @@ export {
   type SubagentPattern,
   type SubagentPolicyOptions,
 } from "./subagent-policy.js";
+
+// F2 — Tool-Definition Auditor (TCRP)
+export {
+  auditToolDefinitions,
+  buildUsageWindow,
+  DEFAULT_CRITICAL_ALLOWLIST,
+  type ToolDefinitionInfo,
+  type ToolUsageWindow,
+  type ToolUtility,
+  type ToolAuditEntry,
+  type ToolAuditReport,
+  type ToolAuditOptions,
+  type SessionToolObservation,
+} from "./tool-def-auditor.js";
