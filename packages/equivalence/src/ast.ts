@@ -22,9 +22,17 @@ export type IdentifierMode = "literal" | "alpha";
 
 export interface AstEquivalenceOptions {
   /**
-   * "literal" (strict): identifiers compared by exact text — only trivia
-   * differs. "alpha": identifiers consistently renamed (x↔y ok if used
-   * identically). Default "alpha" since this is an offline metric.
+   * "literal" (strict, DEFAULT): identifiers compared by exact text — only
+   * trivia (comments/whitespace/formatting) may differ. Never wrongly equates
+   * two semantically different programs.
+   *
+   * "alpha": identifiers consistently renamed. This is a PERMISSIVE,
+   * OPT-IN heuristic — it is sound for bound variables but NOT for free
+   * identifiers, so a consistent swap of two distinct free references
+   * (e.g. `a()` vs `b()` in swapped branches) is treated as equivalent.
+   * Use it only for rename-tolerant SCORING, never as a ship gate. The
+   * default is "literal" precisely because a false "equivalent" is the one
+   * error this whole program must never make.
    */
   identifierMode?: IdentifierMode;
   /** ts | tsx | js | jsx. Defaults to ts. */
@@ -56,7 +64,7 @@ export function fingerprint(
   code: string,
   options: AstEquivalenceOptions = {}
 ): { tokens: string[]; syntaxErrors: number } {
-  const mode = options.identifierMode ?? "alpha";
+  const mode = options.identifierMode ?? "literal";
   const scriptKind = toScriptKind(options.scriptKind ?? "ts");
   const sf = ts.createSourceFile(
     "snippet" + extFor(options.scriptKind ?? "ts"),
@@ -84,19 +92,56 @@ export function fingerprint(
     const kind = ts.SyntaxKind[node.kind];
     if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) {
       tokens.push(renameId(node.text));
+    } else if (ts.isRegularExpressionLiteral(node)) {
+      // Regex source + flags are semantic — /foo/g must differ from /bar/i.
+      tokens.push(`regex:${node.text}`);
     } else if (ts.isStringLiteralLike(node)) {
-      // Literal value is semantic — keep it verbatim.
+      // Literal value is semantic — keep it verbatim. (isStringLiteralLike
+      // also covers NoSubstitutionTemplateLiteral.)
       tokens.push(`str:${node.text}`);
     } else if (ts.isNumericLiteral(node) || ts.isBigIntLiteral(node)) {
       tokens.push(`num:${node.text}`);
+    } else if (isTemplatePart(node)) {
+      // The static text of a template (head/middle/tail) is semantic:
+      // `hello ${x}` must differ from `goodbye ${x}`.
+      tokens.push(`tmpl:${(node as ts.LiteralLikeNode).text}`);
     } else {
       tokens.push(kind);
+      // Prefix/postfix unary operators are stored as an `operator` SyntaxKind
+      // PROPERTY, not a child node forEachChild visits — so without this the
+      // fingerprint would treat -x ≡ !x ≡ +x ≡ ~x and x++ ≡ x--.
+      if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
+        tokens.push(`unop:${ts.SyntaxKind[node.operator]}`);
+      }
+      // const/let/var/using is a NodeFlag on the declaration list, not a
+      // visited token — capture it so mutability changes are never "equivalent".
+      if (ts.isVariableDeclarationList(node)) {
+        tokens.push(`declflag:${declarationFlag(node)}`);
+      }
     }
     ts.forEachChild(node, visit);
   };
   ts.forEachChild(sf, visit);
 
   return { tokens, syntaxErrors: countSyntaxErrors(sf) };
+}
+
+function isTemplatePart(node: ts.Node): boolean {
+  return (
+    node.kind === ts.SyntaxKind.TemplateHead ||
+    node.kind === ts.SyntaxKind.TemplateMiddle ||
+    node.kind === ts.SyntaxKind.TemplateTail
+  );
+}
+
+function declarationFlag(node: ts.VariableDeclarationList): string {
+  const f = node.flags;
+  if (f & ts.NodeFlags.Const) return "const";
+  if (f & ts.NodeFlags.Let) return "let";
+  // `using` / `await using` (TS 5.2+) change resource-disposal semantics.
+  if (f & ts.NodeFlags.AwaitUsing) return "awaitusing";
+  if (f & ts.NodeFlags.Using) return "using";
+  return "var";
 }
 
 /**

@@ -163,12 +163,20 @@ describe("dispatcher", () => {
     expect(r.equivalent).toBe(true);
   });
 
-  it("routes code to AST", () => {
+  it("routes code to AST (rename credited only under explicit alpha)", () => {
     const a = `function add(x: number, y: number) { return x + y; }`;
     const b = `function add(p: number, q: number) { return p + q; }`;
-    const r = equivalent(a, b, { asCode: true });
-    expect(r.strategy).toBe("ast");
-    expect(r.equivalent).toBe(true);
+    // Strict default: routes to AST but a rename is NOT equivalent (safe).
+    const strict = equivalent(a, b, { asCode: true });
+    expect(strict.strategy).toBe("ast");
+    expect(strict.equivalent).toBe(false);
+    expect(strict.similarity).toBeGreaterThan(0.7); // graded high despite rename
+    // Opt-in alpha mode credits the consistent rename.
+    const alpha = equivalent(a, b, {
+      asCode: true,
+      astOptions: { identifierMode: "alpha" },
+    });
+    expect(alpha.equivalent).toBe(true);
   });
 
   it("routes prose to text", () => {
