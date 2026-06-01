@@ -105,6 +105,16 @@ export function aggregateModel(
     testPassedCount,
     meanCost,
     totalCost,
-    qpdRaw: meanCost > 0 ? acceptanceRate / meanCost : Infinity,
+    // Quality per dollar. No samples ⇒ no value delivered ⇒ 0 (not Infinity).
+    // A genuinely free model that delivers quality is infinitely cost-
+    // efficient, so that case stays Infinity.
+    qpdRaw:
+      n === 0
+        ? 0
+        : meanCost > 0
+          ? acceptanceRate / meanCost
+          : acceptanceRate > 0
+            ? Infinity
+            : 0,
   };
 }
