@@ -138,3 +138,22 @@ export {
   type ToolAuditOptions,
   type SessionToolObservation,
 } from "./tool-def-auditor.js";
+
+// F3 — Speculative Action Pruner (TCRP)
+export {
+  SpeculativeCache,
+  isEligibleTool,
+  isPureReadBash,
+  scopeForToolUse,
+  canonicalizeInput,
+  contentToken,
+  dirStatToken,
+  worktreeToken,
+  ELIGIBLE_TOOLS,
+  type SubstitutionScope,
+  type FreshnessToken,
+  type CacheEntry,
+  type SubstitutionDecision,
+  type SpeculativeCacheOptions,
+  type VerificationStats,
+} from "./speculative-cache.js";
