@@ -64,7 +64,13 @@ export function applyBreakpoints(
     const out: ProviderToolDef = {
       name: t.name,
       description: t.description,
-      input_schema: t.inputSchema,
+      // CRITICAL: the provider's prompt cache hashes the wire BYTES of the
+      // request. Two semantically-identical input_schemas with different key
+      // order would silently miss the cache. We canonicalize (deep sort) the
+      // schema here so callers don't have to worry about object construction
+      // order. Without this, swapping `properties:{a,b}` ↔ `{b,a}` would
+      // produce a different fingerprint and break the cache hit.
+      input_schema: deepKeySort(t.inputSchema) as Record<string, unknown>,
     };
     if (cc) out.cache_control = cc;
     return out;
@@ -135,6 +141,30 @@ function replacer(): (k: string, v: unknown) => unknown {
     for (const k of Object.keys(o).sort()) ordered[k] = o[k];
     return ordered;
   };
+}
+
+/**
+ * Recursively sort object keys for stable wire bytes. Used inside
+ * applyBreakpoints to canonicalize tool input_schemas before they hit the
+ * provider — required so caller-controlled key order can't accidentally bust
+ * the prompt-cache prefix. Defensive against undefined/null and cycles.
+ */
+export function deepKeySort(value: unknown): unknown {
+  return deepKeySortInner(value, new WeakSet());
+}
+function deepKeySortInner(value: unknown, seen: WeakSet<object>): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value as object)) return null; // cycle guard
+  seen.add(value as object);
+  if (Array.isArray(value)) {
+    return value.map((v) => deepKeySortInner(v, seen));
+  }
+  const o = value as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(o).sort()) {
+    out[k] = deepKeySortInner(o[k], seen);
+  }
+  return out;
 }
 
 /** Utilities for tests + callers. */

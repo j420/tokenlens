@@ -87,7 +87,15 @@ export function planBreakpoints(
   options: PlanOptions = {}
 ): BreakpointPlan {
   const estimate = options.estimate ?? defaultEstimate;
-  const maxBreakpoints = options.maxBreakpoints ?? 4;
+  // The provider hard-caps breakpoints at 4. A caller passing Infinity, NaN,
+  // or a number outside [0, 4] would either get a provider-side rejection
+  // (Infinity) or a degenerate plan (negative/NaN). Clamp explicitly here so
+  // the upstream contract is enforced at OUR boundary, not at the wire.
+  const rawMax = options.maxBreakpoints ?? 4;
+  const maxBreakpoints =
+    Number.isFinite(rawMax) && Number.isInteger(rawMax)
+      ? Math.max(0, Math.min(4, rawMax))
+      : 4;
   const minPrefix =
     options.minCacheableTokens ?? minCacheableForModel(request.model);
   const ttl = options.defaultTtl ?? "5m";

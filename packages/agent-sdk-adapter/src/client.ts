@@ -36,6 +36,12 @@ import type {
   ProviderRequest,
   UsageReport,
 } from "./types.js";
+import {
+  assertValidRequest,
+  normalizeUsage,
+  validateResponse,
+  type ValidationIssue,
+} from "./validate.js";
 
 export interface PruneAgentClientOptions {
   /** REQUIRED. Calls the model. No default — purity by injection. */
@@ -75,7 +81,15 @@ export interface AdapterTurn {
   routing: RoutingDecision;
   plan: BreakpointPlan;
   response: MessageResponse;
+  /** Always present — normalized to explicit zeros if the vendor omitted it. */
   usage: UsageReport;
+  /** Non-fatal vendor-response warnings (e.g. missing usage, missing id). */
+  responseWarnings: ValidationIssue[];
+  /**
+   * The model the cost math actually used. Equals response.model when set
+   * (catches vendor downgrades / A-B routing); falls back to request.model.
+   */
+  billedModel: string;
 }
 
 export class PruneAgentClient {
@@ -108,6 +122,10 @@ export class PruneAgentClient {
     request: MessageRequest,
     signal?: AbortSignal
   ): Promise<AdapterTurn> {
+    // FAIL FAST at the boundary — every invalid field gets named with its
+    // path. No silent NaN propagation, no provider-side cryptic errors.
+    assertValidRequest(request);
+
     const routing = this.routing.decide({
       baselineModel: request.model,
       sessionROI: this.loop.state,
@@ -119,6 +137,18 @@ export class PruneAgentClient {
     const response = await this.invoke(providerReq, signal);
     const turnIndex = ++this.turnCount;
 
+    // Normalize the response — vendor may have returned partial usage. We
+    // record any warnings on the turn for telemetry but never crash.
+    const responseWarnings = validateResponse(response);
+    const usage: UsageReport = normalizeUsage(response);
+    // Vendor downgrade visibility: if the provider returned a DIFFERENT model
+    // than requested (silent A/B, fallback, deprecation), record it and use
+    // it for cost math. Request.model would over-estimate.
+    const billedModel =
+      typeof response?.model === "string" && response.model.length > 0
+        ? response.model
+        : effective.model;
+
     const turn: AdapterTurn = {
       index: turnIndex,
       request: effective,
@@ -126,19 +156,34 @@ export class PruneAgentClient {
       routing,
       plan,
       response,
-      usage: response.usage,
+      usage,
+      responseWarnings,
+      billedModel,
     };
     this.history.push(turn);
 
     // Feed the loop policy. The throw — if any — happens HERE, after the
     // request has already been recorded, so callers can still inspect history.
-    const td = this.toTurnData(turnIndex, effective, response);
+    // Pass the NORMALIZED usage to the projection so it never sees undefined.
+    const td = this.toTurnData(turnIndex, effective, {
+      ...response,
+      usage,
+    });
     this.loop.observe(td);
 
     return turn;
   }
 
-  /** Rolling summary across all observed turns. */
+  /**
+   * Rolling summary across all observed turns.
+   *
+   * Cost math honesty: Anthropic's prompt cache prices cache_read at ~10% of
+   * input but cache_creation at ~1.25× input (5m TTL) or ~2× (1h TTL). The
+   * shared `calculateCost` helper only knows the cache_READ rate, so a turn
+   * that ONLY writes the cache would be priced as if it were regular input
+   * — hiding the 25% write premium. We compute that premium HERE, per turn,
+   * using the per-turn TTL when known, defaulting to 1.25× (5m).
+   */
   summary(): AdapterUsageSummary {
     let inputTokens = 0;
     let outputTokens = 0;
@@ -155,17 +200,33 @@ export class PruneAgentClient {
       outputTokens += u.output_tokens;
       cacheReadTokens += cr;
       cacheCreationTokens += cc;
-      costUsd += calculateCost(
+
+      // Per-turn write premium. Pick the LARGEST ttl in this turn's plan
+      // (most expensive write); default 5m (1.25×).
+      const writeMultiplier = t.plan.breakpoints.some((b) => b.ttl === "1h")
+        ? 2.0
+        : 1.25;
+      const pricing = getModelPricing(t.request.provider, t.billedModel);
+      const cacheWritePremium =
+        (cc / 1_000_000) * pricing.input * (writeMultiplier - 1);
+
+      // Realized cost: regular input cost (fresh) + cache_read cost (cr at
+      // 10%) + the write content as input (cc) + the 25% write premium.
+      const baseRealized = calculateCost(
         t.request.provider,
-        t.request.model,
+        t.billedModel,
         fresh + cc,
         u.output_tokens,
         cr
       );
-      // Counterfactual: if NONE were cached, all input would be at full price.
+      costUsd += baseRealized + cacheWritePremium;
+
+      // No-cache counterfactual: everything is full-price input. Output is
+      // unchanged. cache_read becomes regular input; cache_creation also
+      // becomes regular input (the underlying CONTENT was sent either way).
       costNoCacheUsd += calculateCost(
         t.request.provider,
-        t.request.model,
+        t.billedModel,
         fresh + cr + cc,
         u.output_tokens,
         0
