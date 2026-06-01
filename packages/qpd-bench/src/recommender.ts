@@ -91,7 +91,17 @@ export function recommendForCluster(
   candidates: ModelAggregate[],
   options: RecommenderOptions = {}
 ): ClusterRecommendation {
-  const opts = { ...DEFAULTS, ...options };
+  // Coalesce per field rather than spread: an explicit `undefined` from a
+  // caller (e.g. an MCP handler forwarding optional args) must NOT clobber a
+  // default. `{...DEFAULTS, ...{arMargin: undefined}}` would yield undefined.
+  const opts: Required<RecommenderOptions> = {
+    arMargin: options.arMargin ?? DEFAULTS.arMargin,
+    tprMargin: options.tprMargin ?? DEFAULTS.tprMargin,
+    alpha: options.alpha ?? DEFAULTS.alpha,
+    costDominanceRatio:
+      options.costDominanceRatio ?? DEFAULTS.costDominanceRatio,
+    minSamples: options.minSamples ?? DEFAULTS.minSamples,
+  };
   const recommendations = candidates
     .filter((c) => c.model !== baseline.model)
     .map((candidate) => evaluateCandidate(baseline, candidate, opts))

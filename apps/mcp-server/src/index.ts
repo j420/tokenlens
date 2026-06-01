@@ -34,7 +34,14 @@ import {
   formatLoopBlockMessage,
   getModelRoutingSuggestion,
   type CacheTurnInput,
+  type ToolDefinitionInfo,
+  type ToolUsageWindow,
 } from "@prune/intelligence";
+import type { ModelAggregate } from "@prune/qpd-bench";
+import {
+  handleToolAudit,
+  handleQpdReport,
+} from "./tcrp-tools.js";
 
 // ============================================================================
 // Server Setup
@@ -751,6 +758,75 @@ const TOOLS = [
         },
       },
       required: ["transcript_path"],
+    },
+  },
+  {
+    name: "tool_audit",
+    description:
+      "F2 Tool-Definition Auditor. Given the MCP/tool registry (with each " +
+      "tool's definition token cost) and recent per-session tool usage, report " +
+      "which tools are dead weight — carried on every request but rarely or " +
+      "never invoked — and how many tokens/week disabling them would recover. " +
+      "Never recommends removing a critical-allowlist tool. Mechanically zero " +
+      "quality impact: it only flags tools the agent does not invoke; the human " +
+      "confirms each removal.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tools: {
+          type: "array" as const,
+          description:
+            "Tool registry: each { name, server, definition_tokens, protected? }.",
+          items: { type: "object" as const },
+        },
+        usage: {
+          type: "object" as const,
+          description:
+            "Aggregated usage window: { windowDays, sessionsInWindow, " +
+            "invocations{}, lastUsedAgeDays{}, sessionsLoadingTool{} }.",
+        },
+        critical_allowlist: {
+          type: "array" as const,
+          description: "Tool names that must never be recommended for removal.",
+          items: { type: "string" as const },
+        },
+      },
+      required: ["tools", "usage"],
+    },
+  },
+  {
+    name: "qpd_report",
+    description:
+      "F4 Pareto Quality-per-Dollar report. Given per-model bench aggregates " +
+      "(acceptance rate, test-pass rate, mean cost, sample size) for one " +
+      "workload cluster, return the cost/quality Pareto frontier and which " +
+      "cheaper models — if any — are statistically quality-equivalent to the " +
+      "current one and therefore safe to recommend. Recommends only; the user " +
+      "always picks. Surfaces bench data; it does not run models.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        baseline: {
+          type: "object" as const,
+          description: "ModelAggregate for the current/baseline model.",
+        },
+        candidates: {
+          type: "array" as const,
+          description: "ModelAggregate for each candidate model.",
+          items: { type: "object" as const },
+        },
+        ar_margin: {
+          type: "number" as const,
+          description:
+            "Acceptance-rate non-inferiority margin (default 0.05, the coarse " +
+            "screening margin; the production gate uses 1pp continuously).",
+        },
+        cost_dominance_ratio: {
+          type: "number" as const,
+          description: "Candidate cost must be ≤ this × baseline (default 0.7).",
+        },
+      },
+      required: ["baseline", "candidates"],
     },
   },
 ];
@@ -2076,6 +2152,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_burst?: number;
           max_parallel_in_turn?: number;
           max_subagent_minutes?: number;
+        });
+        break;
+      case "tool_audit":
+        result = handleToolAudit(args as {
+          tools: ToolDefinitionInfo[];
+          usage: ToolUsageWindow;
+          critical_allowlist?: string[];
+        });
+        break;
+      case "qpd_report":
+        result = handleQpdReport(args as {
+          baseline: ModelAggregate;
+          candidates: ModelAggregate[];
+          ar_margin?: number;
+          cost_dominance_ratio?: number;
         });
         break;
       case "budget_status":

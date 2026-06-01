@@ -30,7 +30,8 @@
     "@prune/sentinel": "0.1.0",
     "@prune/export": "0.1.0",
     "@prune/attribution": "0.1.0",
-    "@prune/slo": "0.1.0"
+    "@prune/slo": "0.1.0",
+    "@prune/qpd-bench": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

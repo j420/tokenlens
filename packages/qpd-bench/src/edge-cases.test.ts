@@ -93,6 +93,22 @@ describe("F4 Pareto robustness", () => {
   });
 });
 
+describe("F4 explicit-undefined options do not clobber defaults", () => {
+  it("passing {arMargin: undefined, costDominanceRatio: undefined} uses defaults", () => {
+    // An MCP handler forwarding optional args passes explicit undefined.
+    // The recommender must coalesce to defaults, not let undefined win.
+    const rec = recommendForCluster(
+      agg("opus", 500, 0.92, 0.1),
+      [agg("sonnet", 500, 0.9, 0.02)],
+      { arMargin: undefined, costDominanceRatio: undefined } as never
+    );
+    expect(rec.best?.model).toBe("sonnet");
+    expect(rec.recommendations[0].gates ?? rec.recommendations[0].costGate.passed).toBeTruthy();
+    expect(rec.recommendations[0].costGate.passed).toBe(true);
+    expect(rec.recommendations[0].arGate.passed).toBe(true);
+  });
+});
+
 describe("F4 sub-minimum sample never recommended", () => {
   it("a single-sample candidate cannot be recommended", () => {
     const rec = recommendForCluster(agg("opus", 1, 1, 0.1), [
