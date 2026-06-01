@@ -528,9 +528,47 @@ describe("Type Inference", () => {
       classification: "productive",
       roi_score: 0.9,
       task_metadata: { type: "debug", repo: null, branch: null },
+      feature_id: null,
+      quality_proof: null,
     };
     expect(event.tokens_in).toBe(500);
     expect(event.classification).toBe("productive");
+  });
+
+  it("should carry TCRP feature tagging on an event", () => {
+    const tcrpEvent: Event = {
+      id: "123e4567-e89b-12d3-a456-426614174000",
+      session_id: "123e4567-e89b-12d3-a456-426614174001",
+      user_id: "123e4567-e89b-12d3-a456-426614174002",
+      team_id: null,
+      timestamp: new Date(),
+      provider: "anthropic",
+      tool: "claude-code",
+      model: "claude-sonnet-4-5-20250929",
+      tokens_in: 500,
+      tokens_out: 200,
+      tokens_cached: 100,
+      latency_ms: 1500,
+      estimated_cost_usd: 0.02,
+      cumulative_session_cost_usd: 0.1,
+      tool_calls: ["Read"],
+      files_referenced: ["file.ts"],
+      compaction_triggered: false,
+      context_size_before: 2000,
+      context_size_after: 2000,
+      waste_flags: [],
+      classification: "productive",
+      roi_score: 0.9,
+      task_metadata: { type: "debug", repo: null, branch: null },
+      feature_id: "f3",
+      quality_proof: {
+        substituted: true,
+        verified_equivalent: true,
+        tokens_saved: 1840,
+      },
+    };
+    expect(tcrpEvent.feature_id).toBe("f3");
+    expect((tcrpEvent.quality_proof as { verified_equivalent: boolean }).verified_equivalent).toBe(true);
   });
 
   it("should have Alert type with suggestions", () => {

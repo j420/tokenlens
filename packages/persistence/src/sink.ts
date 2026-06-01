@@ -32,6 +32,10 @@ export interface EventRow {
   classification: "productive" | "recursive" | "unknown";
   roi_score: number;
   task_metadata: { type: string; repo: string | null; branch: string | null };
+  /** TCRP feature that produced this event ('f1'..'f5'), if any. */
+  feature_id?: string | null;
+  /** TCRP quality-proof bundle (substitution verified, tokens saved, etc.). */
+  quality_proof?: Record<string, unknown> | null;
 }
 
 export interface CompactionEventRow {

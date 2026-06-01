@@ -72,7 +72,9 @@ CREATE TABLE IF NOT EXISTS events (
   waste_flags TEXT NOT NULL,
   classification TEXT NOT NULL,
   roi_score REAL NOT NULL,
-  task_metadata TEXT NOT NULL
+  task_metadata TEXT NOT NULL,
+  feature_id TEXT,
+  quality_proof TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_session ON events(session_id, timestamp);
 CREATE INDEX IF NOT EXISTS idx_events_user ON events(user_id, timestamp);
@@ -242,6 +244,18 @@ export class LocalSqliteSink implements PersistenceSink {
       this.db = new SQL.Database();
     }
     this.db.exec(SCHEMA);
+    // Idempotent migrations for DB files created before a column was added.
+    // sql.js throws on a duplicate column, so each ALTER is best-effort.
+    for (const stmt of [
+      "ALTER TABLE events ADD COLUMN feature_id TEXT",
+      "ALTER TABLE events ADD COLUMN quality_proof TEXT",
+    ]) {
+      try {
+        this.db.exec(stmt);
+      } catch {
+        // column already exists — fresh DB created from SCHEMA
+      }
+    }
   }
 
   private ensure(): Database {
@@ -288,7 +302,8 @@ export class LocalSqliteSink implements PersistenceSink {
         $tokens_cached, $latency_ms, $estimated_cost_usd,
         $cumulative_session_cost_usd, $tool_calls, $files_referenced,
         $compaction_triggered, $context_size_before, $context_size_after,
-        $waste_flags, $classification, $roi_score, $task_metadata
+        $waste_flags, $classification, $roi_score, $task_metadata,
+        $feature_id, $quality_proof
       )`,
       {
         $event_id: r.event_id,
@@ -314,6 +329,9 @@ export class LocalSqliteSink implements PersistenceSink {
         $classification: r.classification,
         $roi_score: r.roi_score,
         $task_metadata: JSON.stringify(r.task_metadata),
+        $feature_id: r.feature_id ?? null,
+        $quality_proof:
+          r.quality_proof != null ? JSON.stringify(r.quality_proof) : null,
       }
     );
     if (this.opts.autoFlush) this.flushSync();
@@ -712,6 +730,11 @@ export class LocalSqliteSink implements PersistenceSink {
         classification: row.classification as EventRow["classification"],
         roi_score: row.roi_score as number,
         task_metadata: JSON.parse(row.task_metadata as string),
+        feature_id: (row.feature_id as string) ?? null,
+        quality_proof:
+          row.quality_proof != null
+            ? JSON.parse(row.quality_proof as string)
+            : null,
       });
     }
     stmt.free();
