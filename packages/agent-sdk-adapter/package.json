@@ -1,0 +1,30 @@
+{
+  "name": "@prune/agent-sdk-adapter",
+  "version": "0.1.0",
+  "description": "Provider-neutral control plane for the Agent SDK loop. Plans prompt-cache breakpoints, gates routing on QpD non-inferiority, halts low-ROI loops, substitutes verified-equivalent read-only tool calls. Pure logic over a pluggable ModelInvoker — no SDK dependency. Local-first, no proxy.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/shared": "0.1.0",
+    "@prune/intelligence": "0.1.0",
+    "@prune/quality": "0.1.0",
+    "@prune/equivalence": "0.1.0",
+    "@prune/qpd-bench": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
