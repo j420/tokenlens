@@ -1,0 +1,27 @@
+{
+  "name": "@prune/replay-vault",
+  "version": "0.1.0",
+  "description": "Tamper-evident local audit log for AI coding-agent sessions (EU AI Act Art 12, ISO 42001 A.6.1.6, NIST AI RMF Measure 2.5)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/persistence": "0.1.0",
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

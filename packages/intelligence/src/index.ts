@@ -56,6 +56,40 @@ export {
   type CompactionDiff,
 } from "./compaction-auditor.js";
 
+// Session Tracker (Phase 2: loop circuit-breaker)
+export {
+  replaySession,
+  appendToSession,
+  serializeWalk,
+  deserializeWalk,
+  evaluateLoopBlock,
+  formatLoopBlockMessage,
+  type SessionROIWalk,
+  type SerializedSessionROIWalk,
+  type LoopBlockDecision,
+  type LoopBlockOptions,
+} from "./session-tracker.js";
+
+// Cache Analyzer
+export {
+  computeCacheMetrics,
+  diagnoseCacheBust,
+  detectSilentCacheFailures,
+  detectTTLPenalty,
+  analyzeCacheCoPilot,
+  type CacheTurnInput,
+  type CacheTTL,
+  type CacheMetrics,
+  type CacheCost,
+  type CacheBustSignal,
+  type CacheBustDiagnosis,
+  type DiagnoseInput,
+  type SilentCacheFailure,
+  type TTLPenalty,
+  type CoPilotInput,
+  type CacheCoPilotReport,
+} from "./cache-analyzer.js";
+
 // Cost Predictor
 export {
   MIN_EVENTS_FOR_PREDICTION,
@@ -71,3 +105,22 @@ export {
   type ModelWeights,
   type TrainingDataPoint,
 } from "./cost-predictor.js";
+
+// Subagent activity + policy (Phase 5+: subagent budget enforcer)
+export {
+  analyzeSubagents,
+  SUBAGENT_CONSTANTS,
+  type SubagentWalkTurn,
+  type SubagentInvocation,
+  type SubagentBurst,
+  type SubagentActivity,
+  type AnalyzeSubagentsOptions,
+} from "./subagent-walk.js";
+
+export {
+  evaluateSubagentBlock,
+  formatSubagentBlockMessage,
+  type SubagentBlockDecision,
+  type SubagentPattern,
+  type SubagentPolicyOptions,
+} from "./subagent-policy.js";

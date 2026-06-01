@@ -13,7 +13,7 @@
  * one-hot vectors for categorical variables.
  */
 
-import { MODEL_PRICING } from "./roi-classifier.js";
+import { getModelPricingByName } from "@prune/shared";
 
 // Minimum events required for reliable predictions
 export const MIN_EVENTS_FOR_PREDICTION = 1000;
@@ -208,11 +208,8 @@ export function predictCost(input: PredictionInput): PredictionResult {
  * Simple cost estimate using model pricing (fallback when no ML model)
  */
 function getSimpleCostEstimate(input: PredictionInput): number {
-  // Get model pricing
-  const pricing = MODEL_PRICING[input.model] ?? {
-    input: 3.0,
-    output: 15.0,
-  };
+  // Get model pricing from the shared single source.
+  const pricing = getModelPricingByName(input.model);
 
   // Estimate input cost
   const inputCost = (input.estimatedContextTokens / 1_000_000) * pricing.input;

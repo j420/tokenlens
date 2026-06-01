@@ -1,0 +1,26 @@
+{
+  "name": "@prune/attribution",
+  "version": "0.1.0",
+  "description": "Cross-vendor per-developer / per-PR / per-project cost attribution. Local-first; auto-detects from git + env. Competes with Anthropic Enterprise Analytics on every plan, across every coding agent.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/persistence": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

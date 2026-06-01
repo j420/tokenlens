@@ -2,6 +2,7 @@
   "name": "@prune/mcp-server",
   "version": "0.1.0",
   "description": "MCP server for AI self-regulation with Prune tools",
+  "type": "module",
   "main": "dist/index.js",
   "bin": {
     "prune-mcp": "./dist/index.js"
@@ -18,7 +19,18 @@
     "@prune/tokenizer": "0.1.0",
     "@prune/squeezer": "0.1.0",
     "@prune/state-scraper": "0.1.0",
-    "@prune/shared": "0.1.0"
+    "@prune/shared": "0.1.0",
+    "@prune/intelligence": "0.1.0",
+    "@prune/telemetry": "0.1.0",
+    "@prune/persistence": "0.1.0",
+    "@prune/budget-gate": "0.1.0",
+    "@prune/replay-vault": "0.1.0",
+    "@prune/repo-map": "0.1.0",
+    "@prune/router": "0.1.0",
+    "@prune/sentinel": "0.1.0",
+    "@prune/export": "0.1.0",
+    "@prune/attribution": "0.1.0",
+    "@prune/slo": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

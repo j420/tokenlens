@@ -21,12 +21,46 @@ import { type CursorUsage } from "@prune/shared";
 // Cache the SQL.js instance
 let sqlPromise: Promise<Awaited<ReturnType<typeof initSqlJs>>> | null = null;
 
+// Cache the options used at first init — change requires reset()
+let initOptions: Parameters<typeof initSqlJs>[0] | undefined;
+
 /**
- * Initialize sql.js (cached)
+ * Configure where sql.js should find sql-wasm.wasm. Required in
+ * environments where the wasm file isn't next to the bundled JS (e.g.
+ * the TokenLens VS Code extension bundles JS to `dist/` but ships wasm
+ * to `wasm/`). Call this once at activation time before any other
+ * state-scraper function.
+ *
+ * Background: sql.js defaults `locateFile` to `(f) => f`, which makes
+ * Emscripten look for the .wasm file in the script's directory. For a
+ * VSIX-installed extension that means looking in `dist/` which won't
+ * contain `sql-wasm.wasm`. Pass a callback that resolves to the real
+ * location (typically `path.join(context.extensionPath, "wasm", file)`).
+ *
+ * @example
+ *   import * as ss from "@prune/state-scraper";
+ *   ss.configureSqlWasm({
+ *     locateFile: (file) => path.join(context.extensionPath, "wasm", file),
+ *   });
+ */
+export function configureSqlWasm(options: Parameters<typeof initSqlJs>[0]): void {
+  initOptions = options;
+  // Invalidate cached promise so the new options take effect on next call.
+  sqlPromise = null;
+}
+
+/** Reset cached state (for tests). */
+export function resetSqlCache(): void {
+  sqlPromise = null;
+}
+
+/**
+ * Initialize sql.js (cached). Uses any options previously set via
+ * `configureSqlWasm()`.
  */
 async function getSql(): Promise<Awaited<ReturnType<typeof initSqlJs>>> {
   if (!sqlPromise) {
-    sqlPromise = initSqlJs();
+    sqlPromise = initSqlJs(initOptions);
   }
   return sqlPromise;
 }

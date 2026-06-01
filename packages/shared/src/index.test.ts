@@ -51,11 +51,14 @@ describe("MODEL_PRICING", () => {
 
     it("should have reasonable price ranges", () => {
       for (const [model, pricing] of Object.entries(MODEL_PRICING)) {
-        // Input prices should be between 0.1 and 50 per 1M tokens
-        expect(pricing.input).toBeGreaterThanOrEqual(0.1);
+        // Skip free-tier / experimental models (e.g. gemini-*-exp).
+        if (pricing.input === 0 && pricing.output === 0) continue;
+        // Per 1M tokens, generously bounded to admit budget tiers
+        // (e.g. gemini-1.5-flash at 0.075 input, 0.3 output) and the most
+        // expensive frontier models (Opus, GPT-4 at 30+ input, 75+ output).
+        expect(pricing.input).toBeGreaterThan(0);
         expect(pricing.input).toBeLessThanOrEqual(50);
-        // Output prices should be between 0.5 and 100 per 1M tokens
-        expect(pricing.output).toBeGreaterThanOrEqual(0.5);
+        expect(pricing.output).toBeGreaterThan(0);
         expect(pricing.output).toBeLessThanOrEqual(100);
       }
     });
@@ -180,21 +183,21 @@ describe("formatCost", () => {
     });
   });
 
-  describe("cents formatting", () => {
-    it("should format costs < $0.01 as cents", () => {
-      expect(formatCost(0.009)).toBe("$0.90c");
-      expect(formatCost(0.001)).toBe("$0.10c");
-      expect(formatCost(0.0001)).toBe("$0.01c");
+  describe("sub-cent formatting", () => {
+    it("should format costs < $0.01 with 4 decimals", () => {
+      expect(formatCost(0.009)).toBe("$0.0090");
+      expect(formatCost(0.001)).toBe("$0.0010");
+      expect(formatCost(0.0001)).toBe("$0.0001");
     });
 
     it("should handle very small costs", () => {
-      expect(formatCost(0.00001)).toBe("$0.00c");
+      expect(formatCost(0.00001)).toBe("$0.0000");
     });
   });
 
   describe("edge cases", () => {
     it("should format zero correctly", () => {
-      expect(formatCost(0)).toBe("$0.00c");
+      expect(formatCost(0)).toBe("$0.0000");
     });
 
     it("should format very large amounts correctly", () => {
