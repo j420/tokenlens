@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { NormalizedTurn } from "@prune/telemetry";
 import {
   adviseStep,
+  extractProposedStepFeatures,
   extractStepFeatures,
   summarizeTrajectory,
   TransparentInfluenceModel,
@@ -97,6 +98,58 @@ describe("F1 malformed / missing tool inputs", () => {
         expect(v).toBeLessThanOrEqual(1);
       }
     }
+  });
+});
+
+describe("F1 extractProposedStepFeatures (online PreToolUse)", () => {
+  it("computes a redundancy signature for a proposed re-read", () => {
+    const prior = [
+      bareTurn(1, [{ name: "Read", input: { file_path: "auth.ts" }, id: "t1" }]),
+      bareTurn(2, [{ name: "Read", input: { file_path: "auth.ts" }, id: "t2" }]),
+    ];
+    const f = extractProposedStepFeatures(prior, {
+      name: "Read",
+      input: { file_path: "auth.ts" },
+    });
+    expect(f.inputSimilarityToPrior).toBeGreaterThan(0.9);
+    expect(f.targetFileNovelty).toBeLessThan(0.5); // 3rd touch
+  });
+
+  it("the ONLINE advisor is conservative under unknown utilization (by design)", () => {
+    // Pre-execution we cannot know if the re-read's result will be used, so
+    // utilization is neutral (0.5). The advisor therefore does NOT fire on
+    // similarity alone — F1's high-confidence skips come from OFFLINE analysis
+    // of completed trajectories (where utilization is observed = 0). This is
+    // why the online hook ships shadow-first. Safe direction: no false advice.
+    const prior = [
+      bareTurn(1, [{ name: "Read", input: { file_path: "auth.ts" }, id: "t1" }]),
+      bareTurn(2, [{ name: "Read", input: { file_path: "auth.ts" }, id: "t2" }]),
+    ];
+    const f = extractProposedStepFeatures(prior, {
+      name: "Read",
+      input: { file_path: "auth.ts" },
+    });
+    const score = model.score(f);
+    expect(score).toBeGreaterThan(0.15); // conservative — no online advisory
+    expect(Number.isFinite(score)).toBe(true);
+  });
+
+  it("uses neutral utilization (no fabricated signal) for an unexecuted step", () => {
+    const f = extractProposedStepFeatures([], {
+      name: "Read",
+      input: { file_path: "fresh.ts" },
+    });
+    expect(f.priorOutputUtilization).toBe(0.5);
+    expect(f.stepTokenCost).toBe(0);
+    expect(f.targetFileNovelty).toBe(1); // first touch
+  });
+
+  it("does not advise against a proposed novel first-touch read", () => {
+    const f = extractProposedStepFeatures(
+      [bareTurn(1, [{ name: "Read", input: { file_path: "a.ts" }, id: "t1" }])],
+      { name: "Read", input: { file_path: "totally-new.ts" } }
+    );
+    expect(adviseStep(f, model)).toBeNull();
   });
 });
 

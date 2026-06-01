@@ -157,4 +157,5 @@ export {
   type SubstitutionDecision,
   type SpeculativeCacheOptions,
   type VerificationStats,
+  type SpeculativeCacheState,
 } from "./speculative-cache.js";

@@ -110,6 +110,53 @@ export function extractStepFeatures(
   return features;
 }
 
+/**
+ * Compute features for a PROPOSED (not-yet-executed) step, for online use in
+ * a PreToolUse hook. The step has no result yet, so `priorOutputUtilization`
+ * is unknowable and set to a NEUTRAL 0.5 (we never fabricate a utilization
+ * signal). Similarity-to-prior, novelty, position, and intent are all
+ * computable from the trajectory so far.
+ */
+export function extractProposedStepFeatures(
+  priorTurns: NormalizedTurn[],
+  proposed: { name: string; input: unknown },
+  options: ExtractOptions = {}
+): StepFeatures {
+  const priorSteps = flattenSteps(priorTurns);
+  const priorInputs = priorSteps.map((s) => tokenize(stringifyInput(s.input)));
+  const inputTokens = tokenize(stringifyInput(proposed.input));
+
+  let maxSim = 0;
+  for (const prior of priorInputs) {
+    const sim = jaccard(inputTokens, prior);
+    if (sim > maxSim) maxSim = sim;
+  }
+
+  const target = extractTarget(proposed.name, proposed.input);
+  let timesSeen = 0;
+  if (target) {
+    for (const s of priorSteps) {
+      if (extractTarget(s.name, s.input) === target) timesSeen++;
+    }
+  }
+  const novelty = target ? 1 / (1 + timesSeen) : 1;
+
+  return {
+    stepIndex: priorSteps.length,
+    turnNumber: (priorTurns[priorTurns.length - 1]?.turnNumber ?? 0) + 1,
+    toolName: proposed.name,
+    target,
+    inputSimilarityToPrior: round(maxSim),
+    targetFileNovelty: round(novelty),
+    positionInTrajectory: 1, // proposed step is at the current frontier
+    priorOutputUtilization: 0.5, // unknowable pre-execution — neutral
+    stepTokenCost: 0, // result not produced yet
+    intentClassMatch: options.intent
+      ? scoreIntentMatch(options.intent, proposed.name, target)
+      : 0.5,
+  };
+}
+
 /** Flatten turns into an ordered step list with downstream text attached. */
 function flattenSteps(turns: NormalizedTurn[]): RawStep[] {
   const steps: RawStep[] = [];

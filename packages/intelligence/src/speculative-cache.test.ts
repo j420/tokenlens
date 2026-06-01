@@ -210,6 +210,58 @@ describe("SpeculativeCache.invalidate", () => {
   });
 });
 
+describe("SpeculativeCache cross-process serialization", () => {
+  it("round-trips entries so a substitution survives a process restart", () => {
+    const a = new SpeculativeCache({ enabledScopes: ["Read"] });
+    const content = "export const x = 1;";
+    a.store("Read", { file_path: "a.ts" }, content, contentToken(content), 1);
+    const state = JSON.parse(JSON.stringify(a.toJSON()));
+
+    // Simulate a fresh hook process loading the persisted state.
+    const b = new SpeculativeCache({ enabledScopes: ["Read"] });
+    b.loadState(state);
+    const d = b.decide("Read", { file_path: "a.ts" }, contentToken(content));
+    expect(d.substitute).toBe(true);
+    expect(d.result).toBe(content);
+  });
+
+  it("round-trips Grep keys without re-canonicalization drift", () => {
+    const a = new SpeculativeCache({ enabledScopes: ["Grep"] });
+    a.store(
+      "Grep",
+      { pattern: "TODO", path: "src", glob: "*.ts", output_mode: "content" },
+      "src/a.ts:1:TODO",
+      dirStatToken(1, 1),
+      1
+    );
+    const b = new SpeculativeCache({ enabledScopes: ["Grep"] });
+    b.loadState(JSON.parse(JSON.stringify(a.toJSON())));
+    const d = b.decide(
+      "Grep",
+      { pattern: "TODO", path: "src", glob: "*.ts", output_mode: "content" },
+      dirStatToken(1, 1)
+    );
+    expect(d.substitute).toBe(true);
+  });
+
+  it("round-trips auto-disable state (a tripped scope stays disabled)", () => {
+    const a = new SpeculativeCache({ missRateThreshold: 0.02 });
+    for (let i = 0; i < 20; i++) a.recordVerification("Read", false);
+    expect(a.isScopeDisabled("Read")).toBe(true);
+
+    const b = new SpeculativeCache({ missRateThreshold: 0.02 });
+    b.loadState(JSON.parse(JSON.stringify(a.toJSON())));
+    expect(b.isScopeDisabled("Read")).toBe(true);
+  });
+
+  it("ignores malformed / version-mismatched state", () => {
+    const c = new SpeculativeCache();
+    c.loadState(null);
+    c.loadState({ version: 2 } as never);
+    expect(c.size()).toBe(0);
+  });
+});
+
 describe("freshness tokens", () => {
   it("content token is content-addressed", () => {
     expect(contentToken("abc").value).toBe(contentToken("abc").value);

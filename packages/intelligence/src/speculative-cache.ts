@@ -130,6 +130,17 @@ export interface VerificationStats {
   disabled: boolean;
 }
 
+/** On-disk shape of the cache, shared between hook processes. */
+export interface SpeculativeCacheState {
+  version: 1;
+  entries: Array<{ key: string; entry: CacheEntry }>;
+  health: Array<{
+    scope: SubstitutionScope;
+    outcomes: boolean[];
+    disabledUntil: number;
+  }>;
+}
+
 /** Tool eligibility — the structural guarantee that writes are never cached. */
 export function isEligibleTool(name: string): boolean {
   return ELIGIBLE_TOOLS.includes(name);
@@ -346,6 +357,45 @@ export class SpeculativeCache {
 
   size(): number {
     return this.entries.size;
+  }
+
+  /**
+   * Serialize cache + health to a plain JSON object. Hook scripts are separate
+   * processes, so the cache must survive on disk between PreToolUse and
+   * PostToolUse invocations. Config (thresholds/scopes) is NOT serialized —
+   * the loading process supplies it, so policy changes take effect immediately.
+   */
+  toJSON(): SpeculativeCacheState {
+    return {
+      version: 1,
+      // Serialize the map KEY directly to avoid any re-canonicalization on
+      // restore (Grep/Glob keys are not round-trip-stable through parse).
+      entries: [...this.entries.entries()].map(([key, entry]) => ({
+        key,
+        entry,
+      })),
+      health: [...this.health.entries()].map(([scope, h]) => ({
+        scope,
+        outcomes: h.outcomes,
+        disabledUntil: h.disabledUntil,
+      })),
+    };
+  }
+
+  /** Restore previously-serialized entries + health (config unchanged). */
+  loadState(state: SpeculativeCacheState | null | undefined): void {
+    if (!state || state.version !== 1) return;
+    this.entries.clear();
+    this.health.clear();
+    for (const { key, entry } of state.entries ?? []) {
+      this.entries.set(key, entry);
+    }
+    for (const h of state.health ?? []) {
+      this.health.set(h.scope, {
+        outcomes: h.outcomes,
+        disabledUntil: h.disabledUntil,
+      });
+    }
   }
 
   // ---- internals -------------------------------------------------------
