@@ -8,7 +8,11 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { handleToolAudit, handleQpdReport } from "./tcrp-tools.js";
+import {
+  handleToolAudit,
+  handleQpdReport,
+  handleContextHealthReport,
+} from "./tcrp-tools.js";
 import type { ModelAggregate } from "@prune/qpd-bench";
 
 describe("tool_audit MCP handler (F2)", () => {
@@ -137,5 +141,63 @@ describe("qpd_report MCP handler (F4)", () => {
       handleQpdReport({ baseline: undefined as never, candidates: undefined as never })
     );
     expect(r.error).toBeTruthy();
+  });
+});
+
+describe("context_health_report MCP handler (F6)", () => {
+  const FIXTURE_PATH =
+    "/home/user/tokenlens/packages/telemetry/test/fixtures/session-basic.jsonl";
+
+  it("returns a parseable report pinned to the canonical fixture", async () => {
+    const json = await handleContextHealthReport({
+      transcript_path: FIXTURE_PATH,
+    });
+    const r = JSON.parse(json);
+    expect(r.regime).toBe("healthy");
+    expect(r.source).toBe("exact");
+    expect(r.totalTurns).toBe(2);
+    expect(r.observedTurns).toBe(2);
+    expect(r.skippedTurns).toBe(0);
+    expect(r.model).toBe("claude-sonnet-4-5-20250929");
+    expect(r.modelWindow).toBe(200_000);
+    expect(r.ecfSeries.length).toBe(2);
+    expect(r.primaryCause).toBeNull();
+    expect(r.cusum.regime).toBe("healthy");
+  });
+
+  it("respects window_turns by trimming to the last N", async () => {
+    const json = await handleContextHealthReport({
+      transcript_path: FIXTURE_PATH,
+      window_turns: 1,
+    });
+    const r = JSON.parse(json);
+    // window=1 leaves only one turn → insufficient_data
+    expect(r.regime).toBe("insufficient_data");
+    expect(r.ecfSeries.length).toBe(1);
+  });
+
+  it("silently clamps non-finite window_turns", async () => {
+    const json = await handleContextHealthReport({
+      transcript_path: FIXTURE_PATH,
+      window_turns: Number.NaN,
+    });
+    const r = JSON.parse(json);
+    expect(r.totalTurns).toBe(2);
+  });
+
+  it("returns an error object for missing transcript_path", async () => {
+    const json = await handleContextHealthReport({
+      transcript_path: "" as never,
+    });
+    const r = JSON.parse(json);
+    expect(r.error).toBeTruthy();
+  });
+
+  it("never throws on a non-existent transcript path (returns insufficient_data)", async () => {
+    const json = await handleContextHealthReport({
+      transcript_path: "/tmp/does-not-exist-prune-context-health.jsonl",
+    });
+    const r = JSON.parse(json);
+    expect(r.regime).toBe("insufficient_data");
   });
 });

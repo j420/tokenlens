@@ -9,7 +9,7 @@
  * only contains the schema, pure helpers, and defaults.
  */
 
-export type TcrpFeatureId = "f1" | "f2" | "f3" | "f4" | "f5";
+export type TcrpFeatureId = "f1" | "f2" | "f3" | "f4" | "f5" | "f6";
 
 export type TcrpFeatureMode =
   | "shadow" // runs in parallel, never affects user
@@ -42,6 +42,7 @@ export const TCRP_FEATURE_IDS: readonly TcrpFeatureId[] = [
   "f3",
   "f4",
   "f5",
+  "f6",
 ] as const;
 
 export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
@@ -50,6 +51,7 @@ export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
   f3: "speculativeCache",
   f4: "qpdBench",
   f5: "hud",
+  f6: "contextHealth",
 } as const;
 
 export const TCRP_FEATURE_BY_NAME: Record<string, TcrpFeatureId> = Object.entries(
@@ -75,6 +77,7 @@ export const DEFAULT_TCRP_FLAGS: TcrpFeatureFlags = {
     f3: { enabled: false, mode: "shadow" },
     f4: { enabled: false, mode: "shadow" },
     f5: { enabled: true, mode: "general" },
+    f6: { enabled: false, mode: "shadow" },
   },
   policySource: "default",
 };

@@ -15,8 +15,8 @@ describe("TCRP feature flags", () => {
       expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, "f5")).toBe(true);
     });
 
-    it("keeps F1-F4 in shadow (not user-visible)", () => {
-      for (const id of ["f1", "f2", "f3", "f4"] as const) {
+    it("keeps F1-F4 and F6 in shadow (not user-visible)", () => {
+      for (const id of ["f1", "f2", "f3", "f4", "f6"] as const) {
         expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, id)).toBe(false);
         expect(isFeatureInShadow(DEFAULT_TCRP_FLAGS, id)).toBe(true);
       }
@@ -27,6 +27,7 @@ describe("TCRP feature flags", () => {
     it("accepts canonical ids", () => {
       expect(resolveFeatureId("f5")).toBe("f5");
       expect(resolveFeatureId("f1")).toBe("f1");
+      expect(resolveFeatureId("f6")).toBe("f6");
     });
 
     it("accepts human-friendly names", () => {
@@ -35,6 +36,7 @@ describe("TCRP feature flags", () => {
       expect(resolveFeatureId("toolDefAuditor")).toBe("f2");
       expect(resolveFeatureId("speculativeCache")).toBe("f3");
       expect(resolveFeatureId("qpdBench")).toBe("f4");
+      expect(resolveFeatureId("contextHealth")).toBe("f6");
     });
 
     it("returns undefined for unknown ids", () => {
@@ -53,6 +55,7 @@ describe("TCRP feature flags", () => {
           f3: { enabled: true, mode: "general" },
           f4: { enabled: false, mode: "general" },
           f5: { enabled: true, mode: "disabled" },
+          f6: { enabled: true, mode: "canary" },
         },
         policySource: "local",
       };
@@ -61,6 +64,7 @@ describe("TCRP feature flags", () => {
       expect(isFeatureEnabled(flags, "f3")).toBe(true); // general
       expect(isFeatureEnabled(flags, "f4")).toBe(false); // not enabled
       expect(isFeatureEnabled(flags, "f5")).toBe(false); // disabled mode
+      expect(isFeatureEnabled(flags, "f6")).toBe(true); // canary
     });
   });
 

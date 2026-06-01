@@ -41,6 +41,7 @@ import type { ModelAggregate } from "@prune/qpd-bench";
 import {
   handleToolAudit,
   handleQpdReport,
+  handleContextHealthReport,
 } from "./tcrp-tools.js";
 
 // ============================================================================
@@ -827,6 +828,34 @@ const TOOLS = [
         },
       },
       required: ["baseline", "candidates"],
+    },
+  },
+  {
+    name: "context_health_report",
+    description:
+      "F6 Context Health. Computes Effective Context Fullness (ECF) per turn " +
+      "from the live Claude Code transcript (no model call, no API key), runs " +
+      "streaming CUSUM change-point detection over the ECF curve, and reports " +
+      "the regime (healthy / warning at 50% / critical at 75% — thresholds " +
+      "pinned to Chroma 2026 context-rot research) plus secondary signals " +
+      "(cache-hit trend, scope-drift slope, dominant large-tool-result). " +
+      "Pure math + AST-typed tool inputs; no regex, no fabricated tokens. " +
+      "Never blocks the agent. Never sees user content beyond the structured " +
+      "telemetry fields.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description: "Absolute path to the Claude Code session transcript (JSONL).",
+        },
+        window_turns: {
+          type: "number" as const,
+          description:
+            "Optional cap on how many recent turns to include in the report (default: all).",
+        },
+      },
+      required: ["transcript_path"],
     },
   },
 ];
@@ -2167,6 +2196,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           candidates: ModelAggregate[];
           ar_margin?: number;
           cost_dominance_ratio?: number;
+        });
+        break;
+      case "context_health_report":
+        result = await handleContextHealthReport(args as {
+          transcript_path: string;
+          window_turns?: number;
         });
         break;
       case "budget_status":

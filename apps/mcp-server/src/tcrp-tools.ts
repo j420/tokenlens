@@ -1,5 +1,5 @@
 /**
- * MCP tool handlers for the TCRP cost-reduction features (F2, F4).
+ * MCP tool handlers for the TCRP cost-reduction features (F2, F4, F6).
  *
  * Pure functions that parse the tool args, call the tested package cores, and
  * shape a JSON response. Kept out of index.ts (whose top-level main() starts
@@ -17,6 +17,12 @@ import {
   recommendForCluster,
   type ModelAggregate,
 } from "@prune/qpd-bench";
+import { loadCachedSessionView } from "@prune/telemetry";
+import {
+  buildReport,
+  resolveConfig,
+  type ContextHealthReport,
+} from "@prune/context-health";
 
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
@@ -110,4 +116,46 @@ export function handleQpdReport(args: QpdReportArgs): string {
     null,
     2
   );
+}
+
+export interface ContextHealthReportArgs {
+  transcript_path: string;
+  /**
+   * Optional max number of recent turns to include in the report's
+   * `ecfSeries`. Defaults to "all turns". Out-of-range values are
+   * silently clamped.
+   */
+  window_turns?: number;
+}
+
+/**
+ * F6 — Context-Health Report. Streams the transcript via SessionCache,
+ * computes the ECF series and CUSUM regime, and returns a single JSON
+ * payload that's safe to JSON-stringify (no functions, no circular
+ * refs). The MCP boundary takes the JSON; the hook (which writes
+ * advisories to additionalContext) uses a different entry-point.
+ */
+export async function handleContextHealthReport(
+  args: ContextHealthReportArgs
+): Promise<string> {
+  if (!args || typeof args.transcript_path !== "string" || args.transcript_path.length === 0) {
+    return JSON.stringify({
+      error: "context_health_report requires a non-empty `transcript_path`.",
+    });
+  }
+  const config = resolveConfig(process.env);
+  const view = await loadCachedSessionView(args.transcript_path);
+
+  // Apply window_turns if supplied — clamp non-finite / negative values.
+  const all = view.turns;
+  const window =
+    typeof args.window_turns === "number" &&
+    Number.isFinite(args.window_turns) &&
+    args.window_turns > 0
+      ? Math.min(Math.trunc(args.window_turns), all.length)
+      : all.length;
+  const turns = window === all.length ? all : all.slice(all.length - window);
+
+  const report: ContextHealthReport = buildReport(turns, { config });
+  return JSON.stringify(report, null, 2);
 }
