@@ -148,4 +148,92 @@ describe("escape: error-in-error to leak host state", () => {
     // never carries a real process reference back to the host.
     expect(r.error?.message).toContain("process");
   });
+
+  it("error.cause chain doesn't leak host objects (no `cause: process`)", async () => {
+    const r = await executeScript(
+      `throw new Error('outer', { cause: process });`,
+      NOOP,
+      OPTS
+    );
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("escape: Reflect-based introspection", () => {
+  it("Reflect.has on globalThis doesn't surface host globals", async () => {
+    const r = await executeScript(
+      `return Reflect.has(globalThis, 'process');`,
+      NOOP,
+      OPTS
+    );
+    // Reflect itself is allowed (it's a standard intrinsic), but the
+    // context's globalThis doesn't carry process.
+    expect(r.ok).toBe(true);
+    expect(r.result).toBe(false);
+  });
+
+  it("Reflect.construct on Function constructor stays sandboxed", async () => {
+    const r = await executeScript(
+      `const F = Reflect.construct(Function, ['return process']); return F();`,
+      NOOP,
+      OPTS
+    );
+    expect(r.ok === false || r.result === undefined).toBe(true);
+  });
+});
+
+describe("escape: AsyncFunction constructor", () => {
+  it("(async () => {}).constructor('return process')() is contained", async () => {
+    const r = await executeScript(
+      `const AF = (async () => {}).constructor; return AF('return process')();`,
+      NOOP,
+      OPTS
+    );
+    // AF runs in the sandbox context where process is undefined.
+    if (r.ok) {
+      expect(r.result).toBeUndefined();
+    }
+  });
+});
+
+describe("escape: Atomics / SharedArrayBuffer", () => {
+  it("SharedArrayBuffer isn't injected (denied or no-op)", async () => {
+    const r = await executeScript(
+      `return new SharedArrayBuffer(1024).byteLength;`,
+      NOOP,
+      OPTS
+    );
+    // SharedArrayBuffer may or may not exist in the vm context
+    // depending on Node flags. Either way, the call MUST NOT crash
+    // the harness or leak anything.
+    if (!r.ok) {
+      expect(r.error).toBeDefined();
+    } else {
+      expect(typeof r.result).toBe("number");
+    }
+  });
+});
+
+describe("escape: read invariants under deep object input", () => {
+  it("a parameter with a deep prototype chain doesn't leak host state through cloning", async () => {
+    let received: unknown = null;
+    const invoke = async (_n: string, params: unknown) => {
+      received = params;
+      return null;
+    };
+    const r = await executeScript(
+      `
+      const inner = Object.create({ leak: 'from-host-proto' });
+      inner.payload = 42;
+      await toolbox.f(inner);
+      return null;
+      `,
+      invoke,
+      { allowedToolNames: ["f"] }
+    );
+    expect(r.ok).toBe(true);
+    // JSON.parse(JSON.stringify(...)) drops the prototype; only own
+    // enumerable properties survive.
+    expect(received).toEqual({ payload: 42 });
+  });
 });

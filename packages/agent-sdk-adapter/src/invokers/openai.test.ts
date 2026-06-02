@@ -219,3 +219,57 @@ describe("createOpenAIInvoker", () => {
     await expect(invoker(REQUEST)).rejects.toThrow("auth failed");
   });
 });
+
+describe("toOpenAIChatCreateParams — content/tool_calls invariant (regression)", () => {
+  it("omits content entirely when tool_calls present and no text", () => {
+    // OpenAI rejects { role: "assistant", content: "", tool_calls: [...] };
+    // content must be either non-empty or absent.
+    const p = toOpenAIChatCreateParams({
+      ...REQUEST,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            {
+              type: "tool_use",
+              id: "tu1",
+              name: "f",
+              input: {},
+            },
+          ],
+        },
+      ],
+    });
+    const assistantMsg = p.messages.find((m) => m.role === "assistant")!;
+    expect(assistantMsg.tool_calls).toBeDefined();
+    expect("content" in assistantMsg).toBe(false);
+  });
+
+  it("keeps content when text is present alongside tool_calls", () => {
+    const p = toOpenAIChatCreateParams({
+      ...REQUEST,
+      messages: [
+        {
+          role: "assistant",
+          content: [
+            { type: "text", text: "Let me look that up" },
+            { type: "tool_use", id: "tu1", name: "f", input: {} },
+          ],
+        },
+      ],
+    });
+    const assistantMsg = p.messages.find((m) => m.role === "assistant")!;
+    expect(assistantMsg.content).toBe("Let me look that up");
+    expect(assistantMsg.tool_calls).toHaveLength(1);
+  });
+
+  it("keeps empty content for a text-only user message (legal there)", () => {
+    const p = toOpenAIChatCreateParams({
+      ...REQUEST,
+      messages: [{ role: "user", content: [] }],
+    });
+    // No tool_calls path here; an empty content string is acceptable.
+    const userMsg = p.messages.find((m) => m.role === "user")!;
+    expect(userMsg.content).toBe("");
+  });
+});

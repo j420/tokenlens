@@ -350,3 +350,38 @@ describe("edge case: very long sessions don't accumulate unbounded memory", () =
     expect(det.current.recentSamples.length).toBeLessThanOrEqual(CFG.rollingWindow);
   });
 });
+
+describe("edge case: hostile alpha cannot poison ECF (regression)", () => {
+  it("negative alpha falls back to the 0.5 default (input pre-clamp)", () => {
+    const turn = makeTurn({
+      turnNumber: 1,
+      model: "claude-sonnet-4-5-20250929",
+      cacheReadTokens: 100_000,
+    });
+    const sample = computeEcf(turn, { alpha: -0.5 });
+    // Expected: alpha falls back to 0.5 ⇒ discountedCacheRead=50_000;
+    // ECF = 50_000 / 200_000 = 0.25
+    expect(sample.discountedCacheRead).toBe(50_000);
+    expect(sample.ecf).toBeCloseTo(0.25, 6);
+  });
+
+  it("NaN alpha falls back to default", () => {
+    const turn = makeTurn({
+      turnNumber: 1,
+      model: "claude-sonnet-4-5-20250929",
+      cacheReadTokens: 100_000,
+    });
+    const sample = computeEcf(turn, { alpha: Number.NaN });
+    expect(sample.discountedCacheRead).toBe(50_000);
+  });
+
+  it("alpha > 1 falls back to default (would over-weight cache otherwise)", () => {
+    const turn = makeTurn({
+      turnNumber: 1,
+      model: "claude-sonnet-4-5-20250929",
+      cacheReadTokens: 100_000,
+    });
+    const sample = computeEcf(turn, { alpha: 5 });
+    expect(sample.discountedCacheRead).toBe(50_000);
+  });
+});

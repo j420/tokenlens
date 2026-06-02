@@ -181,3 +181,40 @@ describe("edge: cosine cannot leak NaN even on model anomaly", () => {
     expect(c.store("k", "q", "r", contentShaFreshness("a"))).toBeNull();
   });
 });
+
+describe("edge: LRU tiebreaker is deterministic (regression for sort instability)", () => {
+  it("evicts deterministically when lastHitMs ties", () => {
+    // Inject a constant clock so every entry has identical lastHitMs +
+    // createdAtMs. Without the tiebreaker the JS engine's sort can
+    // pick any of the equal-keyed entries; with the tiebreaker the
+    // eviction order is fully determined by id.
+    let t = 1000;
+    const c = new SemanticCache({
+      config: { maxEntries: 3 },
+      now: () => t,
+    });
+    c.store("aaa", "alpha one", "x", contentShaFreshness("a"));
+    c.store("bbb", "alpha two", "x", contentShaFreshness("a"));
+    c.store("ccc", "alpha three", "x", contentShaFreshness("a"));
+    c.store("ddd", "alpha four", "x", contentShaFreshness("a"));
+    const ids = c
+      .toJSON()
+      .entries.map((e) => e.id)
+      .sort();
+    // "aaa" had the smallest id at the same tied timestamp ⇒ evicted.
+    expect(ids).toEqual(["bbb", "ccc", "ddd"]);
+  });
+});
+
+describe("edge: equivalence-gate surface is honest (no fake byteEqual)", () => {
+  it("hits report strategy='trust-similarity-and-freshness' (the actual gate)", () => {
+    const c = new SemanticCache();
+    c.store("k", "the test query here", "RESPONSE", contentShaFreshness("a"));
+    const d = c.decide("the test query here", contentShaFreshness("a"));
+    expect(d.kind).toBe("hit");
+    if (d.kind === "hit") {
+      expect(d.equivalent).toBe(true);
+      expect(d.equivalenceStrategy).toBe("trust-similarity-and-freshness");
+    }
+  });
+});

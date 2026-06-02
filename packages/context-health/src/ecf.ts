@@ -58,8 +58,18 @@ export function computeEcf(
         ? getContextWindow(model)
         : null;
 
+  // Pre-clamp α at the boundary so a hostile value (negative, NaN,
+  // Infinity, > 1) cannot poison the discounted-cache-read term even
+  // before the sanitizer runs. The documented range is [0, 1]; values
+  // outside that range fall back to the conservative 0.5 default.
+  const alphaIn = options.alpha;
+  const alpha =
+    typeof alphaIn === "number" && Number.isFinite(alphaIn) && alphaIn >= 0 && alphaIn <= 1
+      ? alphaIn
+      : 0.5;
+
   const attendedInput = sanitizeTokens(turn.usage.input + turn.usage.cacheCreate);
-  const discountedCacheRead = sanitizeTokens(options.alpha * turn.usage.cacheRead);
+  const discountedCacheRead = sanitizeTokens(alpha * turn.usage.cacheRead);
   const committedOutput = sanitizeTokens(turn.usage.output);
 
   if (windowFromPricing === null || windowFromPricing <= 0) {

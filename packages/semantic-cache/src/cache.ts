@@ -38,7 +38,6 @@
  * persistence is the caller's responsibility (toJSON / fromJSON).
  */
 
-import { byteEqual } from "@prune/equivalence";
 import { LexicalEmbedder, cosine } from "./lexical-embedder.js";
 import type {
   EmbeddingModel,
@@ -146,13 +145,14 @@ export class SemanticCache {
       };
     }
 
-    // Equivalence gate: byte-equality against the stored response.
-    // We use byteEqual against the candidate's own response so the
-    // gate is a no-op tautology (always equivalent) — this is the
-    // "trust the freshness + similarity" path. Callers that want
-    // stronger gating compare the returned `entry.response` against
-    // a freshly-generated response themselves before accepting.
-    const eq = byteEqual(candidate.response, candidate.response);
+    // Trust-similarity-and-freshness path: the equivalence gate is
+    // OWNED BY THE CALLER. We just served a candidate whose embedding
+    // is ≥ threshold similar AND whose freshness token matches; the
+    // caller is responsible for any additional gating (e.g. byte-equal
+    // against a fresh response, or running @prune/equivalence on the
+    // returned text). We surface `equivalent: true` + strategy name
+    // "trust-similarity-and-freshness" so the caller knows the
+    // adapter has not run a stronger check — no fake byteEqual call.
     candidate.hitCount += 1;
     candidate.lastHitMs = this.now();
 
@@ -160,8 +160,8 @@ export class SemanticCache {
       kind: "hit",
       entry: cloneEntry(candidate),
       similarity: bestSim,
-      equivalent: eq.equivalent,
-      equivalenceStrategy: eq.strategy,
+      equivalent: true,
+      equivalenceStrategy: "trust-similarity-and-freshness",
     };
   }
 
@@ -284,8 +284,19 @@ export class SemanticCache {
 
   private evictToCap(): void {
     if (this.entries.length <= this.config.maxEntries) return;
-    // Evict oldest-by-lastHitMs first (true LRU).
-    this.entries.sort((a, b) => a.lastHitMs - b.lastHitMs);
+    // Evict oldest-by-lastHitMs first (true LRU). Tiebreakers:
+    // (1) older createdAtMs evicts first (entry that's been around
+    //     longer without being hit is less valuable);
+    // (2) lexicographic id, last-resort, to keep order deterministic
+    //     across V8 / JavaScriptCore / SpiderMonkey sort impls.
+    // ECMAScript 2019+ guarantees Array.prototype.sort is stable, but
+    // the comparator-equals path still picks an arbitrary winner
+    // unless we break ties explicitly.
+    this.entries.sort((a, b) => {
+      if (a.lastHitMs !== b.lastHitMs) return a.lastHitMs - b.lastHitMs;
+      if (a.createdAtMs !== b.createdAtMs) return a.createdAtMs - b.createdAtMs;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
     this.entries.splice(0, this.entries.length - this.config.maxEntries);
   }
 }

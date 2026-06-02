@@ -175,10 +175,19 @@ function marshalMessage(m: ProviderMessage): OpenAIChatCreateParams["messages"][
   const role: "user" | "assistant" =
     m.role === "assistant" ? "assistant" : "user";
 
-  const msg: OpenAIChatCreateParams["messages"][number] = {
-    role,
-    content: textParts.join(""),
-  };
+  // OpenAI rule: when `tool_calls` is present, `content` must be either
+  // a non-empty string or omitted entirely. Posting `content: ""` with
+  // tool_calls is rejected by the API. So we only attach content when
+  // (a) there's text OR (b) there are no tool_calls (the user/assistant
+  // text-only path, where empty is still legal and avoids surprising
+  // callers who expect the role to round-trip).
+  const text = textParts.join("");
+  const msg: OpenAIChatCreateParams["messages"][number] = { role };
+  if (text.length > 0) {
+    msg.content = text;
+  } else if (toolCalls.length === 0) {
+    msg.content = "";
+  }
   if (toolCalls.length > 0) msg.tool_calls = toolCalls;
   return msg;
 }

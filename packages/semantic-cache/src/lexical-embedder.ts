@@ -151,13 +151,19 @@ function normalize(text: string): string {
  * FNV-1a 32-bit hash. Deterministic, fast, no regex, no allocations
  * beyond the four-byte accumulator. The hash quality is enough for
  * the hashing-trick collision distribution to behave well at d ≥ 128.
+ *
+ * Uses `Math.imul` for the prime multiplication — that op is defined
+ * by ECMAScript to perform signed 32-bit integer multiplication
+ * truncated to 32 bits, so the result is bit-exact across engines
+ * (V8, JSC, SpiderMonkey) and avoids the precision-loss path that a
+ * naive `h * 0x01000193` would take through IEEE-754 doubles for
+ * large h.
  */
 function fnv1a32(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
     h ^= s.charCodeAt(i) & 0xff;
-    // Multiply by FNV prime 16777619, kept in 32-bit space.
-    h = (h + ((h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24))) >>> 0;
+    h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h >>> 0;
 }

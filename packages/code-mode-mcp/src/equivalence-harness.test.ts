@@ -133,3 +133,18 @@ describe("runEquivalenceHarness — malformed outcomes", () => {
     expect(r.verdicts[0]!.taskId).toBe("<malformed>");
   });
 });
+
+describe("runEquivalenceHarness — degenerate equivalence inputs", () => {
+  it("both outputs empty strings count as equivalent (byte-identical)", () => {
+    const r = runEquivalenceHarness([TASK("t1", "", "", 50, 25)]);
+    expect(r.equivalentCount).toBe(1);
+    expect(r.passRate).toBe(1);
+    expect(r.verdicts[0]!.reductionPct).toBe(50);
+  });
+
+  it("zero controlBytes reports reductionPct=0 (no NaN, no Infinity)", () => {
+    const r = runEquivalenceHarness([TASK("t1", "x", "x", 0, 0)]);
+    expect(Number.isFinite(r.verdicts[0]!.reductionPct)).toBe(true);
+    expect(r.verdicts[0]!.reductionPct).toBe(0);
+  });
+});
