@@ -222,6 +222,35 @@ describe("planBreakpoints — TTL routing", () => {
     const plan = planBreakpoints(req, { defaultTtl: "1h" });
     expect(plan.breakpoints[0].ttl).toBe("1h");
   });
+
+  it("ttlChooser overrides defaultTtl per breakpoint", () => {
+    const req = baseRequest({ system: [pad("rules", 1100)] });
+    const plan = planBreakpoints(req, {
+      defaultTtl: "5m",
+      ttlChooser: () => "1h",
+    });
+    expect(plan.breakpoints[0].ttl).toBe("1h");
+  });
+
+  it("ttlChooser receiving non-'5m'|'1h' falls back to defaultTtl", () => {
+    const req = baseRequest({ system: [pad("rules", 1100)] });
+    const plan = planBreakpoints(req, {
+      defaultTtl: "5m",
+      ttlChooser: (() => "exploded") as never,
+    });
+    expect(plan.breakpoints[0].ttl).toBe("5m");
+  });
+
+  it("ttlChooser that throws falls back to defaultTtl (never surfaces)", () => {
+    const req = baseRequest({ system: [pad("rules", 1100)] });
+    const plan = planBreakpoints(req, {
+      defaultTtl: "5m",
+      ttlChooser: () => {
+        throw new Error("chooser blew up");
+      },
+    });
+    expect(plan.breakpoints[0].ttl).toBe("5m");
+  });
 });
 
 describe("planBreakpoints — degenerate inputs", () => {

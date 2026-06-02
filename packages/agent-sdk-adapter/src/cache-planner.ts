@@ -61,6 +61,14 @@ export interface PlanOptions {
   defaultTtl?: "5m" | "1h";
   /** Caller-supplied estimator (e.g. exact tokenizer). */
   estimate?: EstimateFn;
+  /**
+   * Per-breakpoint TTL chooser. When supplied, the planner consults
+   * this for every chosen breakpoint and uses the returned TTL
+   * instead of `defaultTtl`. Pass `amortizingTtlChooser(...)` from
+   * `./ttl-amortization.ts` to enable the 12-reads/hour break-even
+   * rule. Pure: takes context, returns "5m" or "1h", never throws.
+   */
+  ttlChooser?: import("./ttl-amortization.js").TtlChooser;
 }
 
 /** Look up the min-cacheable threshold for a model by family substring. */
@@ -206,12 +214,34 @@ export function planBreakpoints(
   const chosenSorted = [...chosen].sort((a, b) => a.afterIndex - b.afterIndex);
   const droppedByCeiling = candidates.filter((c) => !chosen.includes(c));
 
-  const breakpoints: CacheBreakpoint[] = chosenSorted.map((c) => ({
-    segment: c.segment,
-    blockIndex: c.blockIndex,
-    cumulativeTokens: c.cumulativeTokens,
-    ttl,
-  }));
+  const breakpoints: CacheBreakpoint[] = chosenSorted.map((c) => {
+    let resolvedTtl: "5m" | "1h" = ttl;
+    if (options.ttlChooser) {
+      try {
+        const candidateCtx = {
+          request,
+          candidate: {
+            segment: c.segment,
+            blockIndex: c.blockIndex,
+            cumulativeTokens: c.cumulativeTokens,
+          },
+        };
+        const choice = options.ttlChooser(candidateCtx);
+        if (choice === "5m" || choice === "1h") {
+          resolvedTtl = choice;
+        }
+      } catch {
+        // chooser threw — fall back to defaultTtl without surfacing
+        resolvedTtl = ttl;
+      }
+    }
+    return {
+      segment: c.segment,
+      blockIndex: c.blockIndex,
+      cumulativeTokens: c.cumulativeTokens,
+      ttl: resolvedTtl,
+    };
+  });
 
   // The cacheable prefix size is the LARGEST cumulativeTokens we anchored;
   // earlier breakpoints in the same run are subsets of that prefix.
