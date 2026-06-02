@@ -43,6 +43,7 @@ import {
   handleQpdReport,
   handleContextHealthReport,
   handleTrajectoryReplay,
+  handleSemanticCacheProbe,
 } from "./tcrp-tools.js";
 
 // ============================================================================
@@ -829,6 +830,35 @@ const TOOLS = [
         },
       },
       required: ["baseline", "candidates"],
+    },
+  },
+  {
+    name: "semantic_cache_probe",
+    description:
+      "F7 Semantic Cache Probe. Stateless: hydrates a serialized cache " +
+      "state and reports hit/miss verdicts (with similarity, freshness " +
+      "match, equivalence flag) for the supplied probes. The cache uses " +
+      "an in-process char-n-gram + hashing-trick embedder (no external " +
+      "API, no wrapper) and content-SHA freshness tokens; a serving " +
+      "decision requires both similarity ≥ threshold AND a matching " +
+      "freshness token. Caller-owned state.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        state: {
+          type: "object" as const,
+          description: "Optional SerializedSemanticCache from SemanticCache.toJSON().",
+        },
+        probes: {
+          type: "array" as const,
+          description:
+            "Probes [{ query: string, freshness_parts: string[] }]. " +
+            "freshness_parts are concatenated with NUL separators to " +
+            "produce a content-SHA token.",
+          items: { type: "object" as const },
+        },
+      },
+      required: ["probes"],
     },
   },
   {
@@ -2243,6 +2273,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "trajectory_replay_report":
         result = handleTrajectoryReplay(
           args as unknown as Parameters<typeof handleTrajectoryReplay>[0]
+        );
+        break;
+      case "semantic_cache_probe":
+        result = handleSemanticCacheProbe(
+          args as unknown as Parameters<typeof handleSemanticCacheProbe>[0]
         );
         break;
       case "budget_status":

@@ -27,6 +27,11 @@ import {
   runReplayHarness,
   type F1ShadowEvent,
 } from "@prune/trajectory-diet";
+import {
+  SemanticCache,
+  contentShaFreshness,
+  type SerializedSemanticCache,
+} from "@prune/semantic-cache";
 
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
@@ -214,4 +219,59 @@ export function handleTrajectoryReplay(args: TrajectoryReplayArgs): string {
     margins,
   });
   return JSON.stringify(report, null, 2);
+}
+
+export interface SemanticCacheProbeArgs {
+  /** Optional persisted cache state (from SemanticCache.toJSON()). */
+  state?: SerializedSemanticCache;
+  /** A list of queries to probe; each must carry its freshness parts. */
+  probes: Array<{
+    query: string;
+    freshness_parts: string[];
+  }>;
+}
+
+/**
+ * F7 — Semantic Cache Probe. Stateless. Hydrates a cache from the
+ * supplied serialized state, runs `decide()` over each probe, and
+ * returns the hit/miss verdicts with similarity. Never throws on
+ * malformed input.
+ */
+export function handleSemanticCacheProbe(
+  args: SemanticCacheProbeArgs
+): string {
+  if (!args || !Array.isArray(args.probes)) {
+    return JSON.stringify({
+      error: "semantic_cache_probe requires `probes: [{ query, freshness_parts }]`.",
+    });
+  }
+  const cache = args.state
+    ? SemanticCache.fromJSON(args.state)
+    : new SemanticCache();
+  const verdicts = args.probes.map((p) => {
+    if (
+      !p ||
+      typeof p.query !== "string" ||
+      !Array.isArray(p.freshness_parts)
+    ) {
+      return { error: "malformed probe", query: null, decision: null };
+    }
+    const fresh = contentShaFreshness(
+      ...p.freshness_parts.filter((s) => typeof s === "string")
+    );
+    const d = cache.decide(p.query, fresh);
+    return {
+      query: p.query,
+      decision: d,
+    };
+  });
+  return JSON.stringify(
+    {
+      cacheSize: cache.size,
+      modelName: cache.modelName,
+      verdicts,
+    },
+    null,
+    2
+  );
 }

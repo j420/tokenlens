@@ -258,3 +258,67 @@ describe("trajectory_replay_report MCP handler (F1 v2)", () => {
     expect(() => JSON.parse(json)).not.toThrow();
   });
 });
+
+describe("semantic_cache_probe MCP handler (F7)", () => {
+  it("empty cache → miss verdicts", async () => {
+    const { handleSemanticCacheProbe } = await import("./tcrp-tools.js");
+    const json = handleSemanticCacheProbe({
+      probes: [{ query: "hello", freshness_parts: ["a"] }],
+    });
+    const r = JSON.parse(json);
+    expect(r.cacheSize).toBe(0);
+    expect(r.verdicts[0].decision.kind).toBe("miss");
+  });
+
+  it("hydrated cache returns a hit when query matches", async () => {
+    const { SemanticCache, contentShaFreshness } = await import(
+      "@prune/semantic-cache"
+    );
+    const cache = new SemanticCache();
+    cache.store("k1", "the quick brown fox", "RESPONSE", contentShaFreshness("a"));
+    const state = cache.toJSON();
+    const { handleSemanticCacheProbe } = await import("./tcrp-tools.js");
+    const json = handleSemanticCacheProbe({
+      state,
+      probes: [{ query: "the quick brown fox", freshness_parts: ["a"] }],
+    });
+    const r = JSON.parse(json);
+    expect(r.cacheSize).toBe(1);
+    expect(r.verdicts[0].decision.kind).toBe("hit");
+  });
+
+  it("freshness mismatch surfaces miss(freshness_mismatch)", async () => {
+    const { SemanticCache, contentShaFreshness } = await import(
+      "@prune/semantic-cache"
+    );
+    const cache = new SemanticCache();
+    cache.store("k1", "alpha alpha alpha", "x", contentShaFreshness("workspace-A"));
+    const { handleSemanticCacheProbe } = await import("./tcrp-tools.js");
+    const json = handleSemanticCacheProbe({
+      state: cache.toJSON(),
+      probes: [{ query: "alpha alpha alpha", freshness_parts: ["workspace-B"] }],
+    });
+    const r = JSON.parse(json);
+    expect(r.verdicts[0].decision.kind).toBe("miss");
+    expect(r.verdicts[0].decision.reason).toBe("freshness_mismatch");
+  });
+
+  it("returns an error object for missing probes", async () => {
+    const { handleSemanticCacheProbe } = await import("./tcrp-tools.js");
+    const json = handleSemanticCacheProbe({} as never);
+    expect(JSON.parse(json).error).toBeTruthy();
+  });
+
+  it("each malformed probe is annotated, others continue", async () => {
+    const { handleSemanticCacheProbe } = await import("./tcrp-tools.js");
+    const json = handleSemanticCacheProbe({
+      probes: [
+        { query: "good", freshness_parts: ["a"] },
+        { query: null as never, freshness_parts: ["a"] },
+      ],
+    });
+    const r = JSON.parse(json);
+    expect(r.verdicts[0].decision).toBeDefined();
+    expect(r.verdicts[1].error).toBeDefined();
+  });
+});
