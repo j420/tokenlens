@@ -88,6 +88,25 @@ export interface ToolAuditOptions {
   wasteIdleDays?: number;
   /** Minimum window length before recommendations surface. Default 14. */
   minWindowDays?: number;
+  /**
+   * Vendor / host scoping. When the host ships a native solution for the
+   * same problem (Anthropic Claude Code 2.1+ ships on-demand tool search
+   * default-on which delivers ~85% MCP token reduction at the host level),
+   * the auditor short-circuits with a single advisory pointing the user
+   * at that mechanism rather than recommending per-tool removals that
+   * would be a no-op on top of the vendor's solution.
+   *
+   * Recognized values:
+   *   - "anthropic-claude-code" — short-circuit; advise vendor mechanism
+   *   - "cursor" | "openai-codex" | "openai-other" | "unknown" | undefined
+   *     — run the existing auditor logic unchanged
+   */
+  vendor?:
+    | "anthropic-claude-code"
+    | "cursor"
+    | "openai-codex"
+    | "openai-other"
+    | "unknown";
 }
 
 export const DEFAULT_CRITICAL_ALLOWLIST = [
@@ -104,13 +123,55 @@ export const DEFAULT_CRITICAL_ALLOWLIST = [
 ];
 
 /**
+ * Pre-built advisory entry the vendor short-circuit returns. Exposed
+ * so tests can pin the exact shape and consumers can match it.
+ */
+export const ANTHROPIC_CLAUDE_CODE_NOTICE: ToolAuditEntry = {
+  name: "vendor-native-mechanism",
+  server: "anthropic-claude-code",
+  definitionTokens: 0,
+  invocations: 0,
+  invocationsPerWeek: 0,
+  lastUsedAgeDays: 0,
+  utility: "critical",
+  wastedTokensPerWeek: 0,
+  recommendRemoval: false,
+  rationale:
+    "Claude Code 2.1+ ships on-demand tool search default-on (≈85% MCP " +
+    "token reduction at the host level). The TokenLens tool auditor adds " +
+    "no value on top of that for the Claude Code surface. Disable this " +
+    "audit on Claude Code and rely on the vendor mechanism.",
+};
+
+/**
  * Audit a tool registry against an observed usage window.
+ *
+ * Vendor short-circuit: when `options.vendor === "anthropic-claude-code"`,
+ * the auditor returns a single advisory pointing the user at Claude
+ * Code's built-in on-demand tool search and does NOT run the
+ * per-tool utility analysis. All other vendors (Cursor, Codex,
+ * unknown) run the existing logic.
  */
 export function auditToolDefinitions(
   tools: ToolDefinitionInfo[],
   usage: ToolUsageWindow,
   options: ToolAuditOptions = {}
 ): ToolAuditReport {
+  if (options.vendor === "anthropic-claude-code") {
+    return {
+      windowDays: usage.windowDays,
+      sessionsInWindow: usage.sessionsInWindow,
+      entries: [ANTHROPIC_CLAUDE_CODE_NOTICE],
+      recoverableTokensPerWeek: 0,
+      totalDefinitionTokens: tools.reduce(
+        (sum, t) =>
+          sum + (Number.isFinite(t.definitionTokens) ? t.definitionTokens : 0),
+        0
+      ),
+      recommendationCount: 0,
+      newInstallGuardActive: true,
+    };
+  }
   const allowlist = new Set(
     options.criticalAllowlist ?? DEFAULT_CRITICAL_ALLOWLIST
   );

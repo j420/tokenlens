@@ -43,6 +43,18 @@ export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
   usage: ToolUsageWindow;
   critical_allowlist?: string[];
+  /**
+   * Vendor scoping. When "anthropic-claude-code", the auditor
+   * short-circuits with a vendor-native-mechanism notice instead of
+   * running per-tool analysis (Claude Code 2.1+ ships on-demand tool
+   * search default-on).
+   */
+  vendor?:
+    | "anthropic-claude-code"
+    | "cursor"
+    | "openai-codex"
+    | "openai-other"
+    | "unknown";
 }
 
 export function handleToolAudit(args: ToolAuditArgs): string {
@@ -51,6 +63,7 @@ export function handleToolAudit(args: ToolAuditArgs): string {
   }
   const report = auditToolDefinitions(args.tools, args.usage, {
     criticalAllowlist: args.critical_allowlist,
+    vendor: args.vendor,
   });
   return JSON.stringify(
     {

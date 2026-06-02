@@ -774,7 +774,12 @@ const TOOLS = [
       "never invoked — and how many tokens/week disabling them would recover. " +
       "Never recommends removing a critical-allowlist tool. Mechanically zero " +
       "quality impact: it only flags tools the agent does not invoke; the human " +
-      "confirms each removal.",
+      "confirms each removal. " +
+      "Vendor scoping: pass `vendor: \"anthropic-claude-code\"` to short-circuit " +
+      "with a notice pointing the user at Claude Code 2.1+'s built-in on-demand " +
+      "tool search (≈85% MCP token reduction at the host level); other vendors " +
+      "(cursor / openai-codex / openai-other / unknown / unset) run the full " +
+      "auditor.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -794,6 +799,13 @@ const TOOLS = [
           type: "array" as const,
           description: "Tool names that must never be recommended for removal.",
           items: { type: "string" as const },
+        },
+        vendor: {
+          type: "string" as const,
+          description:
+            "Host scope: 'anthropic-claude-code' short-circuits the audit; " +
+            "any other value (cursor | openai-codex | openai-other | unknown) " +
+            "runs the existing logic.",
         },
       },
       required: ["tools", "usage"],
@@ -2298,11 +2310,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         });
         break;
       case "tool_audit":
-        result = handleToolAudit(args as {
-          tools: ToolDefinitionInfo[];
-          usage: ToolUsageWindow;
-          critical_allowlist?: string[];
-        });
+        result = handleToolAudit(
+          args as unknown as Parameters<typeof handleToolAudit>[0]
+        );
         break;
       case "qpd_report":
         result = handleQpdReport(args as {

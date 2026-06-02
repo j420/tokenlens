@@ -77,6 +77,46 @@ describe("tool_audit MCP handler (F2)", () => {
     const r = JSON.parse(handleToolAudit({ tools: undefined as never, usage: undefined as never }));
     expect(r.error).toBeTruthy();
   });
+
+  it("vendor=anthropic-claude-code short-circuits with the vendor-native notice", () => {
+    const json = handleToolAudit({
+      tools: [
+        { name: "github_pr", server: "github", definitionTokens: 500 },
+        { name: "jira_create", server: "jira", definitionTokens: 900 },
+      ],
+      usage: {
+        windowDays: 30,
+        sessionsInWindow: 60,
+        invocations: { github_pr: 40 },
+        lastUsedAgeDays: { github_pr: 0.5, jira_create: Infinity },
+        sessionsLoadingTool: { github_pr: 60, jira_create: 60 },
+      },
+      vendor: "anthropic-claude-code",
+    });
+    const r = JSON.parse(json);
+    expect(r.recommendationCount).toBe(0);
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0].server).toBe("anthropic-claude-code");
+    expect(r.totalDefinitionTokens).toBe(1400);
+  });
+
+  it("vendor=cursor preserves the existing auditor behavior", () => {
+    const json = handleToolAudit({
+      tools: [{ name: "jira_create", server: "jira", definitionTokens: 900 }],
+      usage: {
+        windowDays: 30,
+        sessionsInWindow: 60,
+        invocations: {},
+        lastUsedAgeDays: { jira_create: Infinity },
+        sessionsLoadingTool: { jira_create: 60 },
+      },
+      vendor: "cursor",
+    });
+    const r = JSON.parse(json);
+    const jira = r.entries.find((e: { name: string }) => e.name === "jira_create");
+    expect(jira.utility).toBe("waste");
+    expect(jira.recommendRemoval).toBe(true);
+  });
 });
 
 describe("qpd_report MCP handler (F4)", () => {

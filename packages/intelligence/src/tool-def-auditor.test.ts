@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANTHROPIC_CLAUDE_CODE_NOTICE,
   auditToolDefinitions,
   buildUsageWindow,
   DEFAULT_CRITICAL_ALLOWLIST,
@@ -237,5 +238,82 @@ describe("buildUsageWindow", () => {
     const gh = report.entries.find((e) => e.name === "github_pr")!;
     expect(jira.recommendRemoval).toBe(true);
     expect(gh.recommendRemoval).toBe(false);
+  });
+});
+
+describe("auditToolDefinitions — vendor short-circuit", () => {
+  it("anthropic-claude-code returns the vendor-native notice", () => {
+    const r = auditToolDefinitions(
+      [tool("github_pr", "github", 500), tool("jira_create", "jira", 900)],
+      window({}),
+      { vendor: "anthropic-claude-code" }
+    );
+    expect(r.entries).toHaveLength(1);
+    expect(r.entries[0]).toEqual(ANTHROPIC_CLAUDE_CODE_NOTICE);
+    expect(r.recommendationCount).toBe(0);
+    expect(r.recoverableTokensPerWeek).toBe(0);
+    expect(r.newInstallGuardActive).toBe(true);
+  });
+
+  it("anthropic-claude-code still reports totalDefinitionTokens for the user", () => {
+    const r = auditToolDefinitions(
+      [tool("a", "x", 500), tool("b", "y", 900)],
+      window({}),
+      { vendor: "anthropic-claude-code" }
+    );
+    expect(r.totalDefinitionTokens).toBe(1400);
+  });
+
+  it("anthropic-claude-code sanitizes non-finite definitionTokens", () => {
+    const r = auditToolDefinitions(
+      [
+        tool("a", "x", Number.NaN),
+        tool("b", "y", 900),
+      ],
+      window({}),
+      { vendor: "anthropic-claude-code" }
+    );
+    expect(r.totalDefinitionTokens).toBe(900);
+  });
+
+  it("non-claude-code vendors run the existing logic (cursor)", () => {
+    const r = auditToolDefinitions(
+      [tool("jira_create", "jira", 900)],
+      window({
+        invocations: {},
+        lastUsedAgeDays: { jira_create: Infinity },
+        sessionsLoadingTool: { jira_create: 60 },
+      }),
+      { vendor: "cursor" }
+    );
+    expect(r.entries[0]?.name).toBe("jira_create");
+    expect(r.entries[0]?.utility).toBe("waste");
+  });
+
+  it("undefined vendor preserves baseline behavior (regression guard)", () => {
+    const r = auditToolDefinitions(
+      [tool("jira_create", "jira", 900)],
+      window({
+        invocations: {},
+        lastUsedAgeDays: { jira_create: Infinity },
+        sessionsLoadingTool: { jira_create: 60 },
+      })
+    );
+    expect(r.entries[0]?.name).toBe("jira_create");
+  });
+
+  it("openai-codex / openai-other / unknown also run the existing logic", () => {
+    for (const vendor of ["openai-codex", "openai-other", "unknown"] as const) {
+      const r = auditToolDefinitions(
+        [tool("jira_create", "jira", 900)],
+        window({
+          invocations: {},
+          lastUsedAgeDays: { jira_create: Infinity },
+          sessionsLoadingTool: { jira_create: 60 },
+        }),
+        { vendor }
+      );
+      expect(r.entries[0]?.utility).toBe("waste");
+    }
   });
 });
