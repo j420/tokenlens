@@ -12,8 +12,10 @@ import {
   handleToolAudit,
   handleQpdReport,
   handleContextHealthReport,
+  handleTrajectoryReplay,
 } from "./tcrp-tools.js";
 import type { ModelAggregate } from "@prune/qpd-bench";
+import type { F1ShadowEvent } from "@prune/trajectory-diet";
 
 describe("tool_audit MCP handler (F2)", () => {
   it("returns a parseable report and flags an idle bloated MCP tool", () => {
@@ -199,5 +201,60 @@ describe("context_health_report MCP handler (F6)", () => {
     });
     const r = JSON.parse(json);
     expect(r.regime).toBe("insufficient_data");
+  });
+});
+
+describe("trajectory_replay_report MCP handler (F1 v2)", () => {
+  function ev(
+    sessionId: string,
+    predicted: number,
+    realized: number
+  ): F1ShadowEvent {
+    return {
+      sessionId,
+      stepIndex: 0,
+      predictedInfluence: predicted,
+      realizedInfluence: realized,
+      decision: "kept",
+      stepTokenCost: 100,
+    };
+  }
+
+  it("returns a parseable report with calibration metrics", () => {
+    const json = handleTrajectoryReplay({
+      events: [ev("s1", 0.1, 0), ev("s2", 0.9, 1), ev("s3", 0.2, 0)],
+    });
+    const r = JSON.parse(json);
+    expect(r.eligibleEvents).toBe(3);
+    expect(r.malformedEvents).toBe(0);
+    expect(r.calibration.brierScore).toBeLessThan(0.05);
+    expect(r.qualityGate).toBeNull(); // no pairs
+  });
+
+  it("returns an error object when events is missing", () => {
+    const json = handleTrajectoryReplay({} as never);
+    expect(JSON.parse(json).error).toBeTruthy();
+  });
+
+  it("returns an error object when events is not an array", () => {
+    const json = handleTrajectoryReplay({ events: "not-an-array" } as never);
+    expect(JSON.parse(json).error).toBeTruthy();
+  });
+
+  it("respects custom num_bins", () => {
+    const json = handleTrajectoryReplay({
+      events: [ev("s1", 0.1, 0), ev("s2", 0.9, 1)],
+      num_bins: 25,
+    });
+    const r = JSON.parse(json);
+    expect(r.calibration.numBins).toBe(25);
+  });
+
+  it("partial margins are filled in with defaults", () => {
+    const json = handleTrajectoryReplay({
+      events: [ev("s1", 0.5, 0)],
+      margins: { acceptanceRate: 0.02 },
+    });
+    expect(() => JSON.parse(json)).not.toThrow();
   });
 });

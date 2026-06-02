@@ -17,7 +17,8 @@
   },
   "dependencies": {
     "@prune/telemetry": "0.1.0",
-    "@prune/equivalence": "0.1.0"
+    "@prune/equivalence": "0.1.0",
+    "@prune/quality": "0.1.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

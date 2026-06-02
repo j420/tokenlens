@@ -39,3 +39,8 @@ export {
   VOLATILE_PREFIX_THRESHOLD,
 } from "./advisor.js";
 export { buildReport, type BuildReportOptions } from "./report.js";
+export {
+  readPersistedRegime,
+  statePathFor,
+  type ReadPersistedRegimeOptions,
+} from "./state-reader.js";

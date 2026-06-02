@@ -42,6 +42,7 @@ import {
   handleToolAudit,
   handleQpdReport,
   handleContextHealthReport,
+  handleTrajectoryReplay,
 } from "./tcrp-tools.js";
 
 // ============================================================================
@@ -828,6 +829,41 @@ const TOOLS = [
         },
       },
       required: ["baseline", "candidates"],
+    },
+  },
+  {
+    name: "trajectory_replay_report",
+    description:
+      "F1 v2 — Trajectory Diet replay/calibration report. Given F1 shadow " +
+      "events (predicted influence + realized influence, optionally paired " +
+      "control/treatment outcomes), returns calibration metrics (Brier, " +
+      "log-loss, ECE), advisory aggregate (true vs false low-influence " +
+      "counts, tokens projected to save), and the @prune/quality NI-gate " +
+      "verdict when ≥ min_pairs_for_gate paired sessions are available. " +
+      "Pure math over caller-supplied events; never auto-promotes a " +
+      "feature, never throws on malformed input.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        events: {
+          type: "array" as const,
+          description: "F1ShadowEvent[] — projected from EventRow.quality_proof.",
+          items: { type: "object" as const },
+        },
+        num_bins: {
+          type: "number" as const,
+          description: "Number of bins for ECE (default 10).",
+        },
+        min_pairs_for_gate: {
+          type: "number" as const,
+          description: "Minimum paired sessions to evaluate the NI gate (default 30).",
+        },
+        margins: {
+          type: "object" as const,
+          description: "Quality margins {acceptanceRate, testPassRate, alpha}.",
+        },
+      },
+      required: ["events"],
     },
   },
   {
@@ -2203,6 +2239,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           transcript_path: string;
           window_turns?: number;
         });
+        break;
+      case "trajectory_replay_report":
+        result = handleTrajectoryReplay(
+          args as unknown as Parameters<typeof handleTrajectoryReplay>[0]
+        );
         break;
       case "budget_status":
         result = await handleBudgetStatus(args as {

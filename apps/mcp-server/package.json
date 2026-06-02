@@ -32,7 +32,9 @@
     "@prune/attribution": "0.1.0",
     "@prune/slo": "0.1.0",
     "@prune/qpd-bench": "0.1.0",
-    "@prune/context-health": "0.1.0"
+    "@prune/context-health": "0.1.0",
+    "@prune/trajectory-diet": "0.1.0",
+    "@prune/quality": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",

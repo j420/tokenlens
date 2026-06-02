@@ -15,8 +15,10 @@ import { loadCachedSessionView } from "@prune/telemetry";
 import {
   extractProposedStepFeatures,
   adviseStep,
+  modulateAdvisorOptions,
   TransparentInfluenceModel,
 } from "@prune/trajectory-diet";
+import { readPersistedRegime } from "@prune/context-health";
 import { isFeatureEnabled, validateFlags } from "@prune/shared";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -49,7 +51,13 @@ safeRun(async () => {
     name: toolName,
     input: toolInput,
   });
-  const advisory = adviseStep(features, new TransparentInfluenceModel());
+  // F1 v2 — graceful degradation: read the F6 regime persisted by the
+  // context-health hook and modulate the advisor threshold. When F6
+  // hasn't observed anything yet (or context-health isn't installed),
+  // readPersistedRegime returns "insufficient_data" ⇒ baseline behavior.
+  const regime = readPersistedRegime(payload.transcript_path);
+  const options = modulateAdvisorOptions(undefined, regime);
+  const advisory = adviseStep(features, new TransparentInfluenceModel(), options);
 
   // Shadow mode: feature not user-visible yet → record nothing surfaced.
   // (Prediction logging to the sink is wired separately; the hook stays a

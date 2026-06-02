@@ -23,6 +23,10 @@ import {
   resolveConfig,
   type ContextHealthReport,
 } from "@prune/context-health";
+import {
+  runReplayHarness,
+  type F1ShadowEvent,
+} from "@prune/trajectory-diet";
 
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
@@ -157,5 +161,57 @@ export async function handleContextHealthReport(
   const turns = window === all.length ? all : all.slice(all.length - window);
 
   const report: ContextHealthReport = buildReport(turns, { config });
+  return JSON.stringify(report, null, 2);
+}
+
+export interface TrajectoryReplayArgs {
+  /**
+   * F1 shadow events to evaluate. Caller (extension or a CI job)
+   * sources these from the local persistence sink where
+   * `feature_id = "f1"`, projecting `quality_proof` into the shape
+   * expected by F1ShadowEvent.
+   */
+  events: F1ShadowEvent[];
+  num_bins?: number;
+  min_pairs_for_gate?: number;
+  /** Optional margins override (acceptanceRate, testPassRate, alpha). */
+  margins?: {
+    acceptanceRate?: number;
+    testPassRate?: number;
+    alpha?: number;
+  };
+}
+
+/**
+ * F1 v2 — Trajectory Replay Report. Computes calibration metrics and
+ * the NI-gate verdict over a set of shadow-mode F1 events. Stateless;
+ * the caller provides the events. Never throws on malformed input —
+ * out-of-range events are reported under `malformedEvents`.
+ */
+export function handleTrajectoryReplay(args: TrajectoryReplayArgs): string {
+  if (!args || !Array.isArray(args.events)) {
+    return JSON.stringify({
+      error: "trajectory_replay_report requires `events` (F1ShadowEvent[]).",
+    });
+  }
+  const margins =
+    args.margins && typeof args.margins === "object"
+      ? {
+          acceptanceRate: args.margins.acceptanceRate ?? 0.01,
+          testPassRate: args.margins.testPassRate ?? 0.005,
+          alpha: args.margins.alpha ?? 0.05,
+        }
+      : undefined;
+  const report = runReplayHarness(args.events, {
+    numBins:
+      typeof args.num_bins === "number" && args.num_bins > 0
+        ? Math.trunc(args.num_bins)
+        : undefined,
+    minPairsForGate:
+      typeof args.min_pairs_for_gate === "number" && args.min_pairs_for_gate > 0
+        ? Math.trunc(args.min_pairs_for_gate)
+        : undefined,
+    margins,
+  });
   return JSON.stringify(report, null, 2);
 }

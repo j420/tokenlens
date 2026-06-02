@@ -10,3 +10,5 @@
 export * from "./feature-extractor.js";
 export * from "./influence-model.js";
 export * from "./advisor.js";
+export * from "./context-health-modulation.js";
+export * from "./replay-harness.js";
