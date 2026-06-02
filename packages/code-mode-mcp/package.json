@@ -1,0 +1,26 @@
+{
+  "name": "@prune/code-mode-mcp",
+  "version": "0.1.0",
+  "description": "F8 — Code-Mode MCP. JSON-schema → typed TypeScript API generator (structural walk, no regex), Node vm sandbox with allowlisted globals, and an equivalence-proof harness that compares code-mode results against direct-tool-call results via @prune/equivalence. Portable to non-Claude agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/equivalence": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

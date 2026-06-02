@@ -44,6 +44,8 @@ import {
   handleContextHealthReport,
   handleTrajectoryReplay,
   handleSemanticCacheProbe,
+  handleCodeModeGenerateApi,
+  handleCodeModeHarness,
 } from "./tcrp-tools.js";
 
 // ============================================================================
@@ -830,6 +832,52 @@ const TOOLS = [
         },
       },
       required: ["baseline", "candidates"],
+    },
+  },
+  {
+    name: "code_mode_generate_api",
+    description:
+      "F8 Code-Mode API generator. Walks a set of MCP tool JSON " +
+      "schemas and emits a typed TypeScript `Toolbox` interface so an " +
+      "agent can write code calling tools by name with checked params. " +
+      "Pure: no model call, no I/O, no regex (structural schema walk). " +
+      "Method names are sanitized (char-code walk); collisions get " +
+      "suffixed.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tools: {
+          type: "array" as const,
+          description: "McpToolDef[] — { name, description?, inputSchema, outputSchema? }.",
+          items: { type: "object" as const },
+        },
+        toolbox_name: {
+          type: "string" as const,
+          description: "Optional interface name; default 'Toolbox'.",
+        },
+      },
+      required: ["tools"],
+    },
+  },
+  {
+    name: "code_mode_harness",
+    description:
+      "F8 Code-Mode Equivalence Harness. Aggregates per-task verdicts " +
+      "from a caller-supplied corpus comparing direct-tool-call outputs " +
+      "against code-mode-script outputs via @prune/equivalence, plus " +
+      "byte-reduction totals and sandbox-escape attempt counts. The " +
+      "caller is responsible for actually running both arms; this tool " +
+      "verifies and reports.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        outcomes: {
+          type: "array" as const,
+          description: "CodeModeTaskOutcome[] from your runner.",
+          items: { type: "object" as const },
+        },
+      },
+      required: ["outcomes"],
     },
   },
   {
@@ -2278,6 +2326,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "semantic_cache_probe":
         result = handleSemanticCacheProbe(
           args as unknown as Parameters<typeof handleSemanticCacheProbe>[0]
+        );
+        break;
+      case "code_mode_generate_api":
+        result = handleCodeModeGenerateApi(
+          args as unknown as Parameters<typeof handleCodeModeGenerateApi>[0]
+        );
+        break;
+      case "code_mode_harness":
+        result = handleCodeModeHarness(
+          args as unknown as Parameters<typeof handleCodeModeHarness>[0]
         );
         break;
       case "budget_status":

@@ -322,3 +322,64 @@ describe("semantic_cache_probe MCP handler (F7)", () => {
     expect(r.verdicts[1].error).toBeDefined();
   });
 });
+
+describe("code_mode_generate_api MCP handler (F8)", () => {
+  it("returns TS code for a small tool registry", async () => {
+    const { handleCodeModeGenerateApi } = await import("./tcrp-tools.js");
+    const json = handleCodeModeGenerateApi({
+      tools: [
+        {
+          name: "read_file",
+          description: "Read a file.",
+          inputSchema: {
+            type: "object",
+            properties: { path: { type: "string" } },
+            required: ["path"],
+          },
+        },
+      ],
+    });
+    const r = JSON.parse(json);
+    expect(r.code).toContain("export interface Toolbox");
+    expect(r.code).toContain("read_file");
+    expect(r.methodNames).toEqual(["read_file"]);
+  });
+
+  it("returns an error object when tools is missing", async () => {
+    const { handleCodeModeGenerateApi } = await import("./tcrp-tools.js");
+    expect(JSON.parse(handleCodeModeGenerateApi({} as never)).error).toBeTruthy();
+  });
+});
+
+describe("code_mode_harness MCP handler (F8)", () => {
+  it("aggregates verdicts across a small corpus", async () => {
+    const { handleCodeModeHarness } = await import("./tcrp-tools.js");
+    const json = handleCodeModeHarness({
+      outcomes: [
+        {
+          taskId: "t1",
+          controlOutput: "ok",
+          treatmentOutput: "ok",
+          controlBytes: 100,
+          treatmentBytes: 20,
+        },
+        {
+          taskId: "t2",
+          controlOutput: "result-A",
+          treatmentOutput: "totally orthogonal output text",
+          controlBytes: 50,
+          treatmentBytes: 30,
+        },
+      ],
+    });
+    const r = JSON.parse(json);
+    expect(r.totalTasks).toBe(2);
+    expect(r.equivalentCount).toBe(1);
+    expect(r.passRate).toBeCloseTo(0.5, 5);
+  });
+
+  it("returns an error object when outcomes is missing", async () => {
+    const { handleCodeModeHarness } = await import("./tcrp-tools.js");
+    expect(JSON.parse(handleCodeModeHarness({} as never)).error).toBeTruthy();
+  });
+});

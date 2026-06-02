@@ -32,6 +32,12 @@ import {
   contentShaFreshness,
   type SerializedSemanticCache,
 } from "@prune/semantic-cache";
+import {
+  generateToolboxApi,
+  runEquivalenceHarness,
+  type CodeModeTaskOutcome,
+  type McpToolDef,
+} from "@prune/code-mode-mcp";
 
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
@@ -274,4 +280,55 @@ export function handleSemanticCacheProbe(
     null,
     2
   );
+}
+
+export interface CodeModeApiArgs {
+  tools: McpToolDef[];
+  toolbox_name?: string;
+}
+
+/**
+ * F8 — Code-Mode API generator. Takes a set of MCP tool definitions
+ * and emits a typed TypeScript Toolbox module. Pure code generation.
+ */
+export function handleCodeModeGenerateApi(args: CodeModeApiArgs): string {
+  if (!args || !Array.isArray(args.tools)) {
+    return JSON.stringify({
+      error: "code_mode_generate_api requires `tools: McpToolDef[]`.",
+    });
+  }
+  const spec = generateToolboxApi(args.tools, {
+    toolboxName:
+      typeof args.toolbox_name === "string" && args.toolbox_name.length > 0
+        ? args.toolbox_name
+        : undefined,
+  });
+  return JSON.stringify(
+    {
+      code: spec.code,
+      methodNames: spec.methodNames,
+      nameMap: spec.nameMap,
+    },
+    null,
+    2
+  );
+}
+
+export interface CodeModeHarnessArgs {
+  outcomes: CodeModeTaskOutcome[];
+}
+
+/**
+ * F8 — Code-Mode Equivalence Harness aggregator. Reports pass rate,
+ * byte reduction, sandbox-escape attempts over a caller-supplied
+ * corpus.
+ */
+export function handleCodeModeHarness(args: CodeModeHarnessArgs): string {
+  if (!args || !Array.isArray(args.outcomes)) {
+    return JSON.stringify({
+      error: "code_mode_harness requires `outcomes: CodeModeTaskOutcome[]`.",
+    });
+  }
+  const report = runEquivalenceHarness(args.outcomes);
+  return JSON.stringify(report, null, 2);
 }
