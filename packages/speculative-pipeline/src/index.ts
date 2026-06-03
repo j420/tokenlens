@@ -61,3 +61,19 @@ export {
   QUALITY_PROOF_SCHEMA_VERSION,
   type SpeculativePipelineProof,
 } from "./quality-proof.js";
+export {
+  SpeculativeHost,
+  type ExecutorOutput,
+  type ToolExecutor,
+  type Clock,
+  type SpeculativeHostOptions,
+  type ResolveSource,
+  type ResolveResult,
+  type TurnSpeculationReport,
+} from "./host.js";
+export {
+  FakeExecutor,
+  ManualClock,
+  flushMicrotasks,
+  type PendingExecution,
+} from "./test-harness.js";
