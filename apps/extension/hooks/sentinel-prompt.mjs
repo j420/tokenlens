@@ -8,9 +8,9 @@
  * Pure pattern library (gitleaks/TruffleHog-style); deterministic
  * decisions a platform engineer can audit.
  *
- * Context: GitGuardian's State of Secrets Sprawl 2026 found
- * AI-assisted commits leak secrets at 3.2% vs 1.5% human baseline
- * (https://oecd.ai/en/incidents/2026-03-17-2273). This hook catches
+ * Context: GitGuardian's "State of Secrets Sprawl 2026" found
+ * Claude Code commits leak secrets at 3.2% vs a 1.5% baseline
+ * (https://blog.gitguardian.com/the-state-of-secrets-sprawl-2026/). This hook catches
  * the leak BEFORE it enters the model context — earlier than the
  * pre-commit gates the data is measured against.
  *

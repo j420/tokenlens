@@ -423,8 +423,8 @@ const TOOLS = [
       "Pre-prompt scan: detect API keys, private keys, connection " +
       "URLs, and high-entropy tokens in a payload BEFORE sending it " +
       "to a cloud model. Pattern-based (gitleaks/TruffleHog-style). " +
-      "Responds to GitGuardian's documented 3.2% AI-commit leak rate " +
-      "vs 1.5% human baseline (https://oecd.ai/en/incidents/2026-03-17-2273). " +
+      "Responds to GitGuardian's documented 3.2% Claude-Code-commit leak rate " +
+      "vs 1.5% baseline (https://blog.gitguardian.com/the-state-of-secrets-sprawl-2026/). " +
       "Returns a verdict (allow/warn/block), the per-finding location, " +
       "and a length-preserving redacted payload.",
     inputSchema: {
@@ -453,8 +453,9 @@ const TOOLS = [
       "external payload) for prompt-injection signatures. Categories: " +
       "SHADOWING, PATH_TRAVERSAL, ARGUMENT_INJECTION, HIDDEN_HTML, " +
       "INDIRECT_MARKUP. Pattern matches the documented Jan 20 2026 RCE " +
-      "in Anthropic's Git MCP server (arXiv 2601.17548). Default policy " +
-      "blocks the first three categories.",
+      "in Anthropic's Git MCP server (CVE-2025-68143/68144/68145; class " +
+      "surveyed in arXiv 2601.17548). Default policy blocks the first three " +
+      "categories.",
     inputSchema: {
       type: "object" as const,
       properties: {

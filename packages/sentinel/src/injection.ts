@@ -5,10 +5,12 @@
  * Target incident class: the Jan 20 2026 RCE in Anthropic's Git MCP
  * server (path traversal + argument injection + repository-scoping
  * bypass, achieving remote code execution through prompt injection
- * alone — arXiv 2601.17548). OWASP reports 73% of live AI rollouts
- * have prompt-injection flaws; attack success rate against SOTA
- * defenses exceeds 85% when adaptive attacks are used. Detection here
- * is layered defense, not a complete shield.
+ * alone — CVE-2025-68143 / CVE-2025-68144 / CVE-2025-68145, Cyata).
+ * The attack class is surveyed in arXiv 2601.17548 (Maloyan & Namiot,
+ * SoK), which reports attack success >85% vs SOTA defenses under
+ * adaptive attack; OWASP's LLM Top 10 puts prompt-injection flaws in
+ * ~73% of assessed production deployments. Detection here is layered
+ * defense, not a complete shield.
  *
  * Detection categories (each pattern carries a stable id):
  *   - SHADOWING        — "ignore previous", "you are now", "system:"

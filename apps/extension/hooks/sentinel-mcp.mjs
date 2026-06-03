@@ -6,6 +6,7 @@
  * prompt-injection signatures. Pattern matches the documented Jan 20
  * 2026 RCE in Anthropic's Git MCP server (path traversal + argument
  * injection chain achieving RCE through prompt injection alone —
+ * CVE-2025-68143/68144/68145, Cyata; attack class surveyed in
  * arXiv 2601.17548). Default policy blocks SHADOWING +
  * PATH_TRAVERSAL + ARGUMENT_INJECTION; warns on HIDDEN_HTML +
  * INDIRECT_MARKUP.
