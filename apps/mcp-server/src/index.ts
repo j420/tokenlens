@@ -46,7 +46,10 @@ import {
   handleSemanticCacheProbe,
   handleCodeModeGenerateApi,
   handleCodeModeHarness,
+  handleReplayCostPlan,
+  handleMcpProxyTrim,
 } from "./tcrp-tools.js";
+import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
 // ============================================================================
 // Server Setup
@@ -982,6 +985,129 @@ const TOOLS = [
         },
       },
       required: ["transcript_path"],
+    },
+  },
+  {
+    name: "replay_cost_plan",
+    description:
+      "F11 What-If Deterministic Replay. Given an ordered set of session " +
+      "segments (system/user/assistant/tool, each with caller-counted input " +
+      "and output tokens) and a single-segment mutation, computes the " +
+      "byte-identical shared prefix, the divergence point, and the dollar " +
+      "delta between a naive cold re-run and a cache-replayed run (shared " +
+      "prefix re-served at the cache-read tier, only the diverged tail " +
+      "recomputed). Pure, deterministic, no model call; token counts are " +
+      "caller-supplied and never fabricated; unpriced models return null USD. " +
+      "Returns the divergence, the cost breakdown, and an f11 quality_proof.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        model: {
+          type: "string" as const,
+          description: "Model id used for pricing, e.g. claude-sonnet-4-5-20250929.",
+        },
+        provider: {
+          type: "string" as const,
+          enum: ["anthropic", "openai", "google"],
+          description: "Provider hint; defaults to anthropic.",
+        },
+        segments: {
+          type: "array" as const,
+          description:
+            "Ordered session segments. Index is assigned from array position.",
+          items: {
+            type: "object" as const,
+            properties: {
+              role: {
+                type: "string" as const,
+                enum: ["system", "user", "assistant", "tool"],
+              },
+              payload: {
+                description: "JSON-canonicalizable bytes-defining payload for the segment.",
+              },
+              tokens_in: { type: "number" as const },
+              tokens_out: { type: "number" as const },
+            },
+            required: ["role", "payload", "tokens_in", "tokens_out"],
+          },
+        },
+        mutation: {
+          type: "object" as const,
+          description: "The single-segment what-if mutation to evaluate.",
+          properties: {
+            at_index: { type: "number" as const },
+            new_payload: { description: "Replacement payload for the segment." },
+            new_tokens_in: {
+              type: "number" as const,
+              description: "New input-token count; omitted ⇒ reuse the original.",
+            },
+          },
+          required: ["at_index", "new_payload"],
+        },
+      },
+      required: ["model", "segments", "mutation"],
+    },
+  },
+  {
+    name: "mcp_proxy_trim",
+    description:
+      "F10 Cross-Vendor Lazy-Schema MCP Proxy. Given a merged MCP tool catalog " +
+      "and the caller-classified intent for the upcoming turn, returns only the " +
+      "tools matching that intent (full inputSchemas held back for lazy load), " +
+      "plus a reduction audit (tokens saved, kept/hidden tool names) and an f10 " +
+      "quality_proof. Verb classification is a deterministic rule table (no " +
+      "regex, no model call); fail-safe-to-include means an unset or " +
+      "all-matching intent returns the full catalog rather than risk hiding a " +
+      "tool the agent needs. Pass intent=null to measure the lazy-schema saving " +
+      "alone.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        intent: {
+          type: ["string", "null"] as const,
+          enum: [
+            "classify", "retrieve", "generate", "refactor",
+            "debug", "explain", "test", "format", null,
+          ],
+          description: "Caller-classified intent, or null for the full catalog.",
+        },
+        tools: {
+          type: "array" as const,
+          description: "The merged upstream MCP tool catalog.",
+          items: {
+            type: "object" as const,
+            properties: {
+              name: { type: "string" as const },
+              description: { type: "string" as const },
+              inputSchema: { type: "object" as const },
+              origin: { type: "string" as const },
+            },
+            required: ["name", "inputSchema"],
+          },
+        },
+        token_cost_by_name: {
+          type: "object" as const,
+          description:
+            "Optional per-tool tokenized cost: name → { schemaTokens, descriptionTokens }.",
+        },
+        overrides: {
+          type: "array" as const,
+          description: "Optional intent overrides for tools whose names carry no verb signal.",
+          items: {
+            type: "object" as const,
+            properties: {
+              toolName: { type: "string" as const },
+              intents: { type: "array" as const, items: { type: "string" as const } },
+            },
+            required: ["toolName", "intents"],
+          },
+        },
+        include_fallback: {
+          type: "boolean" as const,
+          description: "Include verb-inconclusive (fail-safe) tools in the trim. Default true.",
+        },
+      },
+      required: ["tools"],
     },
   },
 ];
@@ -2348,6 +2474,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           args as unknown as Parameters<typeof handleCodeModeHarness>[0]
         );
         break;
+      case "replay_cost_plan":
+        result = handleReplayCostPlan(
+          args as unknown as Parameters<typeof handleReplayCostPlan>[0]
+        );
+        break;
+      case "mcp_proxy_trim":
+        result = handleMcpProxyTrim(
+          args as unknown as Parameters<typeof handleMcpProxyTrim>[0]
+        );
+        break;
       case "budget_status":
         result = await handleBudgetStatus(args as {
           name: string;
@@ -2369,6 +2505,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       default:
         throw new Error("Unknown tool: " + name);
+    }
+
+    // Caller-side feature telemetry (f10/f11): record the handler's
+    // quality_proof AFTER the handler returned, so the pure handlers stay pure.
+    // Gated behind PRUNE_MCP_TELEMETRY=1 (default OFF). Best-effort and
+    // self-contained — recordToolFeatureEventBestEffort never throws — but we
+    // also belt-and-suspenders guard here so a future change can't let a
+    // recording failure mask the result the caller already computed.
+    try {
+      await recordToolFeatureEventBestEffort(name, result);
+    } catch {
+      /* unreachable in practice; recording is internally fail-safe */
     }
 
     return {

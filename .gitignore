@@ -47,3 +47,6 @@ Thumbs.db
 # Drizzle
 packages/db/drizzle/
 .test-tools/
+
+# Claude Code agent worktree scratch (transient; never committed)
+.claude/worktrees/

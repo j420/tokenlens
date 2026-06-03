@@ -1,0 +1,27 @@
+{
+  "name": "@prune/cache-habits",
+  "version": "0.1.0",
+  "description": "E3 — Cache-Habits Linter. Pre-action linter that inspects a proposed user action and warns BEFORE a documented prompt-cache-killer pattern fires. Composes @prune/intelligence reactive analyzers; adds the pre-emit rule layer that no Anthropic-engineer published habit currently has automated guard for. Deterministic rules, stable IDs, no model call, no regex.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/intelligence": "0.1.0",
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

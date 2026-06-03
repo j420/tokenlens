@@ -1,0 +1,28 @@
+{
+  "name": "@prune/mcp-proxy",
+  "version": "0.1.0",
+  "description": "E1 — Cross-Vendor Lazy-Schema MCP Proxy. Sits between an MCP host (Cursor, Codex CLI, Cline, Continue, Aider) and one or more MCP servers; intercepts the JSON-RPC handshake to return only the tools matching the current intent. Schemas load lazily on first reference. Composes @prune/router (classifier) + @prune/sentinel (injection shield on dynamically-loaded schemas). No regex; rule-based verb classifier; fail-safe-to-include.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/router": "0.1.0",
+    "@prune/sentinel": "0.1.0",
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

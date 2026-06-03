@@ -97,6 +97,17 @@ export default function DashboardLayout({
               >
                 Sessions
               </Link>
+              <Link
+                href="/dashboard/telemetry"
+                className={cn(
+                  "rounded-lg px-4 py-2 text-sm font-medium transition",
+                  pathname.startsWith("/dashboard/telemetry")
+                    ? "bg-card-hover text-foreground"
+                    : "text-secondary hover:bg-card-hover hover:text-foreground"
+                )}
+              >
+                Telemetry
+              </Link>
             </nav>
           </div>
           <div className="flex items-center gap-2">

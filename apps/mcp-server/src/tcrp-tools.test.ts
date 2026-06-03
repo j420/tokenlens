@@ -13,6 +13,8 @@ import {
   handleQpdReport,
   handleContextHealthReport,
   handleTrajectoryReplay,
+  type ReplayCostPlanArgs,
+  type McpProxyTrimArgs,
 } from "./tcrp-tools.js";
 import type { ModelAggregate } from "@prune/qpd-bench";
 import type { F1ShadowEvent } from "@prune/trajectory-diet";
@@ -421,5 +423,119 @@ describe("code_mode_harness MCP handler (F8)", () => {
   it("returns an error object when outcomes is missing", async () => {
     const { handleCodeModeHarness } = await import("./tcrp-tools.js");
     expect(JSON.parse(handleCodeModeHarness({} as never)).error).toBeTruthy();
+  });
+});
+
+describe("replay_cost_plan MCP handler (F11)", () => {
+  // Canonical 5-segment session under sonnet pricing; the cost arithmetic is
+  // pinned in @prune/replay-cost's own suite — here we assert the boundary:
+  // the handler returns a parseable plan with the divergence, cost, and proof.
+  const baseArgs: ReplayCostPlanArgs = {
+    model: "claude-sonnet-4-5-20250929",
+    segments: [
+      { role: "system", payload: { role: "system", content: "SYS" }, tokens_in: 2000, tokens_out: 0 },
+      { role: "user", payload: { role: "user", content: "Q1" }, tokens_in: 500, tokens_out: 0 },
+      { role: "assistant", payload: { role: "assistant", content: "A1" }, tokens_in: 800, tokens_out: 800 },
+      { role: "user", payload: { role: "user", content: "Q2" }, tokens_in: 300, tokens_out: 0 },
+      { role: "assistant", payload: { role: "assistant", content: "A2" }, tokens_in: 1000, tokens_out: 1000 },
+    ],
+    mutation: { at_index: 3, new_payload: { role: "user", content: "Q2-variant" } },
+  };
+
+  it("returns a parseable plan with divergence, cost, and an f11 quality_proof", async () => {
+    const { handleReplayCostPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleReplayCostPlan(structuredClone(baseArgs)));
+    expect(r.featureId).toBe("f11");
+    expect(r.divergence.divergenceIndex).toBe(3);
+    expect(r.divergence.sharedSegmentCount).toBe(3);
+    // shared prefix = 2000+500+800 = 3300 input tokens re-served at cache-read.
+    expect(r.cost.sharedPrefixTokensIn).toBe(3300);
+    expect(r.cost.savedUsd).toBeGreaterThan(0);
+    expect(r.cost.savedUsd).toBeLessThan(r.cost.naiveCostUsd);
+    expect(r.quality_proof.featureId).toBe("f11");
+    expect(r.quality_proof.baselineRootHash).toBeTruthy();
+  });
+
+  it("never fabricates USD for an unpriced model (null cost, real token movement)", async () => {
+    const { handleReplayCostPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleReplayCostPlan({ ...structuredClone(baseArgs), model: "some-unknown-model" })
+    );
+    expect(r.cost.naiveCostUsd).toBeNull();
+    expect(r.cost.savedUsd).toBeNull();
+    expect(r.cost.sharedPrefixTokensIn).toBe(3300);
+  });
+
+  it("returns an error object for an out-of-range mutation index", async () => {
+    const { handleReplayCostPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleReplayCostPlan({ ...structuredClone(baseArgs), mutation: { at_index: 99, new_payload: {} } })
+    );
+    expect(r.error).toBeTruthy();
+  });
+
+  it("returns an error object when segments is missing", async () => {
+    const { handleReplayCostPlan } = await import("./tcrp-tools.js");
+    expect(JSON.parse(handleReplayCostPlan({} as never)).error).toBeTruthy();
+  });
+
+  it("is deterministic — identical args yield identical JSON", async () => {
+    const { handleReplayCostPlan } = await import("./tcrp-tools.js");
+    expect(handleReplayCostPlan(structuredClone(baseArgs))).toBe(
+      handleReplayCostPlan(structuredClone(baseArgs))
+    );
+  });
+});
+
+describe("mcp_proxy_trim MCP handler (F10)", () => {
+  const tools: McpProxyTrimArgs["tools"] = [
+    { name: "postgres__query", description: "Run a read-only SQL query.", inputSchema: { type: "object", properties: { sql: { type: "string" } } } },
+    { name: "github__create_pull_request", description: "Open a PR.", inputSchema: { type: "object", properties: { title: { type: "string" } } } },
+    { name: "ambiguous_tool_xyz", description: "No verb token.", inputSchema: { type: "object" } },
+  ];
+
+  it("trims to the retrieve-intent tools and returns an f10 audit + proof", async () => {
+    const { handleMcpProxyTrim } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleMcpProxyTrim({ intent: "retrieve", tools }));
+    expect(r.featureId).toBe("f10");
+    const kept = r.trimmed.manifest.map((m: { name: string }) => m.name);
+    expect(kept).toContain("postgres__query");
+    expect(kept).not.toContain("github__create_pull_request");
+    // ambiguous tool is fail-safe-included by default.
+    expect(kept).toContain("ambiguous_tool_xyz");
+    expect(r.audit.fallbackReason).toBeNull();
+    expect(r.quality_proof.featureId).toBe("f10");
+  });
+
+  it("returns the full catalog when intent is null (lazy-schema saving only)", async () => {
+    const { handleMcpProxyTrim } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleMcpProxyTrim({ intent: null, tools }));
+    expect(r.trimmed.manifest.length).toBe(tools.length);
+    expect(r.audit.fallbackReason).toBe("no_intent");
+  });
+
+  it("rejects an unknown intent with a clear error rather than a silent passthrough", async () => {
+    const { handleMcpProxyTrim } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleMcpProxyTrim({ intent: "not-an-intent" as never, tools }));
+    expect(r.error).toMatch(/unknown intent/);
+  });
+
+  it("returns an error object when tools is missing", async () => {
+    const { handleMcpProxyTrim } = await import("./tcrp-tools.js");
+    expect(JSON.parse(handleMcpProxyTrim({} as never)).error).toBeTruthy();
+  });
+
+  it("honors an intent override for a no-verb tool name", async () => {
+    const { handleMcpProxyTrim } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleMcpProxyTrim({
+        intent: "debug",
+        tools,
+        overrides: [{ toolName: "ambiguous_tool_xyz", intents: ["debug"] }],
+        include_fallback: false,
+      })
+    );
+    const kept = r.trimmed.manifest.map((m: { name: string }) => m.name);
+    expect(kept).toContain("ambiguous_tool_xyz");
   });
 });

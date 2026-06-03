@@ -1,0 +1,28 @@
+{
+  "name": "@prune/speculative-pipeline",
+  "version": "0.1.0",
+  "description": "E5 — Speculative Tool Pipeline (PASTE: Parallel-Apply Speculative Tool Execution). Host-side speculator: while the agent generates the next tool call, predict the top-K likely next READ-ONLY calls (transition model + caller candidates), execute them in parallel against a sandboxed worktree, and reconcile by canonical-input byte-equality when the real call lands. A hit collapses the round-trip latency and keeps the session inside the prompt-cache window; a miss costs only host CPU, never tokens. Budget-governed, SLO-killable, equivalence-verified. No regex, eligibility-gated to pure-read tools, deterministic accounting.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/equivalence": "0.1.0",
+    "@prune/replay-vault": "0.1.0",
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

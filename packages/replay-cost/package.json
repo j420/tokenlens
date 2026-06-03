@@ -1,0 +1,28 @@
+{
+  "name": "@prune/replay-cost",
+  "version": "0.1.0",
+  "description": "E2 — What-If Deterministic Replay Engine. Canonicalizes a session into hash-chained segments; on a single-segment mutation, computes the byte-identical shared prefix and the divergence point, then quantifies the replay cost (shared prefix re-served at the cache-read tier, diverged tail recomputed) versus a naive cold re-run. Distinct from @prune/replay-vault (compliance audit log): this is the cost-iteration engine. Composes @prune/replay-vault canonicalization + @prune/equivalence output gate + @prune/shared pricing. No regex, no model call in the planner, deterministic.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/equivalence": "0.1.0",
+    "@prune/replay-vault": "0.1.0",
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

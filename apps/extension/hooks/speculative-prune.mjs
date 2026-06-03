@@ -30,6 +30,11 @@ import {
   readHookPayload,
   safeRun,
 } from "./_runtime.mjs";
+import {
+  deriveSessionId,
+  recordFeatureEventBestEffort,
+  stableId,
+} from "./_telemetry.mjs";
 
 const PRUNE_DIR = join(homedir(), ".prune");
 const FLAG_PATH = join(PRUNE_DIR, "feature-flags.json");
@@ -52,7 +57,9 @@ safeRun(async () => {
   const toolName = payload.tool_name;
   const toolInput = payload.tool_input ?? {};
   if (!toolName || !payload.transcript_path) return emitNoop();
-  if (!isFeatureEnabled(flags(), "f3")) return emitNoop(); // shadow ⇒ silent
+  // NOTE: the flag gate moved BELOW the decision so shadow mode still collects
+  // telemetry (the established f9/f12 pattern: shadow records, only the surfaced
+  // advisory is gated). The work here is bounded to read-only Read calls.
 
   const scope = scopeForToolUse(toolName, toolInput);
   if (scope !== "Read") return emitNoop(); // advisory only for sound content-SHA scope
@@ -71,9 +78,31 @@ safeRun(async () => {
   }
 
   // Probe current freshness from the live file and ask the cache.
+  const startedAt = performance.now();
   const current = contentToken(readFileSync(file, "utf8"));
   const decision = cache.decide(toolName, toolInput, current);
+  const latencyMs = performance.now() - startedAt;
   if (!decision.substitute) return emitNoop();
+
+  // Shadow-aware f3 telemetry on a real (redundant-read) substitution decision.
+  // PII-safe: scope + token estimate + content-SHA, never the file content.
+  const freshness = current && typeof current.value === "string" ? current.value : String(current);
+  await recordFeatureEventBestEffort({
+    featureId: "f3",
+    qualityProof: {
+      schemaVersion: 1,
+      featureId: "f3",
+      scope,
+      substitute: true,
+      estimatedTokensSaved:
+        typeof decision.estimatedTokensSaved === "number" ? decision.estimatedTokensSaved : null,
+    },
+    sessionId: deriveSessionId(payload),
+    eventId: `f3-${stableId(payload.transcript_path, String(file), freshness)}`,
+    latencyMs,
+  });
+
+  if (!isFeatureEnabled(flags(), "f3")) return emitNoop(); // shadow ⇒ collected but not surfaced
 
   return emitAdditionalContext(
     `Prune (F3): ${file} is unchanged since you read it earlier this session — ` +

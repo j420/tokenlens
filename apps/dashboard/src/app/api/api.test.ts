@@ -178,6 +178,269 @@ describe("Events API (/api/v1/events)", () => {
 });
 
 // ============================================================================
+// FEATURES API TESTS (/api/v1/features) — f9–f13 telemetry rollup
+// ============================================================================
+
+describe("Features API (/api/v1/features)", () => {
+  let GET: (request: NextRequest) => Promise<Response>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const module = await import("./v1/features/route.js");
+    GET = module.GET;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns a well-formed report with f1..f13 in deterministic order", async () => {
+    const request = new NextRequest("http://localhost:3000/api/v1/features");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(data.features)).toBe(true);
+    expect(data.features.map((f: { featureId: string }) => f.featureId)).toEqual([
+      "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+      "f9", "f10", "f11", "f12", "f13",
+    ]);
+  });
+
+  it("includes honest _meta and totals fields", async () => {
+    const request = new NextRequest("http://localhost:3000/api/v1/features");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data).toHaveProperty("totalEvents");
+    expect(data).toHaveProperty("outOfScopeEventCount");
+    expect(data._meta).toHaveProperty("storage");
+    expect(data._meta).toHaveProperty("hasFeatureTelemetry");
+    expect(data._meta).toHaveProperty("scannedEvents");
+    expect(typeof data._meta.hasFeatureTelemetry).toBe("boolean");
+  });
+
+  it("each feature rollup carries the required aggregate fields", async () => {
+    const request = new NextRequest("http://localhost:3000/api/v1/features");
+    const response = await GET(request);
+    const data = await response.json();
+
+    for (const f of data.features) {
+      expect(f).toHaveProperty("featureId");
+      expect(f).toHaveProperty("featureName");
+      expect(f).toHaveProperty("eventCount");
+      expect(f).toHaveProperty("tokensIn");
+      expect(f).toHaveProperty("estimatedCostUsd");
+      expect(f).toHaveProperty("malformedProofCount");
+      expect(f).toHaveProperty("summary");
+    }
+  });
+
+  it("respects the limit parameter without crashing", async () => {
+    const request = new NextRequest(
+      "http://localhost:3000/api/v1/features?limit=10"
+    );
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+  });
+});
+
+// ============================================================================
+// INGEST → ROLLUP INTEGRATION (HIGH-3): POST /events → GET /features loop
+// ============================================================================
+//
+// These tests prove the end-to-end loop the reviewer flagged as broken. They
+// import the events POST and the features GET from the SAME fresh module graph
+// (one resetModules, then both imports) so they share the in-process memory
+// store — exactly how the routes share it in production via the in-process
+// `readStoredEvents` helper.
+
+describe("Ingest → feature rollup loop (/api/v1/events → /api/v1/features)", () => {
+  let eventsPOST: (request: NextRequest) => Promise<Response>;
+  let featuresGET: (request: NextRequest) => Promise<Response>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    // Both routes read/write the same in-process store via the
+    // `@/lib/event-store` module singleton. Importing them within one
+    // resetModules window (no reset between) keeps that singleton shared, which
+    // is exactly how they share it in production.
+    const events = await import("./v1/events/route.js");
+    eventsPOST = events.POST;
+    const features = await import("./v1/features/route.js");
+    featuresGET = features.GET;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function post(body: unknown): Promise<Response> {
+    return eventsPOST(
+      new NextRequest("http://localhost:3000/api/v1/events", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+    );
+  }
+
+  async function rollup(): Promise<{
+    features: Array<{
+      featureId: string;
+      eventCount: number;
+      tokensIn: number;
+      estimatedCostUsd: number;
+      malformedProofCount: number;
+      summary: { kind: string; data: Record<string, unknown> | null };
+    }>;
+    totalEvents: number;
+    outOfScopeEventCount: number;
+    _meta: { hasFeatureTelemetry: boolean; scannedEvents: number };
+  }> {
+    const res = await featuresGET(
+      new NextRequest("http://localhost:3000/api/v1/features")
+    );
+    return res.json();
+  }
+
+  it("POST f11 with savedUsd → appears in the f11 rollup with the decoded metric", async () => {
+    const postRes = await post({
+      id: "loop-f11-1",
+      timestamp: new Date().toISOString(),
+      provider: "anthropic",
+      tool: "claude-code",
+      model: "claude-sonnet-4",
+      tokensIn: 1200,
+      costUsd: 0.02,
+      feature_id: "f11",
+      quality_proof: {
+        cost: { savedUsd: 0.47, naiveCostUsd: 0.6, replayCostUsd: 0.13 },
+      },
+    });
+    const postBody = await postRes.json();
+    expect(postBody.success).toBe(true);
+    // The ingest boundary must acknowledge the feature tag, not drop it.
+    expect(postBody.featureId).toBe("f11");
+
+    const data = await rollup();
+    expect(data._meta.hasFeatureTelemetry).toBe(true);
+
+    const f11 = data.features.find((f) => f.featureId === "f11")!;
+    expect(f11.eventCount).toBe(1);
+    expect(f11.malformedProofCount).toBe(0);
+    // Base aggregate fields read from the snake_case mirror written at ingest.
+    expect(f11.tokensIn).toBe(1200);
+    expect(f11.estimatedCostUsd).toBeCloseTo(0.02, 10);
+    // The decoded f11-specific metric.
+    expect(f11.summary.kind).toBe("f11");
+    expect(f11.summary.data!.savedUsd).toBeCloseTo(0.47, 10);
+    expect(f11.summary.data!.naiveCostUsd).toBeCloseTo(0.6, 10);
+
+    // Untagged features stay honestly empty.
+    const f9 = data.features.find((f) => f.featureId === "f9")!;
+    expect(f9.eventCount).toBe(0);
+  });
+
+  it("sums multiple f11 events and leaves other features at honest zero", async () => {
+    await post({
+      id: "loop-f11-a",
+      feature_id: "f11",
+      tokensIn: 100,
+      costUsd: 0.01,
+      quality_proof: { cost: { savedUsd: 0.1 } },
+    });
+    await post({
+      id: "loop-f11-b",
+      feature_id: "f11",
+      tokensIn: 250,
+      costUsd: 0.03,
+      quality_proof: { cost: { savedUsd: 0.2 } },
+    });
+
+    const data = await rollup();
+    const f11 = data.features.find((f) => f.featureId === "f11")!;
+    expect(f11.eventCount).toBe(2);
+    expect(f11.tokensIn).toBe(350);
+    expect(f11.estimatedCostUsd).toBeCloseTo(0.04, 10);
+    expect(f11.summary.data!.savedUsd).toBeCloseTo(0.3, 10);
+  });
+
+  it("accepts snake_case usage fields at ingest (tokens_in / estimated_cost_usd)", async () => {
+    await post({
+      id: "loop-f10-snake",
+      feature_id: "f10",
+      tokens_in: 999,
+      estimated_cost_usd: 0.05,
+      quality_proof: { audit: { savedTokens: 4000, fullCatalogTokens: 5000 } },
+    });
+    const data = await rollup();
+    const f10 = data.features.find((f) => f.featureId === "f10")!;
+    expect(f10.eventCount).toBe(1);
+    expect(f10.tokensIn).toBe(999);
+    expect(f10.estimatedCostUsd).toBeCloseTo(0.05, 10);
+    expect(f10.summary.data!.savedTokens).toBe(4000);
+  });
+
+  // --- adversarial edge cases -------------------------------------------------
+
+  it("an event with NO feature_id is out-of-scope, never crashes the rollup", async () => {
+    await post({
+      id: "loop-plain",
+      tokensIn: 500,
+      costUsd: 0.01,
+      // no feature_id, no quality_proof — a normal usage event
+    });
+    const data = await rollup();
+    expect(data.totalEvents).toBe(1);
+    expect(data.outOfScopeEventCount).toBe(1);
+    expect(data._meta.hasFeatureTelemetry).toBe(false);
+    for (const f of data.features) expect(f.eventCount).toBe(0);
+  });
+
+  it("malformed quality_proof counts the row but never fabricates a metric", async () => {
+    await post({
+      id: "loop-f11-bad",
+      feature_id: "f11",
+      tokensIn: 300,
+      costUsd: 0.02,
+      quality_proof: { cost: "not-an-object" }, // wrong shape
+    });
+    const data = await rollup();
+    const f11 = data.features.find((f) => f.featureId === "f11")!;
+    expect(f11.eventCount).toBe(1);
+    // tokens/cost still aggregate (honest), but the metric is null, not 0.
+    expect(f11.tokensIn).toBe(300);
+    expect(f11.summary.data!.savedUsd).toBeNull();
+  });
+
+  it("quality_proof sent as a non-object is normalized to null (malformed), not stored verbatim", async () => {
+    await post({
+      id: "loop-f11-arr",
+      feature_id: "f11",
+      tokensIn: 10,
+      quality_proof: ["array", "is", "not", "a", "proof"],
+    });
+    const data = await rollup();
+    const f11 = data.features.find((f) => f.featureId === "f11")!;
+    expect(f11.eventCount).toBe(1);
+    expect(f11.malformedProofCount).toBe(1);
+    expect(f11.summary.data!.savedUsd).toBeNull();
+  });
+
+  it("an out-of-range feature id (e.g. f99) is counted out-of-scope, not in any card", async () => {
+    await post({
+      id: "loop-f99",
+      feature_id: "f99",
+      tokensIn: 1,
+      quality_proof: { cost: { savedUsd: 1 } },
+    });
+    const data = await rollup();
+    expect(data.outOfScopeEventCount).toBe(1);
+    for (const f of data.features) expect(f.eventCount).toBe(0);
+  });
+});
+
+// ============================================================================
 // OVERVIEW API TESTS
 // ============================================================================
 

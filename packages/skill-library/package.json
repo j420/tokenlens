@@ -1,0 +1,29 @@
+{
+  "name": "@prune/skill-library",
+  "version": "0.1.0",
+  "description": "E4 — Cross-Session Typed Skill Library. Captures the INFLUENTIAL subset of a completed agent trajectory (from @prune/trajectory-diet's influence labels), fingerprints the task intent, and replays the typed skill on a matching future task — turning O(N) per-session discovery into O(1) reuse. Provenance-hashed via @prune/replay-vault; replay-guarded by caller-declared freshness preconditions; outcome-gated by @prune/equivalence. No regex, no model call, deterministic.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/equivalence": "0.1.0",
+    "@prune/replay-vault": "0.1.0",
+    "@prune/shared": "0.1.0",
+    "@prune/trajectory-diet": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

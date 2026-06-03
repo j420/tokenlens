@@ -15,10 +15,22 @@ describe("TCRP feature flags", () => {
       expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, "f5")).toBe(true);
     });
 
-    it("keeps F1-F4 and F6 in shadow (not user-visible)", () => {
-      for (const id of ["f1", "f2", "f3", "f4", "f6"] as const) {
+    it("keeps F1-F4, F6, and the F7-F13 features in shadow (not user-visible)", () => {
+      for (const id of [
+        "f1", "f2", "f3", "f4", "f6",
+        "f7", "f8", "f9", "f10", "f11", "f12", "f13",
+      ] as const) {
         expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, id)).toBe(false);
         expect(isFeatureInShadow(DEFAULT_TCRP_FLAGS, id)).toBe(true);
+      }
+    });
+
+    it("defines a state + name for every id in TCRP_FEATURE_IDS (no gaps)", () => {
+      for (const id of [
+        "f1", "f2", "f3", "f4", "f5", "f6", "f7",
+        "f8", "f9", "f10", "f11", "f12", "f13",
+      ] as const) {
+        expect(DEFAULT_TCRP_FLAGS.features[id]).toBeDefined();
       }
     });
   });
@@ -37,6 +49,13 @@ describe("TCRP feature flags", () => {
       expect(resolveFeatureId("speculativeCache")).toBe("f3");
       expect(resolveFeatureId("qpdBench")).toBe("f4");
       expect(resolveFeatureId("contextHealth")).toBe("f6");
+      expect(resolveFeatureId("semanticCache")).toBe("f7");
+      expect(resolveFeatureId("codeModeMcp")).toBe("f8");
+      expect(resolveFeatureId("cacheHabits")).toBe("f9");
+      expect(resolveFeatureId("mcpProxy")).toBe("f10");
+      expect(resolveFeatureId("replayCost")).toBe("f11");
+      expect(resolveFeatureId("skillLibrary")).toBe("f12");
+      expect(resolveFeatureId("speculativePipeline")).toBe("f13");
     });
 
     it("returns undefined for unknown ids", () => {
