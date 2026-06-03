@@ -1,0 +1,188 @@
+{
+  "_source": "Merged catalog approximating a typical Cursor/Codex CLI setup with five MCP servers. Tool names and descriptions are taken verbatim from the public README files of github.com/modelcontextprotocol/servers (postgres, filesystem, github, slack subdirectories, as of June 2026). Used here only to verify intent-tag inference on real published tool names; the proxy's behavior is name-driven, so the schema bodies are sized representatively but omit verbose JSON-schema detail.",
+  "tools": [
+    {
+      "name": "postgres__query",
+      "description": "Run a read-only SQL query against the configured Postgres database.",
+      "origin": "postgres",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "sql": { "type": "string", "description": "The SQL query to execute. Read-only." }
+        },
+        "required": ["sql"]
+      }
+    },
+    {
+      "name": "postgres__list_tables",
+      "description": "List all tables in the connected Postgres database.",
+      "origin": "postgres",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "filesystem__read_file",
+      "description": "Read the complete contents of a file from the filesystem.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string", "description": "Absolute file path." }
+        },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "filesystem__write_file",
+      "description": "Create a new file or overwrite an existing file with new content.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "content": { "type": "string" }
+        },
+        "required": ["path", "content"]
+      }
+    },
+    {
+      "name": "filesystem__list_directory",
+      "description": "List the contents of a directory.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "filesystem__create_directory",
+      "description": "Create a new directory, including any necessary parents.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
+      }
+    },
+    {
+      "name": "filesystem__search_files",
+      "description": "Recursively search for files matching a pattern within a directory.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "pattern": { "type": "string" }
+        },
+        "required": ["path", "pattern"]
+      }
+    },
+    {
+      "name": "github__create_issue",
+      "description": "Create a new issue in a GitHub repository.",
+      "origin": "github",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": { "type": "string" },
+          "repo": { "type": "string" },
+          "title": { "type": "string" },
+          "body": { "type": "string" }
+        },
+        "required": ["owner", "repo", "title"]
+      }
+    },
+    {
+      "name": "github__list_issues",
+      "description": "List issues in a GitHub repository, optionally filtered by state and labels.",
+      "origin": "github",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": { "type": "string" },
+          "repo": { "type": "string" },
+          "state": { "type": "string", "enum": ["open", "closed", "all"] }
+        },
+        "required": ["owner", "repo"]
+      }
+    },
+    {
+      "name": "github__search_code",
+      "description": "Search for code across GitHub repositories.",
+      "origin": "github",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "query": { "type": "string" } },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "github__create_pull_request",
+      "description": "Create a new pull request in a GitHub repository.",
+      "origin": "github",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "owner": { "type": "string" },
+          "repo": { "type": "string" },
+          "title": { "type": "string" },
+          "head": { "type": "string" },
+          "base": { "type": "string" }
+        },
+        "required": ["owner", "repo", "title", "head", "base"]
+      }
+    },
+    {
+      "name": "slack__post_message",
+      "description": "Post a message to a Slack channel.",
+      "origin": "slack",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "channel": { "type": "string" },
+          "text": { "type": "string" }
+        },
+        "required": ["channel", "text"]
+      }
+    },
+    {
+      "name": "slack__list_channels",
+      "description": "List channels in the Slack workspace.",
+      "origin": "slack",
+      "inputSchema": { "type": "object", "properties": {} }
+    },
+    {
+      "name": "linear__create_issue",
+      "description": "Create a new issue in Linear.",
+      "origin": "linear",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "teamId": { "type": "string" }
+        },
+        "required": ["title", "teamId"]
+      }
+    },
+    {
+      "name": "linear__update_issue",
+      "description": "Update fields on a Linear issue.",
+      "origin": "linear",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "state": { "type": "string" }
+        },
+        "required": ["id"]
+      }
+    },
+    {
+      "name": "ambiguous_tool_xyz",
+      "description": "An MCP tool whose name carries no recognized verb token, used to verify fail-safe-to-include behavior of the verb classifier.",
+      "origin": "test-fixture",
+      "inputSchema": { "type": "object", "properties": {} }
+    }
+  ]
+}
