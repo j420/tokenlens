@@ -36,6 +36,36 @@ Install (manual for now): point a Claude Code hook entry at the script
 path. A future `prune.installHooks` extension command will automate
 this with user-scoped vs project-scoped settings management.
 
+## Feature telemetry (`quality_proof` → events sink)
+
+The `skill-capture` (f12), `skill-advisor` (f12), and `cache-habits-advisor`
+(f9) hooks record their `quality_proof` to the shared events sink so the
+telemetry lands in one stream the dashboard / Postgres export reads, keyed by
+`feature_id`. This is the first EventRow-recording path in the repo (the
+`events.feature_id` / `events.quality_proof` columns existed; nothing wrote
+them before), routed through `@prune/persistence`'s `buildFeatureEventRow` /
+`recordFeatureEvent` so every feature row is shaped identically.
+
+It is deliberately conservative:
+
+- **Best-effort.** Any failure (lock contention, disk, bad params) is
+  swallowed — recording can never break an advisory. Recording happens
+  *before* the feature-flag gate, so shadow mode still collects telemetry while
+  the user-facing advisory stays gated.
+- **Idempotent.** Event ids are deterministic (skill content hash, idle
+  session+timestamp), so re-firing a hook upserts rather than duplicates.
+- **Hang-proof.** The events DB must live on a real filesystem; pseudo-fs
+  paths (`/proc`, `/sys`) are refused up front, because a `mkdir` lookup under
+  procfs blocks at the syscall level (a synchronous hang no JS timeout can
+  rescue). Every normal failure throws in ~1 ms and is caught.
+
+Config: `PRUNE_EVENTS_SQLITE` (default `~/.prune/events.sqlite`),
+`PRUNE_TELEMETRY_DISABLED=1` to turn recording off.
+
+f10 (mcp-proxy) and f11 (replay-cost) already emit their `quality_proof` in
+the `mcp_proxy_trim` / `replay_cost_plan` MCP tool responses for the caller to
+persist; f13 (speculative-pipeline) emits via its host-integration API.
+
 ## Features whose runtime surface is NOT a transcript hook
 
 Three Phase-9.7 features deliberately do not ship as Claude Code hooks,

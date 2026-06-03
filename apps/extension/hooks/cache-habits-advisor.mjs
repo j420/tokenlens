@@ -28,7 +28,12 @@ import { join } from "node:path";
 
 import { loadCachedSessionView } from "@prune/telemetry";
 import { isFeatureEnabled, validateFlags } from "@prune/shared";
-import { lint, modelFamilyOf } from "@prune/cache-habits";
+import {
+  lint,
+  modelFamilyOf,
+  buildQualityProof as buildCacheHabitsProof,
+  CACHE_HABITS_FEATURE_ID,
+} from "@prune/cache-habits";
 
 import {
   emitAdditionalContext,
@@ -36,6 +41,11 @@ import {
   readHookPayload,
   safeRun,
 } from "./_runtime.mjs";
+import {
+  deriveSessionId,
+  recordFeatureEventBestEffort,
+  stableId,
+} from "./_telemetry.mjs";
 
 const FLAG_PATH = join(homedir(), ".prune", "feature-flags.json");
 
@@ -109,6 +119,19 @@ safeRun(async () => {
   const report = lint(action, snapshot, { suppress: SUPPRESS_NON_IDLE });
   const idle = report.findings.find((f) => f.ruleId === "CH-004");
   if (!idle) return emitNoop();
+
+  // Best-effort shadow telemetry under f9 (records regardless of flag; only
+  // surfacing is gated). Keyed by session + last-turn timestamp so re-firing
+  // on the same idle gap upserts rather than duplicates.
+  await recordFeatureEventBestEffort({
+    featureId: CACHE_HABITS_FEATURE_ID,
+    qualityProof: buildCacheHabitsProof(report, action, snapshot),
+    sessionId: deriveSessionId(payload),
+    eventId: `f9-idle-${stableId(payload.transcript_path ?? "", snapshot.lastTurnAt ?? "")}`,
+    model: currentModel,
+    tokensCached: cacheCreate,
+    estimatedCostUsd: idle.estimatedWasteUsd ?? 0,
+  });
 
   const flags = flagsFromDisk();
   if (!isFeatureEnabled(flags, "f9")) return emitNoop();

@@ -10,3 +10,4 @@
 
 export * from "./sink.js";
 export * from "./local-sqlite.js";
+export * from "./feature-event.js";

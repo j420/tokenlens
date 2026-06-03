@@ -37,9 +37,15 @@ import {
 import {
   SkillLibrary,
   captureSkillFromTrajectory,
+  buildCaptureProof,
+  SKILL_LIBRARY_FEATURE_ID,
 } from "@prune/skill-library";
 
 import { emitNoop, readHookPayload, safeRun } from "./_runtime.mjs";
+import {
+  deriveSessionId,
+  recordFeatureEventBestEffort,
+} from "./_telemetry.mjs";
 
 const DEFAULT_PATH = join(homedir(), ".prune", "skills", "library.json");
 const MAX_SKILLS = intFromEnv("PRUNE_SKILLS_MAX", 200);
@@ -141,6 +147,16 @@ safeRun(async () => {
   lib.add(skill);
   lib.prune({ maxSkills: MAX_SKILLS });
   saveLibrary(path, lib);
+
+  // Best-effort shadow telemetry: record the capture under f12. Keyed by the
+  // skill's content hash so re-capturing the same skill upserts (idempotent).
+  await recordFeatureEventBestEffort({
+    featureId: SKILL_LIBRARY_FEATURE_ID,
+    qualityProof: buildCaptureProof(skill),
+    sessionId: deriveSessionId(payload),
+    eventId: `f12-capture-${skill.contentHash}`,
+    tokensIn: skill.discoveryTokens,
+  });
 
   return emitNoop();
 });

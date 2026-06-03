@@ -34,6 +34,9 @@ import { isFeatureEnabled, validateFlags } from "@prune/shared";
 import {
   SkillLibrary,
   projectSkillSaving,
+  evaluateReplay,
+  buildReplayProof,
+  SKILL_LIBRARY_FEATURE_ID,
 } from "@prune/skill-library";
 
 import {
@@ -42,6 +45,11 @@ import {
   readHookPayload,
   safeRun,
 } from "./_runtime.mjs";
+import {
+  deriveSessionId,
+  recordFeatureEventBestEffort,
+  stableId,
+} from "./_telemetry.mjs";
 
 const FLAG_PATH = join(homedir(), ".prune", "feature-flags.json");
 const DEFAULT_PATH = join(homedir(), ".prune", "skills", "library.json");
@@ -85,13 +93,27 @@ safeRun(async () => {
   const matches = lib.match(prompt, { threshold, limit: 1 });
   if (matches.length === 0) return emitNoop();
 
-  // Surface only when the flag is live.
-  const flags = flagsFromDisk();
-  if (!isFeatureEnabled(flags, "f12")) return emitNoop();
-
   const top = matches[0];
   const model = process.env.PRUNE_SKILLS_MODEL || DEFAULT_MODEL;
   const saving = projectSkillSaving(top.skill, model);
+
+  // Best-effort shadow telemetry (records regardless of flag — shadow mode
+  // collects, only surfacing is gated). The hook does not have the host's
+  // freshness preconditions, so the guard runs with none: targets come back
+  // UNVERIFIABLE (honest — we surfaced a match without checking freshness),
+  // never falsely "safe". Keyed by skill + prompt so re-submits upsert.
+  const guard = evaluateReplay(top.skill, [], []);
+  await recordFeatureEventBestEffort({
+    featureId: SKILL_LIBRARY_FEATURE_ID,
+    qualityProof: buildReplayProof(top, guard, saving),
+    sessionId: deriveSessionId(payload),
+    eventId: `f12-replay-${top.skill.contentHash}-${stableId(prompt).slice(0, 16)}`,
+    model,
+  });
+
+  // Surface only when the flag is live.
+  const flags = flagsFromDisk();
+  if (!isFeatureEnabled(flags, "f12")) return emitNoop();
 
   const steps = top.skill.steps
     .map((s) => (s.target ? `${s.toolName}(${s.target})` : s.toolName))
