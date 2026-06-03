@@ -4,27 +4,33 @@ import {
   aggregateFeatureTelemetry,
   type FeatureTelemetryReport,
 } from "@/lib/feature-telemetry";
+import { readStoredEvents } from "@/lib/event-store";
 
 /**
  * GET /api/v1/features — read-side rollup of the f9–f13 feature-telemetry
  * stream.
  *
- * Honest data-source note: the canonical f9–f13 telemetry is written by the
- * extension/MCP hooks into `@prune/persistence` `LocalSqliteSink` on the
- * developer's machine (one `EventRow` per advisory, tagged with `feature_id`
- * + a `quality_proof` blob). The hosted dashboard does NOT have direct access
- * to that local sqlite file. What it CAN see is the event stream pushed to its
- * own store (Vercel KV, or in-memory in dev) via `POST /api/v1/events`.
+ * Data source: the dashboard's own event store (Vercel KV in prod, in-memory
+ * in dev), populated via `POST /api/v1/events`. We read that store IN-PROCESS
+ * through the shared `readStoredEvents` helper — no HTTP self-fetch, so the
+ * rollup is robust to base-URL resolution and is unit-testable end to end.
  *
- * This route therefore reads whatever events are in that store, treats each as
- * an (untrusted-shape) `EventRow`, and folds them with the pure aggregator. If
- * the pushed events carry `feature_id`/`quality_proof` the rollup is populated;
- * if they don't (the current proxy-event shape doesn't), every feature
- * honestly reports zero telemetry. We never fabricate rows to fill the cards.
+ * Each stored event is a canonical superset object that carries the snake_case
+ * fields the aggregator needs (`feature_id`, `quality_proof`, `tokens_in`,
+ * `estimated_cost_usd`). When a feature-tagged event has been ingested, its
+ * card is populated; when no tagged events exist, every feature honestly
+ * reports zero. We never fabricate rows to fill the cards.
  *
- * Error handling mirrors the sibling routes: a fetch/store failure returns 200
- * with an empty-but-well-formed report and a `_meta.storage: "error"` marker,
- * so the page renders an honest empty state rather than crashing.
+ * Remaining gap (stated honestly, not papered over): the canonical f9–f13
+ * stream is recorded by the extension/MCP hooks into a LOCAL sqlite sink on the
+ * developer's machine. The hosted dashboard cannot read that local file; it
+ * only sees what is POSTed to this ingest API. The end-to-end loop here is
+ * proven, but a hook that forwards local telemetry to `POST /api/v1/events`
+ * must still be wired for production data to flow on its own.
+ *
+ * Error handling mirrors the sibling routes: a store failure returns 200 with
+ * an empty-but-well-formed report and `_meta.storage: "error"`, so the page
+ * renders an honest empty state rather than crashing.
  */
 
 interface FeaturesResponse extends FeatureTelemetryReport {
@@ -40,30 +46,6 @@ interface FeaturesResponse extends FeatureTelemetryReport {
 
 const EMPTY_REPORT: FeatureTelemetryReport = aggregateFeatureTelemetry([]);
 
-/**
- * Read raw events from the dashboard's own store. Returns rows shaped loosely
- * as EventRow — the aggregator decodes them defensively, so a missing
- * feature_id/quality_proof is fine.
- */
-async function readEvents(
-  origin: string,
-  limit: number
-): Promise<{ events: EventRow[]; storage: "kv" | "memory" }> {
-  const res = await fetch(`${origin}/api/v1/events?limit=${limit}`, {
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`events fetch failed: ${res.status}`);
-  const body = (await res.json()) as {
-    events?: unknown;
-    storage?: string;
-  };
-  const events = Array.isArray(body.events)
-    ? (body.events as EventRow[])
-    : [];
-  const storage = body.storage === "kv" ? "kv" : "memory";
-  return { events, storage };
-}
-
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const limitParam = parseInt(searchParams.get("limit") || "500", 10);
@@ -74,9 +56,10 @@ export async function GET(request: NextRequest) {
       : 500;
 
   try {
-    const origin = new URL(request.url).origin;
-    const { events, storage } = await readEvents(origin, limit);
-    const report = aggregateFeatureTelemetry(events);
+    const { events, storage } = await readStoredEvents(limit);
+    // Stored events are a superset of EventRow's relevant fields; the
+    // aggregator decodes defensively, so any shape is safe to fold.
+    const report = aggregateFeatureTelemetry(events as unknown as EventRow[]);
 
     const hasFeatureTelemetry =
       report.totalEvents - report.outOfScopeEventCount > 0;

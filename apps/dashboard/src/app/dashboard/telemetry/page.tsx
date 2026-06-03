@@ -313,14 +313,28 @@ export default function TelemetryPage() {
                 </span>
               </span>
             </div>
+            {report._meta.hasFeatureTelemetry && (
+              <p className="mt-2 text-muted">
+                Showing rollups for the feature-tagged events ingested via{" "}
+                <span className="font-mono">POST /api/v1/events</span>. Each card
+                reflects the <span className="font-mono">quality_proof</span>{" "}
+                blobs those events carried; a value shown as{" "}
+                <span className="font-mono">—</span> means it could not be read
+                defensibly, never a guess.
+              </p>
+            )}
             {!report._meta.hasFeatureTelemetry && (
               <p className="mt-2 text-muted">
-                No f9–f13 telemetry has reached this dashboard&apos;s event store
-                yet. The canonical stream is written by the extension/MCP hooks
-                into a local SQLite sink on the developer&apos;s machine; the
-                hosted dashboard only sees events pushed to its own store via the
-                ingest API. Until tagged events arrive, every card below shows an
-                honest empty state.
+                No f9–f13 telemetry has been ingested yet. The read-side loop is
+                live: any event POSTed to{" "}
+                <span className="font-mono">/api/v1/events</span> with a{" "}
+                <span className="font-mono">feature_id</span> +{" "}
+                <span className="font-mono">quality_proof</span> is accepted,
+                stored, and rolled up into the cards below. The canonical f9–f13
+                stream is recorded by the extension/MCP hooks into a local SQLite
+                sink on the developer&apos;s machine; the only remaining gap is a
+                hook that forwards that local telemetry to this ingest API. Until
+                tagged events arrive, every card shows an honest empty state.
               </p>
             )}
             {report._meta.storage === "error" && (
