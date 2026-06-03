@@ -59,14 +59,14 @@ describe("McpProxy.serveToolsList", () => {
     );
   });
 
-  it("quality_proof wraps the audit under f8 + schema v1", () => {
+  it("quality_proof wraps the audit under f10 + schema v1", () => {
     const cat = loadFixtureCatalog();
     const idx = indexCatalog(cat, { tokenCostByName: tokenCostsForCatalog(cat) });
     const proxy = new McpProxy(idx);
     const { audit } = proxy.serveToolsList("generate");
     const proof = buildQualityProof(audit);
     expect(proof.schemaVersion).toBe(1);
-    expect(proof.featureId).toBe("f8");
+    expect(proof.featureId).toBe("f10");
     expect(proof.audit).toEqual(audit);
   });
 

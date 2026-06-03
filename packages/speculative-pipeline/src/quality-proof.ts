@@ -1,6 +1,6 @@
 /**
  * `quality_proof` schema for the speculative pipeline, recorded under
- * `feature_id = "f11"`.
+ * `feature_id = "f13"`.
  *
  * One row per reconcile: the outcome classification, the latency saved, and a
  * snapshot of the rolling stats + budget health. PII-safe — keys are content
@@ -10,12 +10,12 @@
 import type { BudgetDecision } from "./budget.js";
 import type { PipelineStats, ReconcileOutcome } from "./types.js";
 
-export const SPECULATIVE_PIPELINE_FEATURE_ID = "f11" as const;
+export const SPECULATIVE_PIPELINE_FEATURE_ID = "f13" as const;
 export const QUALITY_PROOF_SCHEMA_VERSION = 1 as const;
 
 export interface SpeculativePipelineProof {
   schemaVersion: 1;
-  featureId: "f11";
+  featureId: "f13";
   outcome: {
     hit: boolean;
     classification: ReconcileOutcome["classification"];

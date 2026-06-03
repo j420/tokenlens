@@ -2,7 +2,7 @@
  * `quality_proof` schema for cache-habits findings.
  *
  * Every advisory the linter emits MUST be recorded to the persistence sink
- * (`PersistenceSink.recordEvent`) under `feature_id = "f7"` with the
+ * (`PersistenceSink.recordEvent`) under `feature_id = "f9"` with the
  * `quality_proof` field populated by `buildQualityProof()` below. The
  * post-hoc auditor can then re-verify that the rule fired correctly by
  * re-running the rule against the recorded `signal` and asserting the same
@@ -17,13 +17,13 @@
 
 import type { LintFinding, LintReport, ProposedAction, SessionSnapshot } from "./types.js";
 
-export const CACHE_HABITS_FEATURE_ID = "f7" as const;
+export const CACHE_HABITS_FEATURE_ID = "f9" as const;
 export const QUALITY_PROOF_SCHEMA_VERSION = 1 as const;
 
 /** Audit-row payload. Goes into `EventRow.quality_proof`. */
 export interface CacheHabitsQualityProof {
   schemaVersion: 1;
-  featureId: "f7";
+  featureId: "f9";
   verdict: LintReport["verdict"];
   findings: ReadonlyArray<{
     ruleId: string;

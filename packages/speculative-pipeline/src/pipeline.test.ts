@@ -147,7 +147,7 @@ describe("SpeculativePipeline — quality proof", () => {
     pipe.recordResult({ key: launched[0]!.key, result: "x", elapsedMs: 900 });
     const outcome = pipe.reconcile(launched[0]!.call, 10);
     const proof = buildQualityProof(outcome, pipe.getStats(), pipe.getBudget().decide(10));
-    expect(proof.featureId).toBe("f11");
+    expect(proof.featureId).toBe("f13");
     expect(proof.schemaVersion).toBe(1);
     expect(proof.outcome.classification).toBe(outcome.classification);
     expect(proof.stats.hits).toBe(pipe.getStats().hits);

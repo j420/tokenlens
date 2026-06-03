@@ -2,7 +2,7 @@
  * `quality_proof` schema for replay-cost.
  *
  * One row per planned (and optionally executed) what-if replay, recorded under
- * `feature_id = "f9"`. The post-hoc auditor can re-run `planReplay` against the
+ * `feature_id = "f11"`. The post-hoc auditor can re-run `planReplay` against the
  * recorded baseline + mutation and assert the same divergence index, shared
  * prefix hash, and cost breakdown — the plan is fully deterministic, so the
  * audit is a byte-for-byte re-derivation.
@@ -17,12 +17,12 @@ import type {
   ReplayPlan,
 } from "./types.js";
 
-export const REPLAY_COST_FEATURE_ID = "f9" as const;
+export const REPLAY_COST_FEATURE_ID = "f11" as const;
 export const QUALITY_PROOF_SCHEMA_VERSION = 1 as const;
 
 export interface ReplayCostQualityProof {
   schemaVersion: 1;
-  featureId: "f9";
+  featureId: "f11";
   /** Baseline + modified root hashes — prove which timelines were compared. */
   baselineRootHash: string;
   modifiedRootHash: string;

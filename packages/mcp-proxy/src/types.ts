@@ -140,7 +140,7 @@ export interface TrimmedToolList {
 
 /**
  * The audit record the proxy emits for each `tools/list` interception.
- * Goes into the persistence sink under `feature_id = "f8"`.
+ * Goes into the persistence sink under `feature_id = "f10"`.
  */
 export interface ReductionAudit {
   schemaVersion: 1;

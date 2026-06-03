@@ -9,7 +9,20 @@
  * only contains the schema, pure helpers, and defaults.
  */
 
-export type TcrpFeatureId = "f1" | "f2" | "f3" | "f4" | "f5" | "f6";
+export type TcrpFeatureId =
+  | "f1"
+  | "f2"
+  | "f3"
+  | "f4"
+  | "f5"
+  | "f6"
+  | "f7"
+  | "f8"
+  | "f9"
+  | "f10"
+  | "f11"
+  | "f12"
+  | "f13";
 
 export type TcrpFeatureMode =
   | "shadow" // runs in parallel, never affects user
@@ -43,6 +56,13 @@ export const TCRP_FEATURE_IDS: readonly TcrpFeatureId[] = [
   "f4",
   "f5",
   "f6",
+  "f7",
+  "f8",
+  "f9",
+  "f10",
+  "f11",
+  "f12",
+  "f13",
 ] as const;
 
 export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
@@ -52,6 +72,15 @@ export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
   f4: "qpdBench",
   f5: "hud",
   f6: "contextHealth",
+  // Phase 7 features (built; flags wired here for completeness).
+  f7: "semanticCache",
+  f8: "codeModeMcp",
+  // Phase 9.7 Tier-1.5 / Tier-A features.
+  f9: "cacheHabits",
+  f10: "mcpProxy",
+  f11: "replayCost",
+  f12: "skillLibrary",
+  f13: "speculativePipeline",
 } as const;
 
 export const TCRP_FEATURE_BY_NAME: Record<string, TcrpFeatureId> = Object.entries(
@@ -78,6 +107,13 @@ export const DEFAULT_TCRP_FLAGS: TcrpFeatureFlags = {
     f4: { enabled: false, mode: "shadow" },
     f5: { enabled: true, mode: "general" },
     f6: { enabled: false, mode: "shadow" },
+    f7: { enabled: false, mode: "shadow" },
+    f8: { enabled: false, mode: "shadow" },
+    f9: { enabled: false, mode: "shadow" },
+    f10: { enabled: false, mode: "shadow" },
+    f11: { enabled: false, mode: "shadow" },
+    f12: { enabled: false, mode: "shadow" },
+    f13: { enabled: false, mode: "shadow" },
   },
   policySource: "default",
 };

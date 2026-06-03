@@ -28,7 +28,44 @@ echo '{"hook_event_name":"Stop","transcript_path":"/abs/path/to/session.jsonl"}'
 | `trajectory-diet.mjs` (TCRP F1) | `PreToolUse` | Scores the proposed tool call for predicted influence on the final output and, when F1 is promoted past shadow (`~/.prune/feature-flags.json`), emits an advisory to skip/narrow a low-influence step. Never blocks, never skips — advisory only. Conservative online (utilization unknowable pre-execution); F1's high-confidence skips come from offline trajectory analysis. |
 | `speculative-prune.mjs` (TCRP F3) | `PreToolUse` | Advisory: when a proposed `Read` targets a file byte-identical (content-SHA) to one already read this session, nudges the agent that it already has the current content — saving the re-read. Goes silent the moment the file changes. Reads the cache built by `speculative-record.mjs`. Gated by the F3 flag (shadow ⇒ no-op). Hard verified substitution is the Agent SDK adapter's job (per the per-surface honesty matrix). |
 | `speculative-record.mjs` (TCRP F3) | `PostToolUse` (matcher: `Read`) | Builds the session-scoped speculative cache (`~/.prune/cache/spec-<hash>.json`) that the PreToolUse advisory reads: stores each read file's content with its content-SHA freshness token. Runs regardless of flag (building the cache is harmless; only surfacing is gated). |
+| `skill-capture.mjs` (F12) | `Stop` | Distills the session's INFLUENTIAL trajectory (the complement of trajectory-diet's low-influence advisories) into a typed skill and appends it to the local skill library (`~/.prune/skills/library.json`, atomic write, content-hash dedup, LRU prune at `PRUNE_SKILLS_MAX`). Building the library is a harmless local write, so capture runs regardless of flag; the library is only surfaced by `skill-advisor.mjs`. Config: `PRUNE_SKILLS_PATH`, `PRUNE_SKILLS_MAX`, `PRUNE_SKILLS_DISABLED`. |
+| `skill-advisor.mjs` (F12) | `UserPromptSubmit` | Fingerprints the new prompt and matches it (Jaccard ≥ `PRUNE_SKILLS_THRESHOLD`) against the skill library. On a match, emits an `additionalContext` advisory naming the cached influential tool sequence and the projected token/$ saving, so the agent can skip re-discovery. Advisory only; the host must verify target freshness before acting. Gated on f12. Config: `PRUNE_SKILLS_PATH`, `PRUNE_SKILLS_THRESHOLD`, `PRUNE_SKILLS_MODEL`, `PRUNE_SKILLS_DISABLED`. |
+| `cache-habits-advisor.mjs` (F9) | `UserPromptSubmit` | Runs the transcript-derivable subset of the cache-habits linter — CH-004 (idle gap exceeded the active TTL → cached prefix expired, this turn rewrites it). The richer rules (model switch, tool-list reorder, system-prompt mutation, large paste) need the host's proposed-action diff, which the hook payload doesn't carry, and run in the editor integration / the `cache_habits` MCP tool instead. Gated on f9. Config: `PRUNE_CACHE_TTL` (`5m`/`1h`/`none`), `PRUNE_CACHE_HABITS_DISABLED`. |
 
 Install (manual for now): point a Claude Code hook entry at the script
 path. A future `prune.installHooks` extension command will automate
 this with user-scoped vs project-scoped settings management.
+
+## Features whose runtime surface is NOT a transcript hook
+
+Three Phase-9.7 features deliberately do not ship as Claude Code hooks,
+because the hook model (synchronous pre/post events over a session
+transcript) is the wrong shape for them. Forcing them into a hook would
+be theatre, not wiring:
+
+- **`@prune/mcp-proxy` (f10)** intercepts the MCP JSON-RPC `tools/list` /
+  `tools/call` handshake between an MCP host and its servers — a
+  transport-level proxy, not a transcript event. Its runtime surface is a
+  proxy entrypoint the host mounts, or an on-demand MCP tool for catalog
+  trimming (not yet registered in `apps/mcp-server`). It is host-neutral by
+  design (Cursor / Codex CLI / Cline / Continue / Aider), none of which
+  fire Claude Code hooks. The package exposes the full `McpProxy` API today.
+- **`@prune/replay-cost` (f11)** is an on-demand what-if engine: the user
+  asks "what would this prompt variant cost?" It is invoked against a
+  captured timeline, not fired automatically per turn. Its natural surface
+  is an MCP tool / CLI (not yet registered in `apps/mcp-server`); the
+  package exposes `planReplay` / `WhatIfEngine` today.
+- **`@prune/speculative-pipeline` (f13)** drives PARALLEL speculative tool
+  execution while the model is still generating — a stateful concurrent
+  loop owned by a host with a parallel executor. A synchronous hook cannot
+  express it. Its surface is the host runtime integration; the package
+  exposes the full `SpeculativePipeline` API for that.
+
+The MCP-tool registrations for f10/f11 and the host integration for f13
+are the next wiring step (tracked separately); the flags above already
+exist so those surfaces can promote through shadow → general when wired.
+
+The feature flags f9–f13 are defined in `@prune/shared` (`feature-flags.ts`)
+so all five share the same shadow → canary → general promotion machinery,
+regardless of whether their runtime surface is a hook, an MCP tool, or a
+host integration.

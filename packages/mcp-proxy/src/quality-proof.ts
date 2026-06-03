@@ -2,7 +2,7 @@
  * `quality_proof` schema for the MCP-proxy.
  *
  * One row per `tools/list` interception. The persistence sink records
- * `feature_id = "f8"` + the payload built here; the post-hoc auditor can
+ * `feature_id = "f10"` + the payload built here; the post-hoc auditor can
  * re-run the intent matcher against the recorded inputs and assert the
  * same kept/hidden sets.
  *
@@ -13,12 +13,12 @@
 
 import type { ReductionAudit } from "./types.js";
 
-export const MCP_PROXY_FEATURE_ID = "f8" as const;
+export const MCP_PROXY_FEATURE_ID = "f10" as const;
 export const QUALITY_PROOF_SCHEMA_VERSION = 1 as const;
 
 export interface McpProxyQualityProof {
   schemaVersion: 1;
-  featureId: "f8";
+  featureId: "f10";
   audit: ReductionAudit;
 }
 

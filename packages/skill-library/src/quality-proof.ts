@@ -1,5 +1,5 @@
 /**
- * `quality_proof` schema for skill-library, recorded under `feature_id = "f10"`.
+ * `quality_proof` schema for skill-library, recorded under `feature_id = "f12"`.
  *
  * Two event shapes share the schema:
  *   - CAPTURE: a skill was distilled from a session.
@@ -17,12 +17,12 @@ import type {
   SkillSavingProjection,
 } from "./types.js";
 
-export const SKILL_LIBRARY_FEATURE_ID = "f10" as const;
+export const SKILL_LIBRARY_FEATURE_ID = "f12" as const;
 export const QUALITY_PROOF_SCHEMA_VERSION = 1 as const;
 
 export interface SkillCaptureProof {
   schemaVersion: 1;
-  featureId: "f10";
+  featureId: "f12";
   event: "capture";
   skillId: string;
   contentHash: string;
@@ -35,7 +35,7 @@ export interface SkillCaptureProof {
 
 export interface SkillReplayProof {
   schemaVersion: 1;
-  featureId: "f10";
+  featureId: "f12";
   event: "replay";
   skillId: string;
   contentHash: string;
