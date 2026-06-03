@@ -13,8 +13,11 @@
  *
  * Source for the published-habit list (each rule cites the specific source
  * in its `citation` field):
- *   - Anthropic prompt-caching docs (cache breakpoint, min prefix, TTL).
- *   - Anthropic engineering blog "Effective context for coding agents".
+ *   - Anthropic prompt-caching docs (cache breakpoint, min prefix, TTL):
+ *     5m write 1.25x, 1h write 2.0x, read 0.1x; min cacheable 1024 (Sonnet
+ *     4.5/4.6) / 4096 (Opus 4.5). Verified against platform.claude.com
+ *     prompt-caching + pricing docs, 2026-06-03.
+ *   - Anthropic engineering post "Effective context engineering for AI agents".
  *   - `agent-sdk-adapter/cache-planner.ts` soundness rules (declared
  *     volatility, byte-stable prefix).
  */
@@ -157,9 +160,10 @@ const CH_003: Rule = {
     "Pasting a large block into chat instead of using a file-read tool prevents session-memory deduplication on subsequent turns.",
   defaultSeverity: "warn",
   citation:
-    "Anthropic engineering blog: file-read tools deduplicate via session memory; " +
-    "pasted blocks are treated as fresh user content every turn. Mirrored in " +
-    "apps/extension/src/token-saver.ts (Session Memory Deduplication).",
+    "Prune's own Session Memory Deduplication (apps/extension/src/token-saver.ts): " +
+    "file-read results are deduplicated across turns, whereas a pasted block is fresh " +
+    "user content re-billed every turn it stays in the prefix. The mechanism is the " +
+    "in-repo feature; the principle (prefer file-reads over pastes) is general.",
   run(action, _snapshot): LintFinding | null {
     const min = minCacheablePrefix(action.modelFamily);
     // Aggregate paste tokens from caller-declared blocks; the linter never
@@ -437,12 +441,15 @@ const CH_009: Rule = {
   id: "CH-009",
   name: "reasoning_effort_raised",
   description:
-    "Raising the reasoning-effort dial multiplies output thinking-token cost; the TokenMix-published ratio across the dial is 50×.",
+    "Raising the reasoning-effort dial increases output thinking-token volume — roughly an order of magnitude from the lowest to the highest setting — billed at the output rate.",
   defaultSeverity: "info",
   citation:
-    "TokenMix Apr 2026 measurement: 50× cost ratio across the reasoning_effort dial. " +
-    "Mirrored in §A.2 (Phase 8 above) — B.3 Reasoning-Effort Auto-Router is the Tier-1 " +
-    "build that automates this per-task.",
+    "Reasoning-effort levels scale thinking-token volume across roughly minimal≈0.1 → " +
+    "xhigh≈0.95 of the effort ratio (OpenRouter reasoning-tokens doc; verified 2026-06-03), " +
+    "i.e. ~an order of magnitude across the dial, billed at the output rate. (NOTE: the " +
+    "separate, widely-cited TokenMix '50×' figure is the premium-vs-budget MODEL tokens/$ " +
+    "gap, NOT the effort dial — do not conflate.) Mirrored in §A.2: B.3 Reasoning-Effort " +
+    "Auto-Router is the Tier-1 build that automates this per-task.",
   run(action, snapshot): LintFinding | null {
     if (action.changes.reasoningEffort === null) return null;
     const next = action.changes.reasoningEffort;
@@ -457,8 +464,8 @@ const CH_009: Rule = {
       ruleName: "reasoning_effort_raised",
       severity: "info",
       message:
-        `Reasoning effort ${prev} → ${next}; output thinking-tokens scale with the dial. ` +
-        `TokenMix Apr 2026 measured up to 50× cost ratio across the full standard→max range.`,
+        `Reasoning effort ${prev} → ${next}; output thinking-tokens scale with the dial ` +
+        `(roughly an order of magnitude across the full range), billed at the output rate.`,
       suggestion:
         `Verify this turn warrants the dial increase. If most turns need high effort, ` +
         `the B.3 Reasoning-Effort Auto-Router (Phase 8 Tier-1) handles per-task selection.`,
