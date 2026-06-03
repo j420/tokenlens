@@ -20,5 +20,7 @@ export * from "./routing.js";
 export * from "./loop.js";
 export * from "./client.js";
 export * from "./ttl-amortization.js";
+export * from "./idle-guard.js";
+export * from "./delta-resend.js";
 export * from "./invokers/anthropic.js";
 export * from "./invokers/openai.js";
