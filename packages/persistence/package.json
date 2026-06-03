@@ -15,6 +15,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@prune/db": "*",
     "@prune/shared": "0.1.0",
     "proper-lockfile": "^4.1.2",
     "sql.js": "^1.10.3"

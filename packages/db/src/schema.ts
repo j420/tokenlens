@@ -8,6 +8,8 @@ import {
   boolean,
   jsonb,
   index,
+  uniqueIndex,
+  primaryKey,
   pgEnum,
 } from "drizzle-orm/pg-core";
 
@@ -744,3 +746,257 @@ export type NewReplayLogRow = typeof replayLog.$inferInsert;
 
 export type SloDefinition = typeof sloDefinitions.$inferSelect;
 export type NewSloDefinition = typeof sloDefinitions.$inferInsert;
+
+// ============================================================================
+// Phase 9.7+ — PersistenceSink lossless mirror tables (@prune/persistence).
+//
+// These tables are the Postgres backing store for `PostgresSink`. Unlike the
+// dashboard-oriented `events` / `alerts` / `compaction_events` / `budget_usage`
+// tables above — which use uuid PKs, FK constraints, dashboard-specific enums
+// (alert pattern/severity), and `timestamp` columns — these mirror the
+// `@prune/persistence` SQLite schema **byte-for-byte**:
+//   - PRIMARY KEYs are caller-supplied TEXT (event_id, alert_id, ...), never
+//     server-generated uuids, so a row's id survives a SQLite → Postgres copy.
+//   - All wall-clock fields are TEXT holding the exact ISO-8601 string the
+//     caller stored (no Date coercion → no millisecond/zone drift).
+//   - JSON fields are jsonb (tool_calls, files_referenced, waste_flags,
+//     task_metadata, quality_proof, lost_references, metadata, ...).
+//   - booleans are boolean; numeric/integer match the SQLite affinities.
+// This guarantees `read(write(row)) === row` and a lossless local→central
+// export, which the dashboard tables cannot offer for the canonical row types.
+// Prefixed `persistence_` to coexist with the dashboard tables of the same
+// concept without collision.
+// ============================================================================
+
+export const persistenceEvents = pgTable(
+  "persistence_events",
+  {
+    event_id: text("event_id").primaryKey(),
+    session_id: text("session_id").notNull(),
+    user_id: text("user_id").notNull(),
+    team_id: text("team_id"),
+    timestamp: text("timestamp").notNull(),
+    provider: text("provider").notNull(),
+    tool: text("tool").notNull(),
+    model: text("model").notNull(),
+    tokens_in: integer("tokens_in").notNull(),
+    tokens_out: integer("tokens_out").notNull(),
+    tokens_cached: integer("tokens_cached").notNull().default(0),
+    latency_ms: integer("latency_ms").notNull(),
+    estimated_cost_usd: real("estimated_cost_usd").notNull(),
+    cumulative_session_cost_usd: real("cumulative_session_cost_usd").notNull(),
+    tool_calls: jsonb("tool_calls").$type<string[]>().notNull().default([]),
+    files_referenced: jsonb("files_referenced")
+      .$type<string[]>()
+      .notNull()
+      .default([]),
+    compaction_triggered: boolean("compaction_triggered").notNull().default(false),
+    context_size_before: integer("context_size_before").notNull().default(0),
+    context_size_after: integer("context_size_after").notNull().default(0),
+    waste_flags: jsonb("waste_flags").$type<string[]>().notNull().default([]),
+    classification: text("classification").notNull(),
+    roi_score: real("roi_score").notNull(),
+    task_metadata: jsonb("task_metadata")
+      .$type<{ type: string; repo: string | null; branch: string | null }>()
+      .notNull(),
+    feature_id: text("feature_id"),
+    quality_proof: jsonb("quality_proof")
+      .$type<Record<string, unknown> | null>()
+      .default(null),
+  },
+  (table) => [
+    index("idx_persistence_events_session").on(table.session_id, table.timestamp),
+    index("idx_persistence_events_user").on(table.user_id, table.timestamp),
+  ]
+);
+
+export const persistenceCompactions = pgTable(
+  "persistence_compactions",
+  {
+    event_id: text("event_id").primaryKey(),
+    session_id: text("session_id").notNull(),
+    timestamp: text("timestamp").notNull(),
+    turn_number: integer("turn_number").notNull(),
+    tokens_before: integer("tokens_before").notNull(),
+    tokens_after: integer("tokens_after").notNull(),
+    tokens_removed: integer("tokens_removed").notNull(),
+    overhead_cost_usd: real("overhead_cost_usd").notNull(),
+    lost_references: jsonb("lost_references")
+      .$type<Array<{ item: string; category: string; original_turn: number }>>()
+      .notNull()
+      .default([]),
+    summary: text("summary").notNull(),
+  },
+  (table) => [
+    index("idx_persistence_compactions_session").on(
+      table.session_id,
+      table.timestamp
+    ),
+  ]
+);
+
+export const persistenceAlerts = pgTable(
+  "persistence_alerts",
+  {
+    alert_id: text("alert_id").primaryKey(),
+    session_id: text("session_id").notNull(),
+    team_id: text("team_id"),
+    timestamp: text("timestamp").notNull(),
+    severity: text("severity").notNull(),
+    kind: text("kind").notNull(),
+    message: text("message").notNull(),
+    payload_json: text("payload_json").notNull(),
+  },
+  (table) => [
+    index("idx_persistence_alerts_session").on(table.session_id, table.timestamp),
+  ]
+);
+
+export const persistenceBudgetUsage = pgTable(
+  "persistence_budget_usage",
+  {
+    team_id: text("team_id").notNull(),
+    period: text("period").notNull(),
+    spent_usd: real("spent_usd").notNull(),
+    limit_usd: real("limit_usd").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.team_id, table.period] }),
+  ]
+);
+
+export const persistenceBudgetEnvelopes = pgTable(
+  "persistence_budget_envelopes",
+  {
+    envelope_id: text("envelope_id").primaryKey(),
+    name: text("name").notNull().unique(),
+    period_kind: text("period_kind").notNull(),
+    period_start: text("period_start").notNull(),
+    period_end: text("period_end").notNull(),
+    limit_usd: real("limit_usd").notNull(),
+    soft_cap_pct: real("soft_cap_pct").notNull().default(0.75),
+    hard_cap_pct: real("hard_cap_pct").notNull().default(1.0),
+    parent_envelope_id: text("parent_envelope_id"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+  },
+  (table) => [
+    index("idx_persistence_envelopes_parent").on(table.parent_envelope_id),
+  ]
+);
+
+export const persistenceBudgetCharges = pgTable(
+  "persistence_budget_charges",
+  {
+    charge_id: text("charge_id").primaryKey(),
+    envelope_id: text("envelope_id").notNull(),
+    timestamp: text("timestamp").notNull(),
+    agent_id: text("agent_id"),
+    model: text("model").notNull(),
+    provider: text("provider").notNull(),
+    tokens_in: integer("tokens_in").notNull(),
+    tokens_out: integer("tokens_out").notNull(),
+    tokens_cached: integer("tokens_cached").notNull().default(0),
+    tokens_cache_creation: integer("tokens_cache_creation").notNull().default(0),
+    cost_usd: real("cost_usd").notNull(),
+    source: text("source").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+  },
+  (table) => [
+    index("idx_persistence_charges_envelope_time").on(
+      table.envelope_id,
+      table.timestamp
+    ),
+    index("idx_persistence_charges_agent_time").on(table.agent_id, table.timestamp),
+  ]
+);
+
+export const persistenceSloDefinitions = pgTable(
+  "persistence_slo_definitions",
+  {
+    slo_id: text("slo_id").primaryKey(),
+    name: text("name").notNull().unique(),
+    scope_envelope_id: text("scope_envelope_id").notNull(),
+    target_usd_per_task: real("target_usd_per_task").notNull(),
+    error_budget_usd: real("error_budget_usd").notNull(),
+    window_days: integer("window_days").notNull(),
+    warning_pct: real("warning_pct").notNull().default(0.5),
+    task_dimension: text("task_dimension").notNull().default("agent_id"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+  },
+  (table) => [
+    index("idx_persistence_slo_scope").on(table.scope_envelope_id),
+  ]
+);
+
+export const persistenceReplayLog = pgTable(
+  "persistence_replay_log",
+  {
+    record_id: text("record_id").primaryKey(),
+    session_id: text("session_id").notNull(),
+    sequence: integer("sequence").notNull(),
+    timestamp: text("timestamp").notNull(),
+    kind: text("kind").notNull(),
+    payload_canonical: text("payload_canonical").notNull(),
+    record_hash: text("record_hash").notNull(),
+    prev_record_hash: text("prev_record_hash"),
+    signature: text("signature").notNull(),
+    signer_fingerprint: text("signer_fingerprint").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+  },
+  (table) => [
+    uniqueIndex("uq_persistence_replay_session_seq").on(
+      table.session_id,
+      table.sequence
+    ),
+    index("idx_persistence_replay_session_seq").on(
+      table.session_id,
+      table.sequence
+    ),
+  ]
+);
+
+export type PersistenceEvent = typeof persistenceEvents.$inferSelect;
+export type NewPersistenceEvent = typeof persistenceEvents.$inferInsert;
+
+export type PersistenceCompaction = typeof persistenceCompactions.$inferSelect;
+export type NewPersistenceCompaction =
+  typeof persistenceCompactions.$inferInsert;
+
+export type PersistenceAlert = typeof persistenceAlerts.$inferSelect;
+export type NewPersistenceAlert = typeof persistenceAlerts.$inferInsert;
+
+export type PersistenceBudgetUsage =
+  typeof persistenceBudgetUsage.$inferSelect;
+export type NewPersistenceBudgetUsage =
+  typeof persistenceBudgetUsage.$inferInsert;
+
+export type PersistenceBudgetEnvelope =
+  typeof persistenceBudgetEnvelopes.$inferSelect;
+export type NewPersistenceBudgetEnvelope =
+  typeof persistenceBudgetEnvelopes.$inferInsert;
+
+export type PersistenceBudgetCharge =
+  typeof persistenceBudgetCharges.$inferSelect;
+export type NewPersistenceBudgetCharge =
+  typeof persistenceBudgetCharges.$inferInsert;
+
+export type PersistenceSloDefinition =
+  typeof persistenceSloDefinitions.$inferSelect;
+export type NewPersistenceSloDefinition =
+  typeof persistenceSloDefinitions.$inferInsert;
+
+export type PersistenceReplayLog = typeof persistenceReplayLog.$inferSelect;
+export type NewPersistenceReplayLog =
+  typeof persistenceReplayLog.$inferInsert;
