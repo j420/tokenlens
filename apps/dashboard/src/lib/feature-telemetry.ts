@@ -22,7 +22,8 @@
  *   f10 mcp-proxy           → audit.savedTokens / fullCatalogTokens / shippedTokens
  *   f11 replay-cost         → cost.savedUsd / naiveCostUsd / replayCostUsd
  *   f12 skill-library       → event "capture"|"replay" + discoveryTokens
- *   f13 speculative-pipeline → stats.hitRate + outcome.latencySavedMs
+ *   f13 speculative-pipeline → stats.hitRate + outcome.realizedLatencySavedMs (net)
+ *                              + outcome.speculativeElapsedMs (gross/potential)
  * We intentionally do NOT import those package types: the proof on disk is
  * untrusted and may predate or postdate any given schema version, so we decode
  * structurally rather than by nominal type.
@@ -82,7 +83,7 @@ export interface SkillLibrarySummary {
   discoveryTokens: number | null;
 }
 
-/** f13 speculativePipeline: speculation hit-rate + latency saved. */
+/** f13 speculativePipeline: speculation hit-rate + latency. */
 export interface SpeculativePipelineSummary {
   /** Count of rows whose outcome.hit was true. */
   hits: number;
@@ -94,8 +95,21 @@ export interface SpeculativePipelineSummary {
    * (those are already cumulative). null if no row carried it.
    */
   latestHitRate: number | null;
-  /** Sum of per-outcome latencySavedMs. null if unreadable. */
-  latencySavedMs: number | null;
+  /**
+   * The HONEST "latency saved" — sum of per-outcome `realizedLatencySavedMs`
+   * (the v2 schema's host-measured NET wall-clock the agent actually avoided).
+   * This is the figure a dashboard must headline as "latency saved". null when
+   * no row carried a readable value (e.g. the host never supplied a NET figure,
+   * or only the synchronous-verify path ran, where NET is ~0). NEVER falls back
+   * to the gross speculative elapsed.
+   */
+  realizedLatencySavedMs: number | null;
+  /**
+   * The GROSS upper bound — sum of per-outcome `speculativeElapsedMs` (the
+   * speculation's own elapsed). Surfaceable only as "potential", never as
+   * realized savings. null if unreadable.
+   */
+  speculativeElapsedMs: number | null;
 }
 
 export type FeatureSummary =
@@ -228,7 +242,8 @@ export function aggregateFeatureTelemetry(
   let f13Misses = 0;
   let f13LatestHitRate: number | null = null;
   let f13SeenHitRate = false;
-  const f13Latency = new NullableSum();
+  const f13Realized = new NullableSum();
+  const f13Speculative = new NullableSum();
 
   let totalEvents = 0;
   let outOfScopeEventCount = 0;
@@ -307,7 +322,13 @@ export function aggregateFeatureTelemetry(
         if (isRecord(outcome)) {
           if (outcome.hit === true) f13Hits++;
           else if (outcome.hit === false) f13Misses++;
-          f13Latency.add(outcome.latencySavedMs);
+          // v2 schema (HIGH-1 honesty fix): realized NET is the headline
+          // figure; speculative elapsed is gross/potential only. A v1 row
+          // (pre-fix) carried `latencySavedMs` which conflated the two — we no
+          // longer read it, so a stale v1 row contributes null (shown as "—")
+          // rather than an overstated saving.
+          f13Realized.add(outcome.realizedLatencySavedMs);
+          f13Speculative.add(outcome.speculativeElapsedMs);
         }
         const stats = proof.stats;
         if (isRecord(stats) && !f13SeenHitRate) {
@@ -362,7 +383,8 @@ export function aggregateFeatureTelemetry(
         hits: f13Hits,
         misses: f13Misses,
         latestHitRate: f13LatestHitRate,
-        latencySavedMs: f13Latency.value(),
+        realizedLatencySavedMs: f13Realized.value(),
+        speculativeElapsedMs: f13Speculative.value(),
       },
     },
   };

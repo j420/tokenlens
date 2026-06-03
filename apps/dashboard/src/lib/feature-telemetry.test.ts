@@ -240,20 +240,20 @@ describe("aggregateFeatureTelemetry — f12 skillLibrary decoding", () => {
 });
 
 describe("aggregateFeatureTelemetry — f13 speculativePipeline decoding", () => {
-  it("counts hits/misses, sums latency, and takes the most-recent hitRate", () => {
+  it("counts hits/misses, sums realized NET latency, and takes the most-recent hitRate (v2 schema)", () => {
     const report = aggregateFeatureTelemetry([
       // First row = most recent (getRecentEvents returns newest-first).
       makeRow({
         feature_id: "f13",
         quality_proof: {
-          outcome: { hit: true, latencySavedMs: 120 },
+          outcome: { hit: true, realizedLatencySavedMs: 120, speculativeElapsedMs: 1800 },
           stats: { hitRate: 0.66 },
         },
       }),
       makeRow({
         feature_id: "f13",
         quality_proof: {
-          outcome: { hit: false, latencySavedMs: 0 },
+          outcome: { hit: false, realizedLatencySavedMs: 0, speculativeElapsedMs: 0 },
           stats: { hitRate: 0.5 },
         },
       }),
@@ -262,11 +262,16 @@ describe("aggregateFeatureTelemetry — f13 speculativePipeline decoding", () =>
     if (f13.summary.kind !== "f13") throw new Error("wrong kind");
     expect(f13.summary.data.hits).toBe(1);
     expect(f13.summary.data.misses).toBe(1);
-    expect(f13.summary.data.latencySavedMs).toBe(120);
+    // Headline = realized NET (honest), not the gross speculative elapsed.
+    expect(f13.summary.data.realizedLatencySavedMs).toBe(120);
+    expect(f13.summary.data.speculativeElapsedMs).toBe(1800);
     expect(f13.summary.data.latestHitRate).toBeCloseTo(0.66);
   });
 
-  it("latestHitRate is null when no row carries a readable hitRate", () => {
+  it("realized latency is null (shown as —) when only the pre-fix v1 field is present (no silent overstatement)", () => {
+    // A stale v1 row carried the conflated `latencySavedMs`; the v2 decoder
+    // deliberately does NOT read it, so the honest figure is null rather than
+    // an overstated saving.
     const report = aggregateFeatureTelemetry([
       makeRow({
         feature_id: "f13",
@@ -276,7 +281,21 @@ describe("aggregateFeatureTelemetry — f13 speculativePipeline decoding", () =>
     const f13 = byId(report, "f13");
     if (f13.summary.kind !== "f13") throw new Error("wrong kind");
     expect(f13.summary.data.latestHitRate).toBeNull();
-    expect(f13.summary.data.latencySavedMs).toBe(10);
+    expect(f13.summary.data.realizedLatencySavedMs).toBeNull();
+    expect(f13.summary.data.speculativeElapsedMs).toBeNull();
+  });
+
+  it("latestHitRate is null when no row carries a readable hitRate", () => {
+    const report = aggregateFeatureTelemetry([
+      makeRow({
+        feature_id: "f13",
+        quality_proof: { outcome: { hit: true, realizedLatencySavedMs: 10, speculativeElapsedMs: 50 } },
+      }),
+    ]);
+    const f13 = byId(report, "f13");
+    if (f13.summary.kind !== "f13") throw new Error("wrong kind");
+    expect(f13.summary.data.latestHitRate).toBeNull();
+    expect(f13.summary.data.realizedLatencySavedMs).toBe(10);
   });
 });
 

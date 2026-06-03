@@ -151,11 +151,19 @@ function FeatureSummaryBody({ rollup }: { rollup: FeatureRollup }) {
           <MetricRow label="Misses" value={s.data.misses.toLocaleString()} />
           <MetricRow label="Hit rate" value={pctOrDash(s.data.latestHitRate)} />
           <MetricRow
-            label="Latency saved"
+            label="Latency saved (net)"
             value={
-              s.data.latencySavedMs === null
+              s.data.realizedLatencySavedMs === null
                 ? "—"
-                : `${Math.round(s.data.latencySavedMs).toLocaleString()} ms`
+                : `${Math.round(s.data.realizedLatencySavedMs).toLocaleString()} ms`
+            }
+          />
+          <MetricRow
+            label="Speculative elapsed (potential)"
+            value={
+              s.data.speculativeElapsedMs === null
+                ? "—"
+                : `${Math.round(s.data.speculativeElapsedMs).toLocaleString()} ms`
             }
           />
         </div>
