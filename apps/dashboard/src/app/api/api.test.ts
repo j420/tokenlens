@@ -178,6 +178,77 @@ describe("Events API (/api/v1/events)", () => {
 });
 
 // ============================================================================
+// FEATURES API TESTS (/api/v1/features) — f9–f13 telemetry rollup
+// ============================================================================
+
+describe("Features API (/api/v1/features)", () => {
+  let GET: (request: NextRequest) => Promise<Response>;
+
+  beforeEach(async () => {
+    vi.resetModules();
+    const module = await import("./v1/features/route.js");
+    GET = module.GET;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns a well-formed report with f9..f13 in deterministic order", async () => {
+    const request = new NextRequest("http://localhost:3000/api/v1/features");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(data.features)).toBe(true);
+    expect(data.features.map((f: { featureId: string }) => f.featureId)).toEqual([
+      "f9",
+      "f10",
+      "f11",
+      "f12",
+      "f13",
+    ]);
+  });
+
+  it("includes honest _meta and totals fields", async () => {
+    const request = new NextRequest("http://localhost:3000/api/v1/features");
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(data).toHaveProperty("totalEvents");
+    expect(data).toHaveProperty("outOfScopeEventCount");
+    expect(data._meta).toHaveProperty("storage");
+    expect(data._meta).toHaveProperty("hasFeatureTelemetry");
+    expect(data._meta).toHaveProperty("scannedEvents");
+    expect(typeof data._meta.hasFeatureTelemetry).toBe("boolean");
+  });
+
+  it("each feature rollup carries the required aggregate fields", async () => {
+    const request = new NextRequest("http://localhost:3000/api/v1/features");
+    const response = await GET(request);
+    const data = await response.json();
+
+    for (const f of data.features) {
+      expect(f).toHaveProperty("featureId");
+      expect(f).toHaveProperty("featureName");
+      expect(f).toHaveProperty("eventCount");
+      expect(f).toHaveProperty("tokensIn");
+      expect(f).toHaveProperty("estimatedCostUsd");
+      expect(f).toHaveProperty("malformedProofCount");
+      expect(f).toHaveProperty("summary");
+    }
+  });
+
+  it("respects the limit parameter without crashing", async () => {
+    const request = new NextRequest(
+      "http://localhost:3000/api/v1/features?limit=10"
+    );
+    const response = await GET(request);
+    expect(response.status).toBe(200);
+  });
+});
+
+// ============================================================================
 // OVERVIEW API TESTS
 // ============================================================================
 
