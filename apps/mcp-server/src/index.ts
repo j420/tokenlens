@@ -49,6 +49,7 @@ import {
   handleReplayCostPlan,
   handleMcpProxyTrim,
 } from "./tcrp-tools.js";
+import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
 // ============================================================================
 // Server Setup
@@ -2504,6 +2505,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       default:
         throw new Error("Unknown tool: " + name);
+    }
+
+    // Caller-side feature telemetry (f10/f11): record the handler's
+    // quality_proof AFTER the handler returned, so the pure handlers stay pure.
+    // Gated behind PRUNE_MCP_TELEMETRY=1 (default OFF). Best-effort and
+    // self-contained — recordToolFeatureEventBestEffort never throws — but we
+    // also belt-and-suspenders guard here so a future change can't let a
+    // recording failure mask the result the caller already computed.
+    try {
+      await recordToolFeatureEventBestEffort(name, result);
+    } catch {
+      /* unreachable in practice; recording is internally fail-safe */
     }
 
     return {
