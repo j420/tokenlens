@@ -79,6 +79,18 @@
       {
         "command": "prune.trackDecision",
         "title": "Prune: Track Important Decision"
+      },
+      {
+        "command": "prune.disableFeature",
+        "title": "Prune: Disable TCRP Feature"
+      },
+      {
+        "command": "prune.enableFeature",
+        "title": "Prune: Enable TCRP Feature"
+      },
+      {
+        "command": "prune.listFeatures",
+        "title": "Prune: List TCRP Features"
       }
     ],
     "configuration": {
@@ -93,6 +105,26 @@
           "type": "boolean",
           "default": true,
           "description": "Show token count in status bar"
+        },
+        "prune.hud.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "F5 — Spend-as-You-Type HUD: show projected prompt cost in the status bar while composing chat prompts. Display-only — never modifies the prompt."
+        },
+        "prune.hud.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-5-20250929",
+          "description": "Model used for the HUD's cost projection. Should match the model your chat tool is configured to use."
+        },
+        "prune.hud.thresholds.greenUsd": {
+          "type": "number",
+          "default": 0.01,
+          "description": "Projected cost below which the HUD shows green (no warning)."
+        },
+        "prune.hud.thresholds.redUsd": {
+          "type": "number",
+          "default": 0.1,
+          "description": "Projected cost at or above which the HUD shows red (high-cost warning)."
         }
       }
     },

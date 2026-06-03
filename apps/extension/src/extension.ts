@@ -36,6 +36,14 @@ import {
   type DecisionPriority,
 } from "./token-saver";
 import { runAllTokenSaverTestsExtended } from "./token-saver.test";
+import { runAllHudTests } from "./hud-compute.test";
+import { FeatureFlagStore, FLAG_PATH } from "./feature-flags-store";
+import { activateHud } from "./hud";
+import {
+  TCRP_FEATURE_IDS,
+  TCRP_FEATURE_NAMES,
+  resolveFeatureId,
+} from "@prune/shared";
 
 // ============================================================================
 // State
@@ -47,6 +55,7 @@ let squeezerInstance: SemanticSqueezer | null = null;
 let wasmDir: string | null = null;
 // sql.js WASM is bundled, no external sqlite3 CLI needed
 let intelligenceEngine: PruneIntelligenceEngine | null = null;
+let featureFlagStore: FeatureFlagStore | null = null;
 
 // ============================================================================
 // Logging
@@ -179,6 +188,17 @@ export function activate(context: vscode.ExtensionContext) {
   intelligenceEngine = new PruneIntelligenceEngine();
   log("Prune Intelligence Engine initialized");
 
+  // Initialize TCRP feature-flag store and activate F5 (HUD).
+  // Flags live at ~/.prune/feature-flags.json; defaults ship F5 enabled,
+  // F1-F4 in shadow mode. See plan §"Final Executable Plan" cross-cutting.
+  featureFlagStore = new FeatureFlagStore();
+  featureFlagStore.startWatching();
+  context.subscriptions.push({
+    dispose: () => featureFlagStore?.dispose(),
+  });
+  context.subscriptions.push(activateHud(context, featureFlagStore, log));
+  log(`Feature flags loaded from ${FLAG_PATH}`);
+
   // Register commands
   context.subscriptions.push(
     vscode.commands.registerCommand("prune.analyzeSelection", analyzeSelection),
@@ -194,7 +214,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.sessionStats", sessionStatsCommand),
     vscode.commands.registerCommand("prune.resetSession", resetSessionCommand),
     vscode.commands.registerCommand("prune.compactionCheck", compactionCheckCommand),
-    vscode.commands.registerCommand("prune.trackDecision", trackDecisionCommand)
+    vscode.commands.registerCommand("prune.trackDecision", trackDecisionCommand),
+    // TCRP feature control
+    vscode.commands.registerCommand("prune.disableFeature", disableFeatureCommand),
+    vscode.commands.registerCommand("prune.enableFeature", enableFeatureCommand),
+    vscode.commands.registerCommand("prune.listFeatures", listFeaturesCommand)
   );
 
   // Register URI handler for dashboard -> IDE interaction
@@ -1018,6 +1042,23 @@ async function runTestsCommand() {
         }
 
         // =====================================================================
+        // Run TCRP F5 HUD Tests
+        // =====================================================================
+        outputChannel.appendLine("Running F5 HUD Tests...");
+        outputChannel.appendLine("");
+
+        try {
+          const hudResults = runAllHudTests();
+          for (const line of hudResults.summary) {
+            outputChannel.appendLine(line);
+          }
+          outputChannel.appendLine("");
+        } catch (error) {
+          outputChannel.appendLine(`❌ HUD tests failed: ${error}`);
+          outputChannel.appendLine("");
+        }
+
+        // =====================================================================
         // Run Intelligence Engine Tests
         // =====================================================================
         outputChannel.appendLine("Running Prune Intelligence Engine Tests...");
@@ -1548,6 +1589,81 @@ async function trackDecisionCommand() {
       "Failed to track decision: " + (error instanceof Error ? error.message : String(error))
     );
   }
+}
+
+// ============================================================================
+// TCRP feature control commands
+// ============================================================================
+
+async function disableFeatureCommand(arg?: string): Promise<void> {
+  if (!featureFlagStore) {
+    vscode.window.showErrorMessage("Prune: feature flag store not initialized");
+    return;
+  }
+  const idOrName = arg ?? (await pickFeatureName("disable"));
+  if (!idOrName) return;
+  const reason = await vscode.window.showInputBox({
+    prompt: `Why disable '${idOrName}'? (optional, recorded for audit)`,
+    placeHolder: "e.g. testing fallback, accuracy concern, …",
+  });
+  const id = featureFlagStore.disable(idOrName, reason || undefined);
+  if (!id) {
+    vscode.window.showErrorMessage(`Prune: unknown feature '${idOrName}'`);
+    return;
+  }
+  vscode.window.showInformationMessage(
+    `Prune: ${TCRP_FEATURE_NAMES[id]} (${id}) disabled.`
+  );
+  log(`Feature ${id} (${TCRP_FEATURE_NAMES[id]}) disabled${reason ? `: ${reason}` : ""}`);
+}
+
+async function enableFeatureCommand(arg?: string): Promise<void> {
+  if (!featureFlagStore) {
+    vscode.window.showErrorMessage("Prune: feature flag store not initialized");
+    return;
+  }
+  const idOrName = arg ?? (await pickFeatureName("enable"));
+  if (!idOrName) return;
+  const id = featureFlagStore.enable(idOrName, "general");
+  if (!id) {
+    vscode.window.showErrorMessage(`Prune: unknown feature '${idOrName}'`);
+    return;
+  }
+  vscode.window.showInformationMessage(
+    `Prune: ${TCRP_FEATURE_NAMES[id]} (${id}) enabled (mode: general).`
+  );
+  log(`Feature ${id} (${TCRP_FEATURE_NAMES[id]}) enabled`);
+}
+
+async function listFeaturesCommand(): Promise<void> {
+  if (!featureFlagStore) {
+    vscode.window.showErrorMessage("Prune: feature flag store not initialized");
+    return;
+  }
+  const flags = featureFlagStore.current;
+  const lines = TCRP_FEATURE_IDS.map((id) => {
+    const state = flags.features[id];
+    const name = TCRP_FEATURE_NAMES[id];
+    const status = state.enabled ? state.mode : "off";
+    const reason = state.reason ? ` — ${state.reason}` : "";
+    return `${id.toUpperCase()}  ${name.padEnd(22)} ${status}${reason}`;
+  });
+  outputChannel.appendLine("=== TCRP feature flags ===");
+  outputChannel.appendLine(`Policy source: ${flags.policySource}`);
+  outputChannel.appendLine(`Flag file: ${FLAG_PATH}`);
+  for (const line of lines) outputChannel.appendLine(line);
+  outputChannel.show(true);
+}
+
+async function pickFeatureName(verb: string): Promise<string | undefined> {
+  const items = TCRP_FEATURE_IDS.map((id) => ({
+    label: TCRP_FEATURE_NAMES[id],
+    description: id,
+  }));
+  const pick = await vscode.window.showQuickPick(items, {
+    placeHolder: `Select feature to ${verb}`,
+  });
+  return pick?.label;
 }
 
 // ============================================================================

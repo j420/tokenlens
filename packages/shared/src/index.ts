@@ -12,6 +12,7 @@
 
 export * from "./pricing.js";
 export * from "./schemas/event.js";
+export * from "./feature-flags.js";
 
 // Convenience re-export: a flat model→pricing map for legacy call sites.
 // New code should prefer getModelPricing(provider, model).

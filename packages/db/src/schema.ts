@@ -346,12 +346,20 @@ export const events = pgTable(
       }>()
       .notNull()
       .default({ type: "unknown", repo: null, branch: null }),
+    // TCRP (Token-Cost Reduction Program): tag an event with the cost-
+    // reduction feature that produced it and the proof bundle showing it did
+    // not degrade quality. Nullable so non-TCRP events are unaffected.
+    feature_id: text("feature_id"),
+    quality_proof: jsonb("quality_proof")
+      .$type<Record<string, unknown> | null>()
+      .default(null),
   },
   (table) => [
     index("events_session_id_idx").on(table.session_id),
     index("events_user_id_idx").on(table.user_id),
     index("events_team_id_idx").on(table.team_id),
     index("events_timestamp_idx").on(table.timestamp),
+    index("events_feature_id_idx").on(table.feature_id),
   ]
 );
 
@@ -447,6 +455,42 @@ export const compactionEvents = pgTable(
     index("compaction_events_user_id_idx").on(table.user_id),
     index("compaction_events_created_at_idx").on(table.created_at),
   ]
+);
+
+// TCRP feature promotion mode enum (shadow → canary → general → disabled)
+export const tcrpModeEnum = pgEnum("tcrp_mode", [
+  "shadow",
+  "canary",
+  "general",
+  "disabled",
+]);
+
+// Feature promotion state - one row per TCRP feature (f1..f5), tracking how
+// far it has been promoted and the result of its last quality audit. This is
+// the durable record behind the shadow→canary→general gates and the
+// auto-rollback kill switch.
+export const featurePromotionState = pgTable(
+  "feature_promotion_state",
+  {
+    feature_id: text("feature_id").primaryKey(), // 'f1'..'f5'
+    team_id: uuid("team_id").references(() => teams.id),
+    mode: tcrpModeEnum("mode").notNull().default("shadow"),
+    shadow_count: integer("shadow_count").notNull().default(0),
+    canary_started_at: timestamp("canary_started_at", { withTimezone: true }),
+    last_quality_audit_at: timestamp("last_quality_audit_at", {
+      withTimezone: true,
+    }),
+    // The most recent quality-gate verdict (pass/fail + per-metric detail).
+    last_audit_result: jsonb("last_audit_result")
+      .$type<Record<string, unknown> | null>()
+      .default(null),
+    // Populated when auto-rollback disabled the feature.
+    disabled_reason: text("disabled_reason"),
+    updated_at: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("feature_promotion_state_team_id_idx").on(table.team_id)]
 );
 
 // Auto-trim rules table - per-repo context pruning rules
@@ -559,6 +603,10 @@ export type NewAutoTrimRule = typeof autoTrimRules.$inferInsert;
 
 export type CompactionEvent = typeof compactionEvents.$inferSelect;
 export type NewCompactionEvent = typeof compactionEvents.$inferInsert;
+
+export type FeaturePromotionState = typeof featurePromotionState.$inferSelect;
+export type NewFeaturePromotionState =
+  typeof featurePromotionState.$inferInsert;
 
 export type TeamMember = typeof teamMembers.$inferSelect;
 export type NewTeamMember = typeof teamMembers.$inferInsert;

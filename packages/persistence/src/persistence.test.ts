@@ -47,6 +47,8 @@ const baseEvent: EventRow = {
   classification: "productive",
   roi_score: 0.78,
   task_metadata: { type: "feature", repo: "tokenlens", branch: "main" },
+  feature_id: null,
+  quality_proof: null,
 };
 
 describe("LocalSqliteSink", () => {
@@ -55,6 +57,28 @@ describe("LocalSqliteSink", () => {
     const rows = await sink.getRecentEvents(baseEvent.session_id);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual(baseEvent);
+  });
+
+  it("round-trips a TCRP-tagged event (feature_id + quality_proof)", async () => {
+    const tagged: EventRow = {
+      ...baseEvent,
+      event_id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      feature_id: "f3",
+      quality_proof: {
+        substituted: true,
+        verified_equivalent: true,
+        tokens_saved: 1840,
+      },
+    };
+    await sink.recordEvent(tagged);
+    const rows = await sink.getRecentEvents(tagged.session_id);
+    const read = rows.find((r) => r.event_id === tagged.event_id)!;
+    expect(read.feature_id).toBe("f3");
+    expect(read.quality_proof).toEqual({
+      substituted: true,
+      verified_equivalent: true,
+      tokens_saved: 1840,
+    });
   });
 
   it("returns events in reverse chronological order", async () => {

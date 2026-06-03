@@ -34,7 +34,19 @@ import {
   formatLoopBlockMessage,
   getModelRoutingSuggestion,
   type CacheTurnInput,
+  type ToolDefinitionInfo,
+  type ToolUsageWindow,
 } from "@prune/intelligence";
+import type { ModelAggregate } from "@prune/qpd-bench";
+import {
+  handleToolAudit,
+  handleQpdReport,
+  handleContextHealthReport,
+  handleTrajectoryReplay,
+  handleSemanticCacheProbe,
+  handleCodeModeGenerateApi,
+  handleCodeModeHarness,
+} from "./tcrp-tools.js";
 
 // ============================================================================
 // Server Setup
@@ -748,6 +760,225 @@ const TOOLS = [
           type: "number" as const,
           description:
             "Compare the first N turns (pre-compaction) against the rest (post-compaction). Default: half-split.",
+        },
+      },
+      required: ["transcript_path"],
+    },
+  },
+  {
+    name: "tool_audit",
+    description:
+      "F2 Tool-Definition Auditor. Given the MCP/tool registry (with each " +
+      "tool's definition token cost) and recent per-session tool usage, report " +
+      "which tools are dead weight — carried on every request but rarely or " +
+      "never invoked — and how many tokens/week disabling them would recover. " +
+      "Never recommends removing a critical-allowlist tool. Mechanically zero " +
+      "quality impact: it only flags tools the agent does not invoke; the human " +
+      "confirms each removal. " +
+      "Vendor scoping: pass `vendor: \"anthropic-claude-code\"` to short-circuit " +
+      "with a notice pointing the user at Claude Code 2.1+'s built-in on-demand " +
+      "tool search (≈85% MCP token reduction at the host level); other vendors " +
+      "(cursor / openai-codex / openai-other / unknown / unset) run the full " +
+      "auditor.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tools: {
+          type: "array" as const,
+          description:
+            "Tool registry: each { name, server, definition_tokens, protected? }.",
+          items: { type: "object" as const },
+        },
+        usage: {
+          type: "object" as const,
+          description:
+            "Aggregated usage window: { windowDays, sessionsInWindow, " +
+            "invocations{}, lastUsedAgeDays{}, sessionsLoadingTool{} }.",
+        },
+        critical_allowlist: {
+          type: "array" as const,
+          description: "Tool names that must never be recommended for removal.",
+          items: { type: "string" as const },
+        },
+        vendor: {
+          type: "string" as const,
+          description:
+            "Host scope: 'anthropic-claude-code' short-circuits the audit; " +
+            "any other value (cursor | openai-codex | openai-other | unknown) " +
+            "runs the existing logic.",
+        },
+      },
+      required: ["tools", "usage"],
+    },
+  },
+  {
+    name: "qpd_report",
+    description:
+      "F4 Pareto Quality-per-Dollar report. Given per-model bench aggregates " +
+      "(acceptance rate, test-pass rate, mean cost, sample size) for one " +
+      "workload cluster, return the cost/quality Pareto frontier and which " +
+      "cheaper models — if any — are statistically quality-equivalent to the " +
+      "current one and therefore safe to recommend. Recommends only; the user " +
+      "always picks. Surfaces bench data; it does not run models.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        baseline: {
+          type: "object" as const,
+          description: "ModelAggregate for the current/baseline model.",
+        },
+        candidates: {
+          type: "array" as const,
+          description: "ModelAggregate for each candidate model.",
+          items: { type: "object" as const },
+        },
+        ar_margin: {
+          type: "number" as const,
+          description:
+            "Acceptance-rate non-inferiority margin (default 0.05, the coarse " +
+            "screening margin; the production gate uses 1pp continuously).",
+        },
+        cost_dominance_ratio: {
+          type: "number" as const,
+          description: "Candidate cost must be ≤ this × baseline (default 0.7).",
+        },
+      },
+      required: ["baseline", "candidates"],
+    },
+  },
+  {
+    name: "code_mode_generate_api",
+    description:
+      "F8 Code-Mode API generator. Walks a set of MCP tool JSON " +
+      "schemas and emits a typed TypeScript `Toolbox` interface so an " +
+      "agent can write code calling tools by name with checked params. " +
+      "Pure: no model call, no I/O, no regex (structural schema walk). " +
+      "Method names are sanitized (char-code walk); collisions get " +
+      "suffixed.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tools: {
+          type: "array" as const,
+          description: "McpToolDef[] — { name, description?, inputSchema, outputSchema? }.",
+          items: { type: "object" as const },
+        },
+        toolbox_name: {
+          type: "string" as const,
+          description: "Optional interface name; default 'Toolbox'.",
+        },
+      },
+      required: ["tools"],
+    },
+  },
+  {
+    name: "code_mode_harness",
+    description:
+      "F8 Code-Mode Equivalence Harness. Aggregates per-task verdicts " +
+      "from a caller-supplied corpus comparing direct-tool-call outputs " +
+      "against code-mode-script outputs via @prune/equivalence, plus " +
+      "byte-reduction totals and sandbox-escape attempt counts. The " +
+      "caller is responsible for actually running both arms; this tool " +
+      "verifies and reports.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        outcomes: {
+          type: "array" as const,
+          description: "CodeModeTaskOutcome[] from your runner.",
+          items: { type: "object" as const },
+        },
+      },
+      required: ["outcomes"],
+    },
+  },
+  {
+    name: "semantic_cache_probe",
+    description:
+      "F7 Semantic Cache Probe. Stateless: hydrates a serialized cache " +
+      "state and reports hit/miss verdicts (with similarity, freshness " +
+      "match, equivalence flag) for the supplied probes. The cache uses " +
+      "an in-process char-n-gram + hashing-trick embedder (no external " +
+      "API, no wrapper) and content-SHA freshness tokens; a serving " +
+      "decision requires both similarity ≥ threshold AND a matching " +
+      "freshness token. Caller-owned state.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        state: {
+          type: "object" as const,
+          description: "Optional SerializedSemanticCache from SemanticCache.toJSON().",
+        },
+        probes: {
+          type: "array" as const,
+          description:
+            "Probes [{ query: string, freshness_parts: string[] }]. " +
+            "freshness_parts are concatenated with NUL separators to " +
+            "produce a content-SHA token.",
+          items: { type: "object" as const },
+        },
+      },
+      required: ["probes"],
+    },
+  },
+  {
+    name: "trajectory_replay_report",
+    description:
+      "F1 v2 — Trajectory Diet replay/calibration report. Given F1 shadow " +
+      "events (predicted influence + realized influence, optionally paired " +
+      "control/treatment outcomes), returns calibration metrics (Brier, " +
+      "log-loss, ECE), advisory aggregate (true vs false low-influence " +
+      "counts, tokens projected to save), and the @prune/quality NI-gate " +
+      "verdict when ≥ min_pairs_for_gate paired sessions are available. " +
+      "Pure math over caller-supplied events; never auto-promotes a " +
+      "feature, never throws on malformed input.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        events: {
+          type: "array" as const,
+          description: "F1ShadowEvent[] — projected from EventRow.quality_proof.",
+          items: { type: "object" as const },
+        },
+        num_bins: {
+          type: "number" as const,
+          description: "Number of bins for ECE (default 10).",
+        },
+        min_pairs_for_gate: {
+          type: "number" as const,
+          description: "Minimum paired sessions to evaluate the NI gate (default 30).",
+        },
+        margins: {
+          type: "object" as const,
+          description: "Quality margins {acceptanceRate, testPassRate, alpha}.",
+        },
+      },
+      required: ["events"],
+    },
+  },
+  {
+    name: "context_health_report",
+    description:
+      "F6 Context Health. Computes Effective Context Fullness (ECF) per turn " +
+      "from the live Claude Code transcript (no model call, no API key), runs " +
+      "streaming CUSUM change-point detection over the ECF curve, and reports " +
+      "the regime (healthy / warning at 50% / critical at 75% — thresholds " +
+      "pinned to Chroma 2026 context-rot research) plus secondary signals " +
+      "(cache-hit trend, scope-drift slope, dominant large-tool-result). " +
+      "Pure math + AST-typed tool inputs; no regex, no fabricated tokens. " +
+      "Never blocks the agent. Never sees user content beyond the structured " +
+      "telemetry fields.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description: "Absolute path to the Claude Code session transcript (JSONL).",
+        },
+        window_turns: {
+          type: "number" as const,
+          description:
+            "Optional cap on how many recent turns to include in the report (default: all).",
         },
       },
       required: ["transcript_path"],
@@ -2077,6 +2308,45 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_parallel_in_turn?: number;
           max_subagent_minutes?: number;
         });
+        break;
+      case "tool_audit":
+        result = handleToolAudit(
+          args as unknown as Parameters<typeof handleToolAudit>[0]
+        );
+        break;
+      case "qpd_report":
+        result = handleQpdReport(args as {
+          baseline: ModelAggregate;
+          candidates: ModelAggregate[];
+          ar_margin?: number;
+          cost_dominance_ratio?: number;
+        });
+        break;
+      case "context_health_report":
+        result = await handleContextHealthReport(args as {
+          transcript_path: string;
+          window_turns?: number;
+        });
+        break;
+      case "trajectory_replay_report":
+        result = handleTrajectoryReplay(
+          args as unknown as Parameters<typeof handleTrajectoryReplay>[0]
+        );
+        break;
+      case "semantic_cache_probe":
+        result = handleSemanticCacheProbe(
+          args as unknown as Parameters<typeof handleSemanticCacheProbe>[0]
+        );
+        break;
+      case "code_mode_generate_api":
+        result = handleCodeModeGenerateApi(
+          args as unknown as Parameters<typeof handleCodeModeGenerateApi>[0]
+        );
+        break;
+      case "code_mode_harness":
+        result = handleCodeModeHarness(
+          args as unknown as Parameters<typeof handleCodeModeHarness>[0]
+        );
         break;
       case "budget_status":
         result = await handleBudgetStatus(args as {

@@ -124,3 +124,38 @@ export {
   type SubagentPattern,
   type SubagentPolicyOptions,
 } from "./subagent-policy.js";
+
+// F2 — Tool-Definition Auditor (TCRP)
+export {
+  auditToolDefinitions,
+  buildUsageWindow,
+  DEFAULT_CRITICAL_ALLOWLIST,
+  type ToolDefinitionInfo,
+  type ToolUsageWindow,
+  type ToolUtility,
+  type ToolAuditEntry,
+  type ToolAuditReport,
+  type ToolAuditOptions,
+  type SessionToolObservation,
+} from "./tool-def-auditor.js";
+
+// F3 — Speculative Action Pruner (TCRP)
+export {
+  SpeculativeCache,
+  isEligibleTool,
+  isPureReadBash,
+  scopeForToolUse,
+  canonicalizeInput,
+  contentToken,
+  dirStatToken,
+  fileListStatToken,
+  worktreeToken,
+  ELIGIBLE_TOOLS,
+  type SubstitutionScope,
+  type FreshnessToken,
+  type CacheEntry,
+  type SubstitutionDecision,
+  type SpeculativeCacheOptions,
+  type VerificationStats,
+  type SpeculativeCacheState,
+} from "./speculative-cache.js";

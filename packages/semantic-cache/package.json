@@ -1,0 +1,27 @@
+{
+  "name": "@prune/semantic-cache",
+  "version": "0.1.0",
+  "description": "F7 — Semantic cache for agent prompts/responses. Real in-process char-n-gram + IDF cosine embedder (no external embedding API, no wrapper), equivalence-gated serving via @prune/equivalence, content-SHA poisoning defense. Pluggable EmbeddingModel interface for ONNX MiniLM drop-in.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/equivalence": "0.1.0",
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
