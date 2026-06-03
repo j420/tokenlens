@@ -40,6 +40,18 @@ export interface EventRow {
   quality_proof?: Record<string, unknown> | null;
 }
 
+/**
+ * A high-water mark into the events table, ordered by (timestamp, event_id).
+ * Used by the local→dashboard forwarder to resume after the last row it
+ * successfully shipped, so re-runs never re-forward already-sent events.
+ */
+export interface EventCursor {
+  /** ISO 8601 timestamp of the last forwarded event. */
+  timestamp: string;
+  /** event_id of the last forwarded event (tiebreaker within a timestamp). */
+  eventId: string;
+}
+
 export interface CompactionEventRow {
   event_id: string;
   session_id: string;

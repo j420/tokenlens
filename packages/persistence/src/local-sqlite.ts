@@ -42,6 +42,7 @@ import type {
   BudgetEnvelopeRow,
   BudgetUsageRow,
   CompactionEventRow,
+  EventCursor,
   EventRow,
   PersistenceSink,
   ReplayLogRow,
@@ -694,6 +695,39 @@ export class LocalSqliteSink implements PersistenceSink {
     return row;
   }
 
+  private hydrateEventRow(row: Record<string, unknown>): EventRow {
+    return {
+      event_id: row.event_id as string,
+      session_id: row.session_id as string,
+      user_id: row.user_id as string,
+      team_id: (row.team_id as string) ?? null,
+      timestamp: row.timestamp as string,
+      provider: row.provider as EventRow["provider"],
+      tool: row.tool as string,
+      model: row.model as string,
+      tokens_in: row.tokens_in as number,
+      tokens_out: row.tokens_out as number,
+      tokens_cached: row.tokens_cached as number,
+      latency_ms: row.latency_ms as number,
+      estimated_cost_usd: row.estimated_cost_usd as number,
+      cumulative_session_cost_usd: row.cumulative_session_cost_usd as number,
+      tool_calls: JSON.parse(row.tool_calls as string),
+      files_referenced: JSON.parse(row.files_referenced as string),
+      compaction_triggered: (row.compaction_triggered as number) === 1,
+      context_size_before: row.context_size_before as number,
+      context_size_after: row.context_size_after as number,
+      waste_flags: JSON.parse(row.waste_flags as string),
+      classification: row.classification as EventRow["classification"],
+      roi_score: row.roi_score as number,
+      task_metadata: JSON.parse(row.task_metadata as string),
+      feature_id: (row.feature_id as string) ?? null,
+      quality_proof:
+        row.quality_proof != null
+          ? JSON.parse(row.quality_proof as string)
+          : null,
+    };
+  }
+
   async getRecentEvents(
     sessionId: string,
     limit: number = 100
@@ -705,37 +739,46 @@ export class LocalSqliteSink implements PersistenceSink {
     stmt.bind({ $s: sessionId, $l: limit });
     const out: EventRow[] = [];
     while (stmt.step()) {
-      const row = stmt.getAsObject() as Record<string, unknown>;
-      out.push({
-        event_id: row.event_id as string,
-        session_id: row.session_id as string,
-        user_id: row.user_id as string,
-        team_id: (row.team_id as string) ?? null,
-        timestamp: row.timestamp as string,
-        provider: row.provider as EventRow["provider"],
-        tool: row.tool as string,
-        model: row.model as string,
-        tokens_in: row.tokens_in as number,
-        tokens_out: row.tokens_out as number,
-        tokens_cached: row.tokens_cached as number,
-        latency_ms: row.latency_ms as number,
-        estimated_cost_usd: row.estimated_cost_usd as number,
-        cumulative_session_cost_usd: row.cumulative_session_cost_usd as number,
-        tool_calls: JSON.parse(row.tool_calls as string),
-        files_referenced: JSON.parse(row.files_referenced as string),
-        compaction_triggered: (row.compaction_triggered as number) === 1,
-        context_size_before: row.context_size_before as number,
-        context_size_after: row.context_size_after as number,
-        waste_flags: JSON.parse(row.waste_flags as string),
-        classification: row.classification as EventRow["classification"],
-        roi_score: row.roi_score as number,
-        task_metadata: JSON.parse(row.task_metadata as string),
-        feature_id: (row.feature_id as string) ?? null,
-        quality_proof:
-          row.quality_proof != null
-            ? JSON.parse(row.quality_proof as string)
-            : null,
-      });
+      out.push(this.hydrateEventRow(stmt.getAsObject() as Record<string, unknown>));
+    }
+    stmt.free();
+    return out;
+  }
+
+  /**
+   * Read feature-tagged events (feature_id IS NOT NULL) in forward order —
+   * (timestamp ASC, event_id ASC) — strictly AFTER `cursor`, capped at `limit`.
+   *
+   * This is the read half of the local→dashboard forwarder: only feature
+   * telemetry is forwardable (it carries no file bodies and an aggregate-only
+   * quality_proof), and the composite cursor lets a re-run resume exactly where
+   * the last successful ship stopped, with no gaps and no re-sends. The WHERE
+   * uses the same string comparison the ORDER BY does, so the boundary is
+   * consistent across calls.
+   */
+  async getForwardableEvents(
+    cursor: EventCursor | null,
+    limit: number = 100
+  ): Promise<EventRow[]> {
+    const db = this.ensure();
+    const stmt = db.prepare(
+      `SELECT * FROM events
+       WHERE feature_id IS NOT NULL
+         AND ( $hasCursor = 0
+               OR timestamp > $ts
+               OR (timestamp = $ts AND event_id > $eid) )
+       ORDER BY timestamp ASC, event_id ASC
+       LIMIT $l`
+    );
+    stmt.bind({
+      $hasCursor: cursor ? 1 : 0,
+      $ts: cursor?.timestamp ?? "",
+      $eid: cursor?.eventId ?? "",
+      $l: limit,
+    });
+    const out: EventRow[] = [];
+    while (stmt.step()) {
+      out.push(this.hydrateEventRow(stmt.getAsObject() as Record<string, unknown>));
     }
     stmt.free();
     return out;

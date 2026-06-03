@@ -19,5 +19,6 @@
 export * from "./sink.js";
 export * from "./local-sqlite.js";
 export * from "./feature-event.js";
+export * from "./forward.js";
 export * from "./postgres.js";
 export * from "./postgres-mapping.js";
