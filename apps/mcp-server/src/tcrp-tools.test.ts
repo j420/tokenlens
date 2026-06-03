@@ -80,6 +80,39 @@ describe("tool_audit MCP handler (F2)", () => {
     expect(r.error).toBeTruthy();
   });
 
+  it("emits an f2 quality_proof with PII-safe aggregate fields only", () => {
+    const json = handleToolAudit({
+      tools: [
+        { name: "github_pr", server: "github", definitionTokens: 500 },
+        { name: "jira_create", server: "jira", definitionTokens: 900 },
+      ],
+      usage: {
+        windowDays: 30,
+        sessionsInWindow: 60,
+        invocations: { github_pr: 40 },
+        lastUsedAgeDays: { github_pr: 0.5, jira_create: Infinity },
+        sessionsLoadingTool: { github_pr: 60, jira_create: 60 },
+      },
+    });
+    const r = JSON.parse(json);
+    expect(r.quality_proof).toBeDefined();
+    expect(r.quality_proof.featureId).toBe("f2");
+    expect(r.quality_proof.toolCount).toBe(2);
+    expect(r.quality_proof.totalDefinitionTokens).toBe(1400);
+    expect(r.quality_proof.recoverableTokensPerWeek).toBe(r.recoverableTokensPerWeek);
+    expect(r.quality_proof.recommendationCount).toBe(1);
+    // PII-safe: the proof must NOT carry per-tool names or schemas.
+    expect(JSON.stringify(r.quality_proof)).not.toContain("jira_create");
+    expect(JSON.stringify(r.quality_proof)).not.toContain("github_pr");
+  });
+
+  it("error responses carry NO quality_proof (recorder must skip them)", () => {
+    const r = JSON.parse(
+      handleToolAudit({ tools: undefined as never, usage: undefined as never })
+    );
+    expect(r.quality_proof).toBeUndefined();
+  });
+
   it("vendor=anthropic-claude-code short-circuits with the vendor-native notice", () => {
     const json = handleToolAudit({
       tools: [
@@ -185,6 +218,33 @@ describe("qpd_report MCP handler (F4)", () => {
       handleQpdReport({ baseline: undefined as never, candidates: undefined as never })
     );
     expect(r.error).toBeTruthy();
+  });
+
+  it("emits an f4 quality_proof with the cluster's aggregate gate outcomes", () => {
+    const json = handleQpdReport({
+      baseline: agg("opus", 500, 0.92, 0.1),
+      candidates: [agg("sonnet", 500, 0.9, 0.02), agg("haiku", 500, 0.71, 0.004)],
+    });
+    const r = JSON.parse(json);
+    expect(r.quality_proof).toBeDefined();
+    expect(r.quality_proof.featureId).toBe("f4");
+    expect(r.quality_proof.clusterId).toBe("refactor-ts");
+    expect(r.quality_proof.candidateCount).toBe(2);
+    // sonnet passes every gate; haiku fails AR ⇒ exactly one recommended.
+    expect(r.quality_proof.recommendedCount).toBe(1);
+    expect(r.quality_proof.bestProjectedSavingsPct).toBe(r.best.projectedSavingsPct);
+    expect(r.quality_proof.paretoFrontierSize).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a no-recommendation cluster still emits a proof with null bestProjectedSavingsPct", () => {
+    const json = handleQpdReport({
+      baseline: agg("opus", 500, 0.92, 0.1),
+      candidates: [agg("haiku", 500, 0.71, 0.004)], // fails AR gate
+    });
+    const r = JSON.parse(json);
+    expect(r.quality_proof.featureId).toBe("f4");
+    expect(r.quality_proof.recommendedCount).toBe(0);
+    expect(r.quality_proof.bestProjectedSavingsPct).toBeNull();
   });
 });
 

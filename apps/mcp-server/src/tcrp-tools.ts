@@ -58,6 +58,13 @@ import {
 } from "@prune/mcp-proxy";
 import type { Provider } from "@prune/shared";
 
+// TCRP feature ids for the two MCP-tool features whose quality_proof rides the
+// caller-side telemetry path (PRUNE_MCP_TELEMETRY) exactly like f10/f11. Kept
+// local so the id lives next to the handler that stamps it; the recorder's
+// TOOL_FEATURE_IDS map is the matching half of this contract.
+const TOOL_AUDIT_FEATURE_ID = "f2";
+const QPD_REPORT_FEATURE_ID = "f4";
+
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
   usage: ToolUsageWindow;
@@ -84,14 +91,30 @@ export function handleToolAudit(args: ToolAuditArgs): string {
     criticalAllowlist: args.critical_allowlist,
     vendor: args.vendor,
   });
+  const recoverableTokensPerWeek = Math.round(report.recoverableTokensPerWeek);
   return JSON.stringify(
     {
       windowDays: report.windowDays,
       sessionsInWindow: report.sessionsInWindow,
       totalDefinitionTokens: report.totalDefinitionTokens,
-      recoverableTokensPerWeek: Math.round(report.recoverableTokensPerWeek),
+      recoverableTokensPerWeek,
       recommendationCount: report.recommendationCount,
       newInstallGuardActive: report.newInstallGuardActive,
+      // PII-safe quality_proof: aggregate counts/tokens only — never tool names,
+      // schemas, or per-tool rationale. The caller-side recorder persists this
+      // (gated on PRUNE_MCP_TELEMETRY) so f2 lands in the same events stream as
+      // f10/f11; the dashboard's f2 decoder reads exactly these fields.
+      quality_proof: {
+        featureId: TOOL_AUDIT_FEATURE_ID,
+        vendor: args.vendor ?? "unknown",
+        windowDays: report.windowDays,
+        sessionsInWindow: report.sessionsInWindow,
+        toolCount: report.entries.length,
+        totalDefinitionTokens: report.totalDefinitionTokens,
+        recoverableTokensPerWeek,
+        recommendationCount: report.recommendationCount,
+        newInstallGuardActive: report.newInstallGuardActive,
+      },
       entries: report.entries.map((e) => ({
         name: e.name,
         server: e.server,
@@ -132,10 +155,26 @@ export function handleQpdReport(args: QpdReportArgs): string {
       quality: m.acceptanceRate,
     }))
   );
+  const recommendedCount = rec.recommendations.filter((r) => r.recommended).length;
+  const paretoFrontierSize = frontier.filter((p) => p.onFrontier).length;
   return JSON.stringify(
     {
       clusterId: rec.clusterId,
       baselineModel: rec.baselineModel,
+      // PII-safe quality_proof: cluster id + model identifiers (not user data)
+      // and aggregate gate outcomes. Rides PRUNE_MCP_TELEMETRY like f10/f11; the
+      // dashboard's f4 decoder reads exactly these fields.
+      quality_proof: {
+        featureId: QPD_REPORT_FEATURE_ID,
+        clusterId: rec.clusterId,
+        baselineModel: rec.baselineModel,
+        candidateCount: args.candidates.length,
+        recommendedCount,
+        bestProjectedSavingsPct: rec.best
+          ? Number(rec.best.projectedSavingsPct.toFixed(1))
+          : null,
+        paretoFrontierSize,
+      },
       best: rec.best
         ? {
             model: rec.best.model,

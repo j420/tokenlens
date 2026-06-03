@@ -24,7 +24,13 @@ import {
   recordToolFeatureEventBestEffort,
   stableId,
 } from "./feature-telemetry.js";
-import { handleMcpProxyTrim, handleReplayCostPlan } from "./tcrp-tools.js";
+import {
+  handleMcpProxyTrim,
+  handleReplayCostPlan,
+  handleToolAudit,
+  handleQpdReport,
+} from "./tcrp-tools.js";
+import type { ModelAggregate } from "@prune/qpd-bench";
 
 const SESSION = "mcp-server";
 const dirs: string[] = [];
@@ -71,6 +77,48 @@ function f11Result(): string {
       { role: "assistant", payload: { a: "hi" }, tokens_in: 0, tokens_out: 40 },
     ],
     mutation: { at_index: 1, new_payload: { u: "goodbye" }, new_tokens_in: 55 },
+  });
+}
+
+// Real f2 (tool_audit) and f4 (qpd_report) results from the actual handlers,
+// so the telemetry test exercises the true emitted proof shape.
+function f2Result(): string {
+  return handleToolAudit({
+    tools: [
+      { name: "github_pr", server: "github", definitionTokens: 500 },
+      { name: "jira_create", server: "jira", definitionTokens: 900 },
+    ],
+    usage: {
+      windowDays: 30,
+      sessionsInWindow: 60,
+      invocations: { github_pr: 40 },
+      lastUsedAgeDays: { github_pr: 0.5, jira_create: Infinity },
+      sessionsLoadingTool: { github_pr: 60, jira_create: 60 },
+    },
+  });
+}
+
+function f4Agg(model: string, ar: number, cost: number): ModelAggregate {
+  const n = 500;
+  return {
+    model,
+    clusterId: "refactor-ts",
+    n,
+    acceptedCount: Math.round(n * ar),
+    acceptanceRate: ar,
+    testPassRate: null,
+    testN: 0,
+    testPassedCount: 0,
+    meanCost: cost,
+    totalCost: cost * n,
+    qpdRaw: cost > 0 ? ar / cost : Infinity,
+  };
+}
+
+function f4Result(): string {
+  return handleQpdReport({
+    baseline: f4Agg("opus", 0.92, 0.1),
+    candidates: [f4Agg("sonnet", 0.9, 0.02)],
   });
 }
 
@@ -130,6 +178,21 @@ describe("extractFeatureProof", () => {
     const ex = extractFeatureProof("replay_cost_plan", f11Result());
     expect(ex).not.toBeNull();
     expect(ex!.featureId).toBe("f11");
+  });
+  it("extracts the f2 (tool_audit) proof", () => {
+    const ex = extractFeatureProof("tool_audit", f2Result());
+    expect(ex).not.toBeNull();
+    expect(ex!.featureId).toBe("f2");
+    expect(ex!.qualityProof.featureId).toBe("f2");
+  });
+  it("extracts the f4 (qpd_report) proof", () => {
+    const ex = extractFeatureProof("qpd_report", f4Result());
+    expect(ex).not.toBeNull();
+    expect(ex!.featureId).toBe("f4");
+  });
+  it("a tool_audit ERROR result yields no proof (recorder skips)", () => {
+    const err = handleToolAudit({ tools: undefined as never, usage: undefined as never });
+    expect(extractFeatureProof("tool_audit", err)).toBeNull();
   });
 });
 
@@ -193,6 +256,37 @@ describe("recordToolFeatureEventBestEffort — on when flagged", () => {
     const rows = await readRows(path);
     expect(rows).toHaveLength(1);
     expect(rows[0].feature_id).toBe("f11");
+  });
+
+  it("round-trips an f2 (tool_audit) proof into the sink", async () => {
+    const { path, env } = tmpDb();
+    const result = f2Result();
+    const wrote = await recordToolFeatureEventBestEffort(
+      "tool_audit",
+      result,
+      SESSION,
+      env
+    );
+    expect(wrote).toBe(true);
+    const rows = await readRows(path);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].feature_id).toBe("f2");
+    expect(rows[0].tool).toBe("prune-mcp-tool_audit");
+    expect(rows[0].quality_proof).toEqual(JSON.parse(result).quality_proof);
+  });
+
+  it("round-trips an f4 (qpd_report) proof into the sink", async () => {
+    const { path, env } = tmpDb();
+    const wrote = await recordToolFeatureEventBestEffort(
+      "qpd_report",
+      f4Result(),
+      SESSION,
+      env
+    );
+    expect(wrote).toBe(true);
+    const rows = await readRows(path);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].feature_id).toBe("f4");
   });
 
   it("is idempotent — re-firing the SAME result upserts, not duplicates", async () => {
