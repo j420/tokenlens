@@ -58,10 +58,21 @@ export interface ReconcileOutcome {
   /** The cached result to serve, when hit AND the speculation had completed. */
   result: string | null;
   /**
-   * Estimated latency saved (ms) — the speculative execution's elapsed time
-   * that the agent would otherwise have waited for. 0 on a miss.
+   * The completed speculation's measured elapsed time (ms) — i.e. the GROSS,
+   * UPPER-BOUND latency a host could save by serving this result without
+   * re-running the tool. It is NOT the realized net saving: whether the agent
+   * actually avoids this wall-clock depends entirely on the host's serve mode.
+   *
+   *   • A host that serves the speculative result immediately and verifies
+   *     OUT OF BAND (async) genuinely saves this whole figure.
+   *   • A host that verifies SYNCHRONOUSLY (runs a fresh shadow execution on the
+   *     critical path before serving) saves ~0 net — the agent waited the shadow
+   *     run anyway. See `SpeculativeHost.resolve` and `ResolveResult.latencySavedMs`
+   *     for the honest, mode-aware NET accounting.
+   *
+   * 0 on a miss / in-flight-incomplete.
    */
-  latencySavedMs: number;
+  speculativeElapsedMs: number;
   /** Classification for the accounting ledger. */
   classification: "hit" | "miss" | "ineligible" | "in_flight_incomplete";
 }
@@ -73,8 +84,13 @@ export interface PipelineStats {
   misses: number;
   /** Speculations that matched but hadn't finished when the real call arrived. */
   inFlightIncomplete: number;
-  /** Sum of latencySavedMs over all hits. */
-  totalLatencySavedMs: number;
+  /**
+   * Sum of `speculativeElapsedMs` over all hits — the GROSS, upper-bound
+   * latency that could be saved. This is the speculations' own elapsed time, NOT
+   * the realized net saving (which is mode-dependent; see `ReconcileOutcome`).
+   * The host tracks the realized net figure separately.
+   */
+  totalSpeculativeElapsedMs: number;
   /** hits / (hits + misses), or 0 when none resolved. */
   hitRate: number;
   /** Speculations executed that never matched (wasted CPU). */

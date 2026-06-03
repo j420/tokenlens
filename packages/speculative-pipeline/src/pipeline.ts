@@ -52,7 +52,7 @@ export class SpeculativePipeline {
     hits: 0,
     misses: 0,
     inFlightIncomplete: 0,
-    totalLatencySavedMs: 0,
+    totalSpeculativeElapsedMs: 0,
     hitRate: 0,
     wastedSpeculations: 0,
   };
@@ -154,7 +154,7 @@ export class SpeculativePipeline {
         hit: false,
         key: null,
         result: null,
-        latencySavedMs: 0,
+        speculativeElapsedMs: 0,
         classification: isSpeculatable(actualCall.name) ? "miss" : "ineligible",
       };
       this.settleBatch(null, now);
@@ -165,19 +165,19 @@ export class SpeculativePipeline {
         hit: true,
         key,
         result: matched.result.result,
-        latencySavedMs: matched.result.elapsedMs,
+        speculativeElapsedMs: matched.result.elapsedMs,
         classification: "hit",
       };
       this.settleBatch(key, now);
       this.stats.hits++;
-      this.stats.totalLatencySavedMs += matched.result.elapsedMs;
+      this.stats.totalSpeculativeElapsedMs += matched.result.elapsedMs;
     } else {
       // Correct prediction but the speculation hadn't finished in time.
       outcome = {
         hit: false,
         key,
         result: null,
-        latencySavedMs: 0,
+        speculativeElapsedMs: 0,
         classification: "in_flight_incomplete",
       };
       this.settleBatch(key, now);

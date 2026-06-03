@@ -13,7 +13,7 @@
  *   • concurrency: multiple speculations launched in parallel
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { SpeculativeHost } from "./host.js";
 import { SpeculativePipeline } from "./pipeline.js";
@@ -64,36 +64,165 @@ function candidate(p: string, prob: number): Speculation {
   };
 }
 
-describe("SpeculativeHost — end-to-end verified hit", () => {
-  it("serves the speculative result after byte-equality verification; latency saved", async () => {
-    const { fake, host } = makeHost();
+describe("SpeculativeHost — sync-verify hit is byte-correct but saves ~0 NET latency", () => {
+  it("serves the verified result but reports NET latency saved = max(0, gross − shadow) ≈ 0 (HIGH-1)", async () => {
+    // DEFAULT serve mode: the host awaits a fresh shadow run ON the critical
+    // path before serving. The agent therefore pays the full shadow wall-clock,
+    // so the honest NET saving is ~0 — NOT the speculation's 1800ms elapsed.
+    const { fake, host, clock } = makeHost();
 
     const launched = host.beginTurn(read("a"));
     expect(launched.length).toBeGreaterThan(0);
     const target = launched.find((s) => s.key === speculationKey(read("b")));
     expect(target).toBeDefined();
 
-    // The speculative execution for Read(b) is now pending. Settle it FIRST,
-    // before the real call lands — the early-completion arm of the race.
+    // The speculation for Read(b) completes first (gross potential = 1800ms).
     const spec = fake.pendingFor(read("b"));
     expect(spec).toBeDefined();
     spec!.resolve({ result: "contents of b", elapsedMs: 1800 });
-    await flushMicrotasks(); // let recordResult wire the completion into the batch
+    await flushMicrotasks();
 
-    // The agent's real call is exactly Read(b). The shadow verification run must
-    // see the SAME bytes, so program the out-of-band run to match.
-    fake.programCall(read("b"), { result: "contents of b", elapsedMs: 1750 });
+    // The shadow verification run takes REAL injected-clock time: it is a
+    // controlled pending handle the test settles only after advancing the clock,
+    // proving the agent genuinely waited the full shadow execution on-path.
+    const before = clock.now();
+    const resolvePromise = host.resolve(read("b"));
+    await flushMicrotasks();
+    const shadow = fake.pendingFor(read("b"));
+    expect(shadow).toBeDefined(); // a fresh shadow run was dispatched on-path
+    clock.advance(1700); // the agent waits the shadow run...
+    shadow!.resolve({ result: "contents of b", elapsedMs: 1700 });
+    const out = await resolvePromise;
+    const elapsedOnPath = clock.now() - before;
 
-    const out = await host.resolve(read("b"));
-    expect(out.source).toBe("speculative-hit");
+    // The result is correct (byte-verified) ...
     expect(out.result).toBe("contents of b");
-    expect(out.latencySavedMs).toBe(1800);
     expect(out.reconcile.classification).toBe("hit");
     expect(out.verification?.authoritative).toBe(true);
+    // ... but it is HONESTLY labeled as saving no latency under sync verify.
+    expect(out.source).toBe("verified-no-latency-saved");
+    // NET = max(0, gross 1800 − shadow 1700) = 100ms. Defensible by arithmetic.
+    expect(out.latencySavedMs).toBe(100);
+    // The GROSS potential is still surfaced separately (for "could have saved").
+    expect(out.speculativeElapsedMs).toBe(1800);
+    // And the agent really did wait the shadow run on the critical path.
+    expect(elapsedOnPath).toBe(1700);
 
+    // The host's honest ledger reflects the NET figure, not the gross.
+    const ledger = host.getLatencyLedger();
+    expect(ledger.netLatencySavedMs).toBe(100);
+    expect(ledger.grossSpeculativeElapsedMs).toBe(1800);
+    expect(ledger.verifiedNoSaveHits).toBe(1);
+    expect(ledger.latencySavingHits).toBe(0);
+
+    // Pipeline GROSS stat is unchanged (it tracks potential, clearly labeled).
     const stats = host.getPipeline().getStats();
     expect(stats.hits).toBe(1);
-    expect(stats.totalLatencySavedMs).toBe(1800);
+    expect(stats.totalSpeculativeElapsedMs).toBe(1800);
+  });
+
+  it("reports NET latency saved = 0 when the shadow run is as slow as the speculation", async () => {
+    // The realistic case: a fresh shadow run costs ~the same as the speculation.
+    // gross − shadow ≤ 0 ⇒ NET clamps to 0. The earlier code reported 1800 here.
+    const { fake, host, clock } = makeHost();
+    host.beginTurn(read("a"));
+    const spec = fake.pendingFor(read("b"))!;
+    spec.resolve({ result: "contents of b", elapsedMs: 1800 });
+    await flushMicrotasks();
+
+    const resolvePromise = host.resolve(read("b"));
+    await flushMicrotasks();
+    const shadow = fake.pendingFor(read("b"))!;
+    clock.advance(1900); // shadow run is even slower than the speculation
+    shadow.resolve({ result: "contents of b", elapsedMs: 1900 });
+    const out = await resolvePromise;
+
+    expect(out.source).toBe("verified-no-latency-saved");
+    expect(out.latencySavedMs).toBe(0); // clamped, never negative
+    expect(out.speculativeElapsedMs).toBe(1800);
+    expect(host.getLatencyLedger().netLatencySavedMs).toBe(0);
+  });
+});
+
+describe("SpeculativeHost — async-serve genuinely saves latency", () => {
+  it("serves the speculative result IMMEDIATELY (no on-path shadow); full elapsed saved; verifies out of band", async () => {
+    const onAsync = vi.fn();
+    const fake = new FakeExecutor();
+    const clock = new ManualClock(1000);
+    const host = new SpeculativeHost(fake.executor, {
+      clock: clock.now,
+      pipeline: new SpeculativePipeline(warmHistory(), { minProbability: 0 }),
+      verifyBeforeServe: true,
+      serveMode: "async-serve",
+      onAsyncVerification: onAsync,
+    });
+
+    host.beginTurn(read("a"));
+    const spec = fake.pendingFor(read("b"))!;
+    spec.resolve({ result: "contents of b", elapsedMs: 1800 });
+    await flushMicrotasks();
+
+    // Program the out-of-band shadow run's output up front so the fire-and-forget
+    // verification (launched DURING resolve) has a canned result to compare.
+    fake.programCall(read("b"), { result: "contents of b", elapsedMs: 1750 });
+
+    // Resolve must NOT block on any shadow run: the clock does not advance.
+    const before = clock.now();
+    const out = await host.resolve(read("b"));
+    expect(clock.now() - before).toBe(0); // served immediately, zero on-path wait
+
+    expect(out.source).toBe("speculative-hit-async");
+    expect(out.result).toBe("contents of b");
+    // The FULL speculation elapsed is genuinely saved — the agent waited nothing.
+    expect(out.latencySavedMs).toBe(1800);
+    expect(out.speculativeElapsedMs).toBe(1800);
+    expect(out.verification).toBeNull(); // resolved out of band
+    expect(out.realElapsedMs).toBeNull();
+
+    const ledger = host.getLatencyLedger();
+    expect(ledger.netLatencySavedMs).toBe(1800);
+    expect(ledger.latencySavingHits).toBe(1);
+    expect(ledger.verifiedNoSaveHits).toBe(0);
+
+    // The out-of-band verification settles AFTER serving and matches.
+    await host.drain();
+    await flushMicrotasks();
+    expect(onAsync).toHaveBeenCalledTimes(1);
+    expect(onAsync.mock.calls[0]![0].verification.authoritative).toBe(true);
+    expect(host.getLatencyLedger().asyncMismatches).toBe(0);
+  });
+
+  it("records an async mismatch when the out-of-band shadow bytes differ (served bytes were stale)", async () => {
+    const onAsync = vi.fn();
+    const fake = new FakeExecutor();
+    const clock = new ManualClock(1000);
+    const host = new SpeculativeHost(fake.executor, {
+      clock: clock.now,
+      pipeline: new SpeculativePipeline(warmHistory(), { minProbability: 0 }),
+      serveMode: "async-serve",
+      onAsyncVerification: onAsync,
+    });
+
+    host.beginTurn(read("a"));
+    const spec = fake.pendingFor(read("b"))!;
+    spec.resolve({ result: "STALE bytes", elapsedMs: 1800 });
+    await flushMicrotasks();
+
+    // The out-of-band shadow returns the TRUE bytes; they differ → mismatch.
+    fake.programCall(read("b"), { result: "FRESH bytes", elapsedMs: 1700 });
+
+    const out = await host.resolve(read("b"));
+    // The agent already received the (stale) speculative bytes — that is the
+    // documented async-serve tradeoff. Latency was genuinely saved.
+    expect(out.source).toBe("speculative-hit-async");
+    expect(out.result).toBe("STALE bytes");
+    expect(out.latencySavedMs).toBe(1800);
+
+    await host.drain();
+    await flushMicrotasks();
+    expect(onAsync).toHaveBeenCalledTimes(1);
+    expect(onAsync.mock.calls[0]![0].verification.authoritative).toBe(false);
+    expect(host.getLatencyLedger().asyncMismatches).toBe(1);
   });
 });
 
@@ -344,12 +473,15 @@ describe("SpeculativeHost — concurrency", () => {
     expect(host.speculationReport().completed).toBe(2);
     expect(host.speculationReport().pending).toBe(1);
 
-    // Real call hits f1 (completed). Verify shadow matches.
+    // Real call hits f1 (completed). Default sync-verify: a fresh shadow run is
+    // executed on-path and byte-matches. The agent waited that shadow run, so
+    // NET = max(0, gross 10 − shadow 9) = 1; gross potential is 10.
     fake.programCall(read("f1"), { result: "f1-bytes", elapsedMs: 9 });
     const out = await host.resolve(read("f1"));
-    expect(out.source).toBe("speculative-hit");
+    expect(out.source).toBe("verified-no-latency-saved");
     expect(out.result).toBe("f1-bytes");
-    expect(out.latencySavedMs).toBe(10);
+    expect(out.latencySavedMs).toBe(1);
+    expect(out.speculativeElapsedMs).toBe(10);
   });
 });
 
@@ -385,9 +517,12 @@ describe("SpeculativeHost — verifyBeforeServe=false (off-path)", () => {
 
     const callsBefore = fake.calls.length;
     const out = await host.resolve(read("b"));
-    expect(out.source).toBe("speculative-hit");
+    expect(out.source).toBe("speculative-hit-unverified");
     expect(out.result).toBe("b-bytes");
     expect(out.verification).toBeNull();
+    // Served immediately with no shadow run → the full elapsed is genuinely saved.
+    expect(out.latencySavedMs).toBe(1200);
+    expect(out.speculativeElapsedMs).toBe(1200);
     // No out-of-band shadow run happened.
     expect(fake.calls.length).toBe(callsBefore);
   });

@@ -67,9 +67,12 @@ export {
   type ToolExecutor,
   type Clock,
   type SpeculativeHostOptions,
+  type ServeMode,
   type ResolveSource,
   type ResolveResult,
   type TurnSpeculationReport,
+  type AsyncVerificationReport,
+  type HostLatencyLedger,
 } from "./host.js";
 export {
   FakeExecutor,

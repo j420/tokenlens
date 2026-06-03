@@ -28,12 +28,13 @@ describe("SpeculativePipeline — happy path hit", () => {
     const outcome = pipe.reconcile(read("b"), 10);
     expect(outcome.hit).toBe(true);
     expect(outcome.result).toBe("contents of b");
-    expect(outcome.latencySavedMs).toBe(1800);
+    // GROSS upper bound — the speculation's own elapsed, NOT realized savings.
+    expect(outcome.speculativeElapsedMs).toBe(1800);
     expect(outcome.classification).toBe("hit");
 
     const stats = pipe.getStats();
     expect(stats.hits).toBe(1);
-    expect(stats.totalLatencySavedMs).toBe(1800);
+    expect(stats.totalSpeculativeElapsedMs).toBe(1800);
     expect(stats.hitRate).toBe(1);
   });
 });
@@ -141,15 +142,30 @@ describe("SpeculativePipeline — budget integration", () => {
 });
 
 describe("SpeculativePipeline — quality proof", () => {
-  it("builds an f11 proof from an outcome + stats + budget", () => {
+  it("builds an f13 proof separating GROSS elapsed from realized NET savings", () => {
     const pipe = new SpeculativePipeline(warmHistory(), { minProbability: 0 });
     const launched = pipe.speculate(read("a"), [], 0);
     pipe.recordResult({ key: launched[0]!.key, result: "x", elapsedMs: 900 });
     const outcome = pipe.reconcile(launched[0]!.call, 10);
     const proof = buildQualityProof(outcome, pipe.getStats(), pipe.getBudget().decide(10));
     expect(proof.featureId).toBe("f13");
-    expect(proof.schemaVersion).toBe(1);
+    expect(proof.schemaVersion).toBe(2);
     expect(proof.outcome.classification).toBe(outcome.classification);
+    // GROSS upper bound is carried...
+    expect(proof.outcome.speculativeElapsedMs).toBe(900);
+    // ...but realized NET savings is NOT fabricated when the caller omits it.
+    expect(proof.outcome.realizedLatencySavedMs).toBeNull();
     expect(proof.stats.hits).toBe(pipe.getStats().hits);
+  });
+
+  it("records the host's honest NET latency when supplied (sync-verify ~0)", () => {
+    const pipe = new SpeculativePipeline(warmHistory(), { minProbability: 0 });
+    const launched = pipe.speculate(read("a"), [], 0);
+    pipe.recordResult({ key: launched[0]!.key, result: "x", elapsedMs: 900 });
+    const outcome = pipe.reconcile(launched[0]!.call, 10);
+    // On the default synchronous-verify path the host's realized net is ~0.
+    const proof = buildQualityProof(outcome, pipe.getStats(), pipe.getBudget().decide(10), 0);
+    expect(proof.outcome.speculativeElapsedMs).toBe(900);
+    expect(proof.outcome.realizedLatencySavedMs).toBe(0);
   });
 });
