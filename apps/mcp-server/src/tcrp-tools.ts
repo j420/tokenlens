@@ -38,6 +38,25 @@ import {
   type CodeModeTaskOutcome,
   type McpToolDef,
 } from "@prune/code-mode-mcp";
+import {
+  buildTimeline,
+  planReplay,
+  buildQualityProof as buildReplayCostProof,
+  REPLAY_COST_FEATURE_ID,
+  type SegmentRole,
+} from "@prune/replay-cost";
+import {
+  indexCatalog,
+  McpProxy,
+  ALL_INTENTS,
+  buildQualityProof as buildMcpProxyProof,
+  MCP_PROXY_FEATURE_ID,
+  type IntentKind,
+  type McpTool,
+  type IntentOverride,
+  type ToolTokenCost,
+} from "@prune/mcp-proxy";
+import type { Provider } from "@prune/shared";
 
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
@@ -344,4 +363,174 @@ export function handleCodeModeHarness(args: CodeModeHarnessArgs): string {
   }
   const report = runEquivalenceHarness(args.outcomes);
   return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F11 — replay_cost_plan (What-If Deterministic Replay Engine)
+// ===========================================================================
+
+export interface ReplayCostPlanArgs {
+  /** Model id used for pricing (e.g. "claude-sonnet-4-5-20250929"). */
+  model: string;
+  /** Provider hint; defaults to "anthropic". */
+  provider?: Provider;
+  /** Ordered session segments. `index` is assigned from array position. */
+  segments: Array<{
+    role: SegmentRole;
+    payload: unknown;
+    tokens_in: number;
+    tokens_out: number;
+  }>;
+  /** The single-segment mutation to evaluate. */
+  mutation: {
+    at_index: number;
+    new_payload: unknown;
+    /** New input-token count; omitted ⇒ reuse the original segment's count. */
+    new_tokens_in?: number;
+  };
+}
+
+/**
+ * F11 — plan a what-if replay. Builds a hash-chained timeline from the
+ * caller's segments, applies the single-segment mutation, and returns the
+ * divergence point + the naive-vs-replay cost breakdown + the f11
+ * quality_proof. Pure and deterministic; no model is called. Token counts are
+ * caller-supplied (the engine never fabricates one). Mirrors the boundary
+ * discipline of the other TCRP handlers: bad input → a JSON `error`, never a
+ * throw across the MCP wire.
+ */
+export function handleReplayCostPlan(args: ReplayCostPlanArgs): string {
+  if (!args || !Array.isArray(args.segments) || args.segments.length === 0) {
+    return JSON.stringify({
+      error: "replay_cost_plan requires a non-empty `segments` array.",
+    });
+  }
+  if (
+    !args.mutation ||
+    typeof args.mutation.at_index !== "number" ||
+    !Number.isInteger(args.mutation.at_index)
+  ) {
+    return JSON.stringify({
+      error:
+        "replay_cost_plan requires `mutation: { at_index: int, new_payload, new_tokens_in? }`.",
+    });
+  }
+  if (typeof args.model !== "string" || args.model.length === 0) {
+    return JSON.stringify({ error: "replay_cost_plan requires a `model` string." });
+  }
+
+  let timeline;
+  try {
+    timeline = buildTimeline({
+      model: args.model,
+      provider: args.provider ?? "anthropic",
+      segments: args.segments.map((s, i) => ({
+        index: i,
+        role: s.role,
+        payload: s.payload,
+        tokensIn: s.tokens_in,
+        tokensOut: s.tokens_out,
+      })),
+    });
+  } catch (e) {
+    return JSON.stringify({
+      error: `replay_cost_plan: invalid timeline — ${(e as Error).message}`,
+    });
+  }
+
+  let plan;
+  try {
+    plan = planReplay(timeline, {
+      atIndex: args.mutation.at_index,
+      newPayload: args.mutation.new_payload,
+      newTokensIn: args.mutation.new_tokens_in,
+    });
+  } catch (e) {
+    return JSON.stringify({ error: `replay_cost_plan: ${(e as Error).message}` });
+  }
+
+  return JSON.stringify(
+    {
+      featureId: REPLAY_COST_FEATURE_ID,
+      divergence: plan.divergence,
+      cost: plan.cost,
+      reusedOriginalTokens: plan.reusedOriginalTokens,
+      quality_proof: buildReplayCostProof(timeline.rootHash, plan),
+    },
+    null,
+    2
+  );
+}
+
+// ===========================================================================
+// F10 — mcp_proxy_trim (Cross-Vendor Lazy-Schema MCP Proxy)
+// ===========================================================================
+
+export interface McpProxyTrimArgs {
+  /**
+   * Caller-classified intent for the upcoming turn, or null/omitted to get the
+   * full catalog back (with the lazy-schema savings still reported).
+   */
+  intent?: IntentKind | null;
+  /** The merged upstream tool catalog. */
+  tools: McpTool[];
+  /** Optional per-tool tokenized cost map: name → { schemaTokens, descriptionTokens }. */
+  token_cost_by_name?: Record<string, ToolTokenCost>;
+  /** Optional intent overrides for tools whose names carry no verb signal. */
+  overrides?: IntentOverride[];
+  /** Include the fail-safe (verb-inconclusive) tools in the trim. Default true. */
+  include_fallback?: boolean;
+}
+
+const VALID_INTENTS = new Set<string>(ALL_INTENTS);
+
+/**
+ * F10 — trim an MCP `tools/list` for the current intent. Indexes the catalog,
+ * serves the intent-matched manifest (full schemas held back for lazy load),
+ * and returns the trimmed list + the reduction audit + the f10 quality_proof.
+ * Pure and deterministic. Fail-safe-to-include: an unrecognized intent or an
+ * all-matching intent returns the full catalog rather than risk hiding a tool.
+ */
+export function handleMcpProxyTrim(args: McpProxyTrimArgs): string {
+  if (!args || !Array.isArray(args.tools)) {
+    return JSON.stringify({ error: "mcp_proxy_trim requires `tools: McpTool[]`." });
+  }
+  // Validate intent up front so a typo'd intent is a clear error rather than a
+  // silent full-catalog passthrough the caller can't distinguish from success.
+  const intent: IntentKind | null =
+    args.intent === undefined || args.intent === null ? null : args.intent;
+  if (intent !== null && !VALID_INTENTS.has(intent)) {
+    return JSON.stringify({
+      error:
+        `mcp_proxy_trim: unknown intent "${intent}". ` +
+        `Valid: ${[...VALID_INTENTS].join(", ")}, or null for the full catalog.`,
+    });
+  }
+
+  const tokenCostByName =
+    args.token_cost_by_name && typeof args.token_cost_by_name === "object"
+      ? new Map<string, ToolTokenCost>(Object.entries(args.token_cost_by_name))
+      : undefined;
+
+  let result;
+  try {
+    const idx = indexCatalog(
+      { tools: args.tools },
+      { tokenCostByName, overrides: args.overrides }
+    );
+    const proxy = new McpProxy(idx, {
+      match: { includeFallback: args.include_fallback ?? true },
+    });
+    const served = proxy.serveToolsList(intent);
+    result = {
+      featureId: MCP_PROXY_FEATURE_ID,
+      trimmed: served.trimmed,
+      audit: served.audit,
+      quality_proof: buildMcpProxyProof(served.audit),
+    };
+  } catch (e) {
+    return JSON.stringify({ error: `mcp_proxy_trim: ${(e as Error).message}` });
+  }
+
+  return JSON.stringify(result, null, 2);
 }

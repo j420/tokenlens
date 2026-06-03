@@ -36,7 +36,9 @@
     "@prune/trajectory-diet": "0.1.0",
     "@prune/quality": "0.1.0",
     "@prune/semantic-cache": "0.1.0",
-    "@prune/code-mode-mcp": "0.1.0"
+    "@prune/code-mode-mcp": "0.1.0",
+    "@prune/mcp-proxy": "0.1.0",
+    "@prune/replay-cost": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
