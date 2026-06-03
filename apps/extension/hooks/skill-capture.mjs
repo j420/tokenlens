@@ -27,6 +27,7 @@ import { homedir } from "node:os";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { performance } from "node:perf_hooks";
 
 import { loadCachedSessionView } from "@prune/telemetry";
 import {
@@ -115,6 +116,9 @@ safeRun(async () => {
   const payload = await readHookPayload();
   if (!payload.transcript_path) return emitNoop();
 
+  // Measure REAL analysis wall-clock (load → extract → capture → persist).
+  const analysisStart = performance.now();
+
   const view = await loadCachedSessionView(payload.transcript_path);
   if (view.turns.length < 2) return emitNoop();
 
@@ -148,6 +152,9 @@ safeRun(async () => {
   lib.prune({ maxSkills: MAX_SKILLS });
   saveLibrary(path, lib);
 
+  // Elapsed analysis time (ms) — measured, never fabricated.
+  const latencyMs = performance.now() - analysisStart;
+
   // Best-effort shadow telemetry: record the capture under f12. Keyed by the
   // skill's content hash so re-capturing the same skill upserts (idempotent).
   await recordFeatureEventBestEffort({
@@ -156,6 +163,7 @@ safeRun(async () => {
     sessionId: deriveSessionId(payload),
     eventId: `f12-capture-${skill.contentHash}`,
     tokensIn: skill.discoveryTokens,
+    latencyMs,
   });
 
   return emitNoop();

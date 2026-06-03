@@ -58,13 +58,22 @@ It is deliberately conservative:
   paths (`/proc`, `/sys`) are refused up front, because a `mkdir` lookup under
   procfs blocks at the syscall level (a synchronous hang no JS timeout can
   rescue). Every normal failure throws in ~1 ms and is caught.
+- **Measured latency, never fabricated.** Each recording hook wraps its real
+  analysis (`performance.now()` from transcript/library load through the
+  detector) and records the elapsed wall-clock as `latency_ms`. A feature that
+  did no measurable work records `0`; nothing is invented.
 
 Config: `PRUNE_EVENTS_SQLITE` (default `~/.prune/events.sqlite`),
 `PRUNE_TELEMETRY_DISABLED=1` to turn recording off.
 
-f10 (mcp-proxy) and f11 (replay-cost) already emit their `quality_proof` in
-the `mcp_proxy_trim` / `replay_cost_plan` MCP tool responses for the caller to
-persist; f13 (speculative-pipeline) emits via its host-integration API.
+f10 (mcp-proxy) and f11 (replay-cost) emit their `quality_proof` in the
+`mcp_proxy_trim` / `replay_cost_plan` MCP tool responses; the MCP server's
+CallTool dispatch records that proof to the SAME events sink, caller-side,
+**gated behind `PRUNE_MCP_TELEMETRY=1` (default OFF)** so the pure tool handlers
+stay pure and existing behavior is unchanged. The recording is best-effort and
+fail-safe with the identical `/proc`/`/sys` refusal and deterministic
+`event_id` (`mcp-<feature>-<hash(proof)>`) for idempotent upserts. f13
+(speculative-pipeline) emits via its host-integration API.
 
 ## Features whose runtime surface is NOT a transcript hook
 
@@ -77,25 +86,57 @@ be theatre, not wiring:
   `tools/call` handshake between an MCP host and its servers — a
   transport-level proxy, not a transcript event. Its runtime surface is a
   proxy entrypoint the host mounts, or an on-demand MCP tool for catalog
-  trimming (not yet registered in `apps/mcp-server`). It is host-neutral by
-  design (Cursor / Codex CLI / Cline / Continue / Aider), none of which
-  fire Claude Code hooks. The package exposes the full `McpProxy` API today.
+  trimming — the latter is now registered in `apps/mcp-server` as
+  `mcp_proxy_trim`. It is host-neutral by design (Cursor / Codex CLI / Cline /
+  Continue / Aider), none of which fire Claude Code hooks. The package exposes
+  the full `McpProxy` API today.
 - **`@prune/replay-cost` (f11)** is an on-demand what-if engine: the user
   asks "what would this prompt variant cost?" It is invoked against a
   captured timeline, not fired automatically per turn. Its natural surface
-  is an MCP tool / CLI (not yet registered in `apps/mcp-server`); the
-  package exposes `planReplay` / `WhatIfEngine` today.
+  is an MCP tool / CLI — now registered in `apps/mcp-server` as
+  `replay_cost_plan`; the package exposes `planReplay` / `WhatIfEngine` today.
 - **`@prune/speculative-pipeline` (f13)** drives PARALLEL speculative tool
   execution while the model is still generating — a stateful concurrent
   loop owned by a host with a parallel executor. A synchronous hook cannot
   express it. Its surface is the host runtime integration; the package
   exposes the full `SpeculativePipeline` API for that.
 
-The MCP-tool registrations for f10/f11 and the host integration for f13
-are the next wiring step (tracked separately); the flags above already
-exist so those surfaces can promote through shadow → general when wired.
+The MCP-tool registrations for f10/f11 are wired (`mcp_proxy_trim`,
+`replay_cost_plan`) with caller-side telemetry; the host integration for f13 is
+the remaining wiring step (tracked separately). The flags below already exist
+so those surfaces can promote through shadow → general when wired.
 
 The feature flags f9–f13 are defined in `@prune/shared` (`feature-flags.ts`)
 so all five share the same shadow → canary → general promotion machinery,
 regardless of whether their runtime surface is a hook, an MCP tool, or a
 host integration.
+
+## Flag-promotion CLI (`flags.mjs`)
+
+Promote a TCRP feature out of shadow — or take it back down — without
+hand-editing `~/.prune/feature-flags.json` (the file every hook reads to decide
+whether a feature is live). It is an operator tool, not a hook: plain output,
+real exit codes (`0` ok, `1` usage/validation error), no model call.
+
+```bash
+node apps/extension/hooks/flags.mjs list                 # id, name, enabled, mode, LIVE marker
+node apps/extension/hooks/flags.mjs enable f10 canary     # by id
+node apps/extension/hooks/flags.mjs enable mcpProxy general  # or by name
+node apps/extension/hooks/flags.mjs disable f10           # enabled=false, mode="disabled"
+```
+
+- `<id|name>` accepts an id (`f10`) or the canonical name (`mcpProxy`), resolved
+  via `@prune/shared` `resolveFeatureId`; an unknown identifier is **refused**
+  (exit 1) with the valid set, never silently ignored.
+- `enable` only accepts the user-visible modes `general` / `canary` (a feature
+  is "live" only when `enabled && (general | canary)`); `shadow` / `disabled`
+  are rejected — use `disable` to take a feature down.
+- Mutations go through `@prune/shared` `withFeatureMutation`; the file is
+  validated on read (`validateFlags`), so a pre-existing malformed file is
+  repaired to defaults rather than propagated, and written atomically
+  (tmp + `rename`) so a concurrent hook reader never sees a torn file.
+- Override the file path with `PRUNE_FLAGS_PATH` (default
+  `~/.prune/feature-flags.json`).
+
+Tests: `npx vitest run apps/extension/hooks/flags.test.mjs` (run on demand —
+the extension package has no turbo `test` task).

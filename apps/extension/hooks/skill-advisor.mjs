@@ -29,6 +29,7 @@
 import { homedir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { isFeatureEnabled, validateFlags } from "@prune/shared";
 import {
@@ -85,6 +86,9 @@ safeRun(async () => {
   const prompt = typeof payload.prompt === "string" ? payload.prompt : "";
   if (prompt.trim().length === 0) return emitNoop();
 
+  // Measure REAL analysis wall-clock (library load → match → project → guard).
+  const analysisStart = performance.now();
+
   const path = process.env.PRUNE_SKILLS_PATH || DEFAULT_PATH;
   const lib = loadLibrary(path);
   if (lib.size === 0) return emitNoop();
@@ -103,12 +107,15 @@ safeRun(async () => {
   // UNVERIFIABLE (honest — we surfaced a match without checking freshness),
   // never falsely "safe". Keyed by skill + prompt so re-submits upsert.
   const guard = evaluateReplay(top.skill, [], []);
+  // Elapsed analysis time (ms) — measured, never fabricated.
+  const latencyMs = performance.now() - analysisStart;
   await recordFeatureEventBestEffort({
     featureId: SKILL_LIBRARY_FEATURE_ID,
     qualityProof: buildReplayProof(top, guard, saving),
     sessionId: deriveSessionId(payload),
     eventId: `f12-replay-${top.skill.contentHash}-${stableId(prompt).slice(0, 16)}`,
     model,
+    latencyMs,
   });
 
   // Surface only when the flag is live.

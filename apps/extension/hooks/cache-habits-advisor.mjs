@@ -25,6 +25,7 @@
 import { homedir } from "node:os";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { performance } from "node:perf_hooks";
 
 import { loadCachedSessionView } from "@prune/telemetry";
 import { isFeatureEnabled, validateFlags } from "@prune/shared";
@@ -74,6 +75,9 @@ safeRun(async () => {
   const payload = await readHookPayload();
   if (!payload.transcript_path) return emitNoop();
 
+  // Measure REAL analysis wall-clock (transcript load → lint). Never fabricated.
+  const analysisStart = performance.now();
+
   const view = await loadCachedSessionView(payload.transcript_path);
   if (view.turns.length < 1) return emitNoop();
 
@@ -120,6 +124,9 @@ safeRun(async () => {
   const idle = report.findings.find((f) => f.ruleId === "CH-004");
   if (!idle) return emitNoop();
 
+  // Elapsed analysis time (ms) — the measured cost of this advisory's work.
+  const latencyMs = performance.now() - analysisStart;
+
   // Best-effort shadow telemetry under f9 (records regardless of flag; only
   // surfacing is gated). Keyed by session + last-turn timestamp so re-firing
   // on the same idle gap upserts rather than duplicates.
@@ -131,6 +138,7 @@ safeRun(async () => {
     model: currentModel,
     tokensCached: cacheCreate,
     estimatedCostUsd: idle.estimatedWasteUsd ?? 0,
+    latencyMs,
   });
 
   const flags = flagsFromDisk();
