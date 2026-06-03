@@ -29,6 +29,7 @@ import {
   handleReplayCostPlan,
   handleToolAudit,
   handleQpdReport,
+  handleCacheHabits,
 } from "./tcrp-tools.js";
 import type { ModelAggregate } from "@prune/qpd-bench";
 
@@ -122,6 +123,38 @@ function f4Result(): string {
   });
 }
 
+// A real f9 result (cache_habits) firing a mid-session model switch.
+function f9Result(): string {
+  return handleCacheHabits({
+    action: {
+      modelFamily: "opus",
+      model: "claude-opus-4-5-20251101",
+      ttl: "5m",
+      prompt: { text: "go", pastedBlocks: [] },
+      changes: {
+        systemPromptTokens: null,
+        toolListOrderHash: null,
+        reasoningEffort: null,
+        temperature: null,
+        mcpServersAdded: [],
+        mcpServersRemoved: [],
+      },
+      now: "2026-06-03T00:00:30.000Z",
+    },
+    snapshot: {
+      currentModel: "claude-sonnet-4-5-20250929",
+      currentTtl: "5m",
+      lastTurnAt: "2026-06-03T00:00:00.000Z",
+      turnsSoFar: 3,
+      cacheReadTokensSoFar: 5000,
+      cacheCreationTokensSoFar: 8000,
+      systemPromptTokens: 2000,
+      toolListOrderHash: "hashA",
+      mcpServers: ["github"],
+    },
+  });
+}
+
 afterEach(() => {
   for (const d of dirs.splice(0)) {
     try {
@@ -193,6 +226,12 @@ describe("extractFeatureProof", () => {
   it("a tool_audit ERROR result yields no proof (recorder skips)", () => {
     const err = handleToolAudit({ tools: undefined as never, usage: undefined as never });
     expect(extractFeatureProof("tool_audit", err)).toBeNull();
+  });
+  it("extracts the f9 (cache_habits) proof", () => {
+    const ex = extractFeatureProof("cache_habits", f9Result());
+    expect(ex).not.toBeNull();
+    expect(ex!.featureId).toBe("f9");
+    expect(ex!.qualityProof.featureId).toBe("f9");
   });
 });
 
@@ -287,6 +326,21 @@ describe("recordToolFeatureEventBestEffort — on when flagged", () => {
     const rows = await readRows(path);
     expect(rows).toHaveLength(1);
     expect(rows[0].feature_id).toBe("f4");
+  });
+
+  it("round-trips an f9 (cache_habits) proof into the sink", async () => {
+    const { path, env } = tmpDb();
+    const wrote = await recordToolFeatureEventBestEffort(
+      "cache_habits",
+      f9Result(),
+      SESSION,
+      env
+    );
+    expect(wrote).toBe(true);
+    const rows = await readRows(path);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].feature_id).toBe("f9");
+    expect(rows[0].tool).toBe("prune-mcp-cache_habits");
   });
 
   it("is idempotent — re-firing the SAME result upserts, not duplicates", async () => {

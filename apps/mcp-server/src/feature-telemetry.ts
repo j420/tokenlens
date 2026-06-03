@@ -2,7 +2,8 @@
  * Caller-side feature-telemetry recording for the MCP server.
  *
  * The pure TCRP handlers in `tcrp-tools.ts` (tool_audit → f2, qpd_report → f4,
- * mcp_proxy_trim → f10, replay_cost_plan → f11) RETURN a `quality_proof` but
+ * cache_habits → f9, mcp_proxy_trim → f10, replay_cost_plan → f11) RETURN a
+ * `quality_proof` but
  * record nothing — they must stay pure so their unit tests stay pure. This
  * module is the *caller*
  * side: the `index.ts` CallTool dispatch hands it the (already-serialized)
@@ -41,6 +42,7 @@ const DEFAULT_DB = join(homedir(), ".prune", "events.sqlite");
 const TOOL_FEATURE_IDS: Record<string, string> = {
   tool_audit: "f2",
   qpd_report: "f4",
+  cache_habits: "f9",
   mcp_proxy_trim: "f10",
   replay_cost_plan: "f11",
 };

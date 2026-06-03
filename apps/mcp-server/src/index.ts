@@ -48,6 +48,7 @@ import {
   handleCodeModeHarness,
   handleReplayCostPlan,
   handleMcpProxyTrim,
+  handleCacheHabits,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1109,6 +1110,49 @@ const TOOLS = [
         },
       },
       required: ["tools"],
+    },
+  },
+  {
+    name: "cache_habits",
+    description:
+      "F9 cache-habits linter (full rule set). Given the host's PROPOSED action " +
+      "diff and the prior SESSION snapshot, runs all 12 deterministic " +
+      "prompt-cache-killer rules (CH-001..CH-012: mid-session model switch, " +
+      "tool-list reorder, system-prompt mutation, large paste before the cached " +
+      "prefix, MCP server add/remove, TTL/reasoning-effort/temperature change, " +
+      "idle-TTL expiry, etc.) and returns the findings, per-rule estimated " +
+      "wasted USD/tokens, and an f9 quality_proof. This is the surface for the " +
+      "11 rules a transcript hook cannot reach (they need the proposed-vs-active " +
+      "diff only the editor/host has). No regex, no model call; verdict is " +
+      "advisory — the host decides whether to warn or block.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        action: {
+          type: "object" as const,
+          description:
+            "ProposedAction: { modelFamily, model, ttl, prompt:{text,pastedBlocks[]}, " +
+            "changes:{systemPromptTokens,toolListOrderHash,reasoningEffort,temperature," +
+            "mcpServersAdded[],mcpServersRemoved[]}, now }. All change fields null when unchanged.",
+        },
+        snapshot: {
+          type: "object" as const,
+          description:
+            "SessionSnapshot: { currentModel, currentTtl, lastTurnAt, turnsSoFar, " +
+            "cacheReadTokensSoFar, cacheCreationTokensSoFar, systemPromptTokens, " +
+            "toolListOrderHash, reasoningEffort?, temperature?, mcpServers[] }.",
+        },
+        suppress: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Rule ids to suppress (e.g. one that fires spuriously here).",
+        },
+        severity_overrides: {
+          type: "object" as const,
+          description: "Per-rule severity override, e.g. demote a block to warn in shadow.",
+        },
+      },
+      required: ["action", "snapshot"],
     },
   },
 ];
@@ -2483,6 +2527,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "mcp_proxy_trim":
         result = handleMcpProxyTrim(
           args as unknown as Parameters<typeof handleMcpProxyTrim>[0]
+        );
+        break;
+      case "cache_habits":
+        result = handleCacheHabits(
+          args as unknown as Parameters<typeof handleCacheHabits>[0]
         );
         break;
       case "budget_status":

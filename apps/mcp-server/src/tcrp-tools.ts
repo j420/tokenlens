@@ -56,6 +56,15 @@ import {
   type IntentOverride,
   type ToolTokenCost,
 } from "@prune/mcp-proxy";
+import {
+  lint as lintCacheHabits,
+  buildQualityProof as buildCacheHabitsProof,
+  CACHE_HABITS_FEATURE_ID,
+  type ProposedAction,
+  type SessionSnapshot,
+  type CacheTtl,
+  type ModelFamily,
+} from "@prune/cache-habits";
 import type { Provider } from "@prune/shared";
 
 // TCRP feature ids for the two MCP-tool features whose quality_proof rides the
@@ -572,4 +581,169 @@ export function handleMcpProxyTrim(args: McpProxyTrimArgs): string {
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+// ===========================================================================
+// F9 — cache_habits (full pre-action cache-habits linter)
+// ===========================================================================
+
+const VALID_TTL = new Set<CacheTtl>(["5m", "1h", "none"]);
+const VALID_FAMILY = new Set<ModelFamily>([
+  "sonnet", "opus", "haiku", "gpt-4o", "gpt-4o-mini", "other",
+]);
+const VALID_EFFORT = new Set(["standard", "high", "xhigh", "max"]);
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function str(v: unknown, fallback: string): string {
+  return typeof v === "string" ? v : fallback;
+}
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+function numOr(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+function numOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+function strArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+function effortOrNull(v: unknown): "standard" | "high" | "xhigh" | "max" | null {
+  return typeof v === "string" && VALID_EFFORT.has(v)
+    ? (v as "standard" | "high" | "xhigh" | "max")
+    : null;
+}
+
+function coerceProposedAction(raw: Record<string, unknown>): ProposedAction {
+  const prompt = isObj(raw.prompt) ? raw.prompt : {};
+  const changes = isObj(raw.changes) ? raw.changes : {};
+  const pasted = Array.isArray(prompt.pastedBlocks) ? prompt.pastedBlocks : [];
+  const family = raw.modelFamily;
+  return {
+    modelFamily: (typeof family === "string" && VALID_FAMILY.has(family as ModelFamily)
+      ? family
+      : "other") as ModelFamily,
+    model: str(raw.model, ""),
+    ttl: (typeof raw.ttl === "string" && VALID_TTL.has(raw.ttl as CacheTtl)
+      ? raw.ttl
+      : "none") as CacheTtl,
+    prompt: {
+      text: str(prompt.text, ""),
+      pastedBlocks: pasted
+        .filter(isObj)
+        .map((b) => ({
+          tokens: numOr(b.tokens, 0),
+          source: ((): "clipboard" | "url" | "file" | "unknown" => {
+            const s = b.source;
+            return s === "clipboard" || s === "url" || s === "file" ? s : "unknown";
+          })(),
+        })),
+    },
+    changes: {
+      systemPromptTokens: numOrNull(changes.systemPromptTokens),
+      toolListOrderHash: strOrNull(changes.toolListOrderHash),
+      reasoningEffort: effortOrNull(changes.reasoningEffort),
+      temperature: numOrNull(changes.temperature),
+      mcpServersAdded: strArray(changes.mcpServersAdded),
+      mcpServersRemoved: strArray(changes.mcpServersRemoved),
+    },
+    now: str(raw.now, new Date().toISOString()),
+  };
+}
+
+function coerceSnapshot(
+  raw: Record<string, unknown>,
+  fallbackModel: string
+): SessionSnapshot {
+  const effort = effortOrNull(raw.reasoningEffort);
+  const snap: SessionSnapshot = {
+    currentModel: str(raw.currentModel, fallbackModel),
+    currentTtl: (typeof raw.currentTtl === "string" && VALID_TTL.has(raw.currentTtl as CacheTtl)
+      ? raw.currentTtl
+      : "none") as CacheTtl,
+    lastTurnAt: strOrNull(raw.lastTurnAt),
+    turnsSoFar: numOr(raw.turnsSoFar, 0),
+    cacheReadTokensSoFar: numOr(raw.cacheReadTokensSoFar, 0),
+    cacheCreationTokensSoFar: numOr(raw.cacheCreationTokensSoFar, 0),
+    systemPromptTokens: numOrNull(raw.systemPromptTokens),
+    toolListOrderHash: strOrNull(raw.toolListOrderHash),
+    mcpServers: strArray(raw.mcpServers),
+  };
+  if (effort) snap.reasoningEffort = effort;
+  const temp = numOrNull(raw.temperature);
+  if (temp !== null) snap.temperature = temp;
+  return snap;
+}
+
+export interface CacheHabitsArgs {
+  /** What the user is about to send — the host's proposed-action diff. */
+  action: unknown;
+  /** Prior session state to compare against. */
+  snapshot: unknown;
+  /** Rule ids to suppress (e.g. a rule that fires spuriously in this env). */
+  suppress?: string[];
+  /** Per-rule severity overrides, e.g. demote "block" to "warn" in shadow. */
+  severity_overrides?: Record<string, "info" | "warn" | "block">;
+}
+
+/**
+ * F9 — run the FULL cache-habits linter (all 12 rules CH-001..CH-012) over a
+ * caller-supplied proposed-action diff. This is the runtime surface for the 11
+ * rules a transcript hook can't reach: those need the host's proposed-action vs
+ * session-snapshot diff (model switch, tool-list reorder, system-prompt
+ * mutation, large paste, MCP server mutation, TTL/effort/temperature changes),
+ * which only the editor/host has. The cache-habits-advisor hook still handles
+ * the one transcript-derivable rule (CH-004 idle-TTL); this tool handles the
+ * rest. Pure + deterministic; bad input → a JSON `error`, never a throw across
+ * the MCP wire. Emits the f9 quality_proof on the caller-side telemetry path.
+ */
+export function handleCacheHabits(args: CacheHabitsArgs): string {
+  if (!args || !isObj(args.action) || !isObj(args.snapshot)) {
+    return JSON.stringify({
+      error:
+        "cache_habits requires `action` (ProposedAction) and `snapshot` (SessionSnapshot) objects.",
+    });
+  }
+  const action = coerceProposedAction(args.action);
+  if (!action.model) {
+    return JSON.stringify({ error: "cache_habits: action.model is required." });
+  }
+  const snapshot = coerceSnapshot(args.snapshot, action.model);
+
+  const suppress = Array.isArray(args.suppress)
+    ? args.suppress.filter((s): s is string => typeof s === "string")
+    : undefined;
+  const severityOverrides =
+    args.severity_overrides && isObj(args.severity_overrides)
+      ? args.severity_overrides
+      : undefined;
+
+  let report;
+  try {
+    // No default suppression — the WHOLE point of this surface is the full rule
+    // set the hook can't run. Callers may still opt to suppress explicitly.
+    report = lintCacheHabits(action, snapshot, { suppress, severityOverrides });
+  } catch (e) {
+    return JSON.stringify({ error: `cache_habits: ${(e as Error).message}` });
+  }
+
+  return JSON.stringify(
+    {
+      featureId: CACHE_HABITS_FEATURE_ID,
+      verdict: report.verdict,
+      findings: report.findings,
+      totals: {
+        estimatedWasteUsd: report.totalEstimatedWasteUsd,
+        estimatedWasteTokens: report.totalEstimatedWasteTokens,
+        findingCount: report.findings.length,
+      },
+      skipped: report.skipped,
+      quality_proof: buildCacheHabitsProof(report, action, snapshot),
+    },
+    null,
+    2
+  );
 }

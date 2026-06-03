@@ -13,6 +13,7 @@ import {
   handleQpdReport,
   handleContextHealthReport,
   handleTrajectoryReplay,
+  handleCacheHabits,
   type ReplayCostPlanArgs,
   type McpProxyTrimArgs,
 } from "./tcrp-tools.js";
@@ -245,6 +246,127 @@ describe("qpd_report MCP handler (F4)", () => {
     expect(r.quality_proof.featureId).toBe("f4");
     expect(r.quality_proof.recommendedCount).toBe(0);
     expect(r.quality_proof.bestProjectedSavingsPct).toBeNull();
+  });
+});
+
+describe("cache_habits MCP handler (F9)", () => {
+  const SECRET_PROMPT = "REFACTOR the super_secret_function_name in auth.ts";
+
+  function snapshot(over: Record<string, unknown> = {}) {
+    return {
+      currentModel: "claude-sonnet-4-5-20250929",
+      currentTtl: "5m",
+      lastTurnAt: "2026-06-03T00:00:00.000Z",
+      turnsSoFar: 3,
+      cacheReadTokensSoFar: 5000,
+      cacheCreationTokensSoFar: 8000,
+      systemPromptTokens: 2000,
+      toolListOrderHash: "hashA",
+      mcpServers: ["github"],
+      ...over,
+    };
+  }
+  function action(over: Record<string, unknown> = {}, changes: Record<string, unknown> = {}) {
+    return {
+      modelFamily: "sonnet",
+      model: "claude-sonnet-4-5-20250929",
+      ttl: "5m",
+      prompt: { text: SECRET_PROMPT, pastedBlocks: [] },
+      changes: {
+        systemPromptTokens: null,
+        toolListOrderHash: null,
+        reasoningEffort: null,
+        temperature: null,
+        mcpServersAdded: [],
+        mcpServersRemoved: [],
+        ...changes,
+      },
+      now: "2026-06-03T00:00:30.000Z", // 30s later — well within the 5m TTL
+      ...over,
+    };
+  }
+
+  it("fires CH-001 on a mid-session model switch (a rule the transcript hook cannot reach)", () => {
+    const json = handleCacheHabits({
+      action: action({ model: "claude-opus-4-5-20251101", modelFamily: "opus" }),
+      snapshot: snapshot(),
+    });
+    const r = JSON.parse(json);
+    expect(r.featureId).toBe("f9");
+    const ids = r.findings.map((f: { ruleId: string }) => f.ruleId);
+    expect(ids).toContain("CH-001");
+    expect(r.quality_proof.featureId).toBe("f9");
+    expect(r.totals.findingCount).toBe(r.findings.length);
+  });
+
+  it("runs the FULL rule set — multiple cache-killers in one diff", () => {
+    const json = handleCacheHabits({
+      action: action(
+        { model: "claude-opus-4-5-20251101", modelFamily: "opus" },
+        {
+          toolListOrderHash: "hashB", // CH-005 reorder
+          systemPromptTokens: 2500, // CH-006 system-prompt mutation
+          mcpServersAdded: ["jira"], // CH-007 mcp server mutation
+        }
+      ),
+      snapshot: snapshot(),
+    });
+    const r = JSON.parse(json);
+    const ids = new Set(r.findings.map((f: { ruleId: string }) => f.ruleId));
+    expect(ids.has("CH-001")).toBe(true);
+    expect(ids.has("CH-005")).toBe(true);
+    expect(ids.has("CH-006")).toBe(true);
+    expect(ids.has("CH-007")).toBe(true);
+    expect(["info", "warn", "block"]).toContain(r.verdict);
+  });
+
+  it("a stable action produces no findings (verdict info)", () => {
+    const json = handleCacheHabits({ action: action(), snapshot: snapshot() });
+    const r = JSON.parse(json);
+    expect(r.findings).toHaveLength(0);
+    expect(r.verdict).toBe("info");
+    expect(r.totals.findingCount).toBe(0);
+  });
+
+  it("never leaks the prompt text into findings or the proof (PII hygiene)", () => {
+    const json = handleCacheHabits({
+      action: action({ model: "claude-opus-4-5-20251101", modelFamily: "opus" }),
+      snapshot: snapshot(),
+    });
+    expect(json).not.toContain("super_secret_function_name");
+  });
+
+  it("honors an explicit suppress list", () => {
+    const json = handleCacheHabits({
+      action: action({ model: "claude-opus-4-5-20251101", modelFamily: "opus" }),
+      snapshot: snapshot(),
+      suppress: ["CH-001"],
+    });
+    const r = JSON.parse(json);
+    expect(r.findings.map((f: { ruleId: string }) => f.ruleId)).not.toContain("CH-001");
+    expect(r.skipped).toContain("CH-001");
+  });
+
+  it("coerces loose input (missing changes/pastedBlocks) without throwing", () => {
+    const json = handleCacheHabits({
+      action: { model: "claude-sonnet-4-5-20250929", now: "2026-06-03T00:00:30.000Z" },
+      snapshot: { currentModel: "claude-sonnet-4-5-20250929" },
+    });
+    const r = JSON.parse(json);
+    expect(r.featureId).toBe("f9");
+    expect(Array.isArray(r.findings)).toBe(true);
+  });
+
+  it("returns an error for missing action/snapshot", () => {
+    expect(JSON.parse(handleCacheHabits({ action: undefined as never, snapshot: {} })).error).toBeTruthy();
+    expect(JSON.parse(handleCacheHabits({ action: {}, snapshot: undefined as never })).error).toBeTruthy();
+  });
+
+  it("returns an error when action.model is missing", () => {
+    const r = JSON.parse(
+      handleCacheHabits({ action: { now: "2026-06-03T00:00:30.000Z" }, snapshot: {} })
+    );
+    expect(r.error).toBeTruthy();
   });
 });
 
