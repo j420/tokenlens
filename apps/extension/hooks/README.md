@@ -38,13 +38,27 @@ this with user-scoped vs project-scoped settings management.
 
 ## Feature telemetry (`quality_proof` → events sink)
 
-The `skill-capture` (f12), `skill-advisor` (f12), and `cache-habits-advisor`
-(f9) hooks record their `quality_proof` to the shared events sink so the
-telemetry lands in one stream the dashboard / Postgres export reads, keyed by
-`feature_id`. This is the first EventRow-recording path in the repo (the
-`events.feature_id` / `events.quality_proof` columns existed; nothing wrote
-them before), routed through `@prune/persistence`'s `buildFeatureEventRow` /
-`recordFeatureEvent` so every feature row is shaped identically.
+Hooks record their `quality_proof` to the shared events sink so the telemetry
+lands in one stream the dashboard / Postgres export reads, keyed by
+`feature_id`, routed through `@prune/persistence`'s `buildFeatureEventRow` /
+`recordFeatureEvent` so every feature row is shaped identically. Emitters:
+
+- `skill-capture` (f12, Stop) and `skill-advisor` (f12, UserPromptSubmit)
+- `cache-habits-advisor` (f9, UserPromptSubmit)
+- `trajectory-diet` (f1, PreToolUse) — records only when the influence advisor
+  fires; PII-safe (tool name + scores, never the tool input body)
+- `speculative-prune` (f3, PreToolUse) — records on a real redundant-read
+  substitution decision; the flag gate sits BELOW the decision so shadow mode
+  still collects (only the surfaced advisory is gated)
+- `context-health-advisor` (f6, UserPromptSubmit) — records the regime when an
+  advisory is produced
+
+All record BEFORE the feature-flag gate (shadow collects telemetry; only the
+user-facing advisory is gated) and ONLY on a meaningful signal (no per-no-op-call
+spam). The `events.feature_id` / `events.quality_proof` columns existed before
+this; these hooks are the writers. The dashboard read-side
+(`apps/dashboard/src/lib/feature-telemetry.ts`) rolls up all of f1–f13 — rich
+decoders for f9–f13, a generic (events/tokens/cost) rollup for f1–f8.
 
 It is deliberately conservative:
 

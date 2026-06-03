@@ -33,7 +33,14 @@ import type { EventRow } from "@prune/persistence";
 import { TCRP_FEATURE_NAMES, type TcrpFeatureId } from "@prune/shared";
 
 /** The feature ids this read-side surfaces, in deterministic emit order. */
-export const TELEMETRY_FEATURE_IDS = ["f9", "f10", "f11", "f12", "f13"] as const;
+export const TELEMETRY_FEATURE_IDS = [
+  "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+  "f9", "f10", "f11", "f12", "f13",
+] as const;
+/** Ids with a rich, schema-specific decoder. The rest get a generic rollup. */
+export const RICH_DECODER_IDS: ReadonlySet<string> = new Set([
+  "f9", "f10", "f11", "f12", "f13",
+]);
 export type TelemetryFeatureId = (typeof TELEMETRY_FEATURE_IDS)[number];
 
 // ---------------------------------------------------------------------------
@@ -118,6 +125,14 @@ export type FeatureSummary =
   | { kind: "f11"; data: ReplayCostSummary }
   | { kind: "f12"; data: SkillLibrarySummary }
   | { kind: "f13"; data: SpeculativePipelineSummary }
+  /**
+   * Features that emit telemetry but have no schema-specific decoder yet
+   * (f1–f8). The headline metrics (eventCount, tokensIn, estimatedCostUsd,
+   * malformedProofCount) on FeatureRollup still apply; there is just no
+   * decoded per-feature summary. Honest: a generic presence, not a fabricated
+   * one.
+   */
+  | { kind: "generic"; data: null }
   | { kind: "unknown"; data: null };
 
 /** One feature's rollup. Always present for f9–f13 even with zero events. */
@@ -138,11 +153,11 @@ export interface FeatureRollup {
 }
 
 export interface FeatureTelemetryReport {
-  /** Always length 5, ordered f9..f13. */
+  /** Always length 13, ordered f1..f13. */
   features: FeatureRollup[];
   /** Total rows folded in (across ALL feature ids, including out-of-range). */
   totalEvents: number;
-  /** Rows tagged with a feature id outside f9–f13 (e.g. "f1", or unknown). */
+  /** Rows tagged with a feature id outside f1–f13 (e.g. a typo, or unknown). */
   outOfScopeEventCount: number;
 }
 
@@ -207,18 +222,13 @@ function emptyMutable(): MutableRollup {
 /**
  * Fold an array of EventRows into per-feature rollups. Pure & total: any input
  * (including an empty array, malformed proofs, or unknown feature ids) yields a
- * well-formed report. Output ordering is always f9..f13.
+ * well-formed report. Output ordering is always f1..f13.
  */
 export function aggregateFeatureTelemetry(
   events: readonly EventRow[]
 ): FeatureTelemetryReport {
-  const base: Record<TelemetryFeatureId, MutableRollup> = {
-    f9: emptyMutable(),
-    f10: emptyMutable(),
-    f11: emptyMutable(),
-    f12: emptyMutable(),
-    f13: emptyMutable(),
-  };
+  const base = {} as Record<TelemetryFeatureId, MutableRollup>;
+  for (const id of TELEMETRY_FEATURE_IDS) base[id] = emptyMutable();
 
   // f9
   const f9Verdicts: Record<string, number> = {};
@@ -343,7 +353,7 @@ export function aggregateFeatureTelemetry(
     }
   }
 
-  const summaries: Record<TelemetryFeatureId, FeatureSummary> = {
+  const richSummaries: Partial<Record<TelemetryFeatureId, FeatureSummary>> = {
     f9: {
       kind: "f9",
       data: {
@@ -388,6 +398,14 @@ export function aggregateFeatureTelemetry(
       },
     },
   };
+
+  // Ids with a rich decoder use it; the rest (f1–f8) get a generic summary —
+  // their headline rollup metrics are still real, there is just no decoded
+  // per-feature shape. Never fabricate a decoder for a schema we don't have.
+  const summaries = {} as Record<TelemetryFeatureId, FeatureSummary>;
+  for (const id of TELEMETRY_FEATURE_IDS) {
+    summaries[id] = richSummaries[id] ?? { kind: "generic", data: null };
+  }
 
   const features: FeatureRollup[] = TELEMETRY_FEATURE_IDS.map((id) => ({
     featureId: id,

@@ -45,6 +45,11 @@ import {
   readHookPayload,
   safeRun,
 } from "./_runtime.mjs";
+import {
+  deriveSessionId,
+  recordFeatureEventBestEffort,
+  stableId,
+} from "./_telemetry.mjs";
 
 const FLAG_PATH = join(homedir(), ".prune", "feature-flags.json");
 const STATE_DIR = join(homedir(), ".prune", "cache");
@@ -115,10 +120,29 @@ safeRun(async () => {
 
   saveDetectorState(statePath, detector);
 
-  if (!isFeatureEnabled(flags, "f6")) return emitNoop();
-  if (!lastObservation || lastObservation.skipped) return emitNoop();
+  const advisory =
+    lastObservation && !lastObservation.skipped
+      ? buildAdvisory(lastObservation)
+      : null;
 
-  const advisory = buildAdvisory(lastObservation);
+  // Shadow-aware f6 telemetry: record the regime when an advisory is produced
+  // (records regardless of the flag; only the surfaced advisory below is
+  // gated). PII-safe: regime label only, never transcript content.
+  if (advisory) {
+    const latestTurn = view.turns[view.turns.length - 1]?.turnNumber ?? view.turns.length;
+    await recordFeatureEventBestEffort({
+      featureId: "f6",
+      qualityProof: {
+        schemaVersion: 1,
+        featureId: "f6",
+        regime: typeof lastObservation.regime === "string" ? lastObservation.regime : null,
+      },
+      sessionId: deriveSessionId(payload),
+      eventId: `f6-${stableId(payload.transcript_path, String(latestTurn))}`,
+    });
+  }
+
+  if (!isFeatureEnabled(flags, "f6")) return emitNoop();
   if (!advisory) return emitNoop();
 
   return emitAdditionalContext(

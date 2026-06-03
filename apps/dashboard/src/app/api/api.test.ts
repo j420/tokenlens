@@ -194,7 +194,7 @@ describe("Features API (/api/v1/features)", () => {
     vi.clearAllMocks();
   });
 
-  it("returns a well-formed report with f9..f13 in deterministic order", async () => {
+  it("returns a well-formed report with f1..f13 in deterministic order", async () => {
     const request = new NextRequest("http://localhost:3000/api/v1/features");
     const response = await GET(request);
     const data = await response.json();
@@ -202,11 +202,8 @@ describe("Features API (/api/v1/features)", () => {
     expect(response.status).toBe(200);
     expect(Array.isArray(data.features)).toBe(true);
     expect(data.features.map((f: { featureId: string }) => f.featureId)).toEqual([
-      "f9",
-      "f10",
-      "f11",
-      "f12",
-      "f13",
+      "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+      "f9", "f10", "f11", "f12", "f13",
     ]);
   });
 

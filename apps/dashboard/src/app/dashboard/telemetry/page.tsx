@@ -168,6 +168,13 @@ function FeatureSummaryBody({ rollup }: { rollup: FeatureRollup }) {
           />
         </div>
       );
+    case "generic":
+      return (
+        <p className="py-2 text-sm text-muted">
+          Generic telemetry — this feature emits events but has no rich decoder
+          yet. The headline metrics above (events, tokens, est. cost) are real.
+        </p>
+      );
     default:
       return <p className="py-2 text-sm text-muted">No summary available.</p>;
   }

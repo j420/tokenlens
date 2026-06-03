@@ -29,6 +29,11 @@ import {
   readHookPayload,
   safeRun,
 } from "./_runtime.mjs";
+import {
+  deriveSessionId,
+  recordFeatureEventBestEffort,
+  stableId,
+} from "./_telemetry.mjs";
 
 const FLAG_PATH = join(homedir(), ".prune", "feature-flags.json");
 
@@ -46,6 +51,7 @@ safeRun(async () => {
   const toolInput = payload.tool_input;
   if (!toolName || !payload.transcript_path) return emitNoop();
 
+  const startedAt = performance.now();
   const { turns } = await loadCachedSessionView(payload.transcript_path);
   const features = extractProposedStepFeatures(turns, {
     name: toolName,
@@ -58,10 +64,31 @@ safeRun(async () => {
   const regime = readPersistedRegime(payload.transcript_path);
   const options = modulateAdvisorOptions(undefined, regime);
   const advisory = adviseStep(features, new TransparentInfluenceModel(), options);
+  const latencyMs = performance.now() - startedAt;
+
+  // Shadow-aware f1 telemetry: record ONLY when the advisor actually fired —
+  // this is a PreToolUse hook, so recording every no-op call would be noise.
+  // Records regardless of the flag (shadow collects); only the surfaced
+  // advisory below is flag-gated. PII-safe: tool name + scores, never the
+  // tool input body.
+  if (advisory) {
+    await recordFeatureEventBestEffort({
+      featureId: "f1",
+      qualityProof: {
+        schemaVersion: 1,
+        featureId: "f1",
+        toolName,
+        regime,
+        predictedInfluence: advisory.predictedInfluence,
+        projectedTokensSaved: advisory.projectedTokensSaved,
+      },
+      sessionId: deriveSessionId(payload),
+      eventId: `f1-${stableId(payload.transcript_path, String(advisory.stepIndex))}`,
+      latencyMs,
+    });
+  }
 
   // Shadow mode: feature not user-visible yet → record nothing surfaced.
-  // (Prediction logging to the sink is wired separately; the hook stays a
-  // no-op advisory surface until F1 is promoted past shadow.)
   if (!isFeatureEnabled(flagsFromDisk(), "f1")) return emitNoop();
 
   if (!advisory) return emitNoop();

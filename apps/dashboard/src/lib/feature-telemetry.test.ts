@@ -50,14 +50,11 @@ function byId(report: ReturnType<typeof aggregateFeatureTelemetry>, id: string):
 }
 
 describe("aggregateFeatureTelemetry — structure & determinism", () => {
-  it("emits exactly f9..f13 in deterministic order for empty input", () => {
+  it("emits exactly f1..f13 in deterministic order for empty input", () => {
     const report = aggregateFeatureTelemetry([]);
     expect(report.features.map((f) => f.featureId)).toEqual([
-      "f9",
-      "f10",
-      "f11",
-      "f12",
-      "f13",
+      "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8",
+      "f9", "f10", "f11", "f12", "f13",
     ]);
     expect(report.totalEvents).toBe(0);
     expect(report.outOfScopeEventCount).toBe(0);
@@ -352,17 +349,38 @@ describe("aggregateFeatureTelemetry — adversarial / defensive cases", () => {
       makeRow({ feature_id: "f12", quality_proof: { event: "capture", discoveryTokens: 1 } }),
       makeRow({ feature_id: "f13", quality_proof: { outcome: { hit: true, latencySavedMs: 1 } } }),
     ]);
-    for (const id of TELEMETRY_FEATURE_IDS) {
+    for (const id of ["f9", "f10", "f11", "f12", "f13"] as const) {
       expect(byId(report, id).eventCount).toBe(1);
     }
+    // The other (f1–f8) buckets exist but saw no rows here.
+    for (const id of ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8"] as const) {
+      expect(byId(report, id).eventCount).toBe(0);
+    }
+    expect(report.features).toHaveLength(13);
     expect(report.totalEvents).toBe(5);
     expect(report.outOfScopeEventCount).toBe(0);
   });
 
-  it("feature ids outside f9–f13 are counted as out-of-scope, not bucketed", () => {
+  it("f1–f8 get a generic summary + real headline metrics (no fabricated decoder)", () => {
     const report = aggregateFeatureTelemetry([
-      makeRow({ feature_id: "f1" }),
-      makeRow({ feature_id: "f5" }),
+      makeRow({ feature_id: "f1", tokens_in: 300, estimated_cost_usd: 0.002, quality_proof: { featureId: "f1" } }),
+      makeRow({ feature_id: "f6", tokens_in: 100, estimated_cost_usd: 0.001, quality_proof: { regime: "warning" } }),
+    ]);
+    const f1 = byId(report, "f1");
+    expect(f1.summary.kind).toBe("generic");
+    expect(f1.summary.data).toBeNull();
+    expect(f1.eventCount).toBe(1);
+    expect(f1.tokensIn).toBe(300);
+    expect(f1.estimatedCostUsd).toBeCloseTo(0.002);
+    expect(f1.malformedProofCount).toBe(0);
+    expect(byId(report, "f6").summary.kind).toBe("generic");
+    expect(report.outOfScopeEventCount).toBe(0);
+  });
+
+  it("feature ids outside f1–f13 are counted as out-of-scope, not bucketed", () => {
+    const report = aggregateFeatureTelemetry([
+      makeRow({ feature_id: "f0" }),
+      makeRow({ feature_id: "f14" }),
       makeRow({ feature_id: "f99" }),
       makeRow({ feature_id: null }),
       makeRow({ feature_id: undefined }),
