@@ -1,5 +1,5 @@
 {
-  "_source": "Merged catalog approximating a typical Cursor/Codex CLI setup with five MCP servers. Tool names and descriptions are taken verbatim from the public README files of github.com/modelcontextprotocol/servers (postgres, filesystem, github, slack subdirectories, as of June 2026). Used here only to verify intent-tag inference on real published tool names; the proxy's behavior is name-driven, so the schema bodies are sized representatively but omit verbose JSON-schema detail.",
+  "_source": "SYNTHETIC merged MCP catalog used to exercise the verb classifier (catalog.ts) and intent matcher (intent-matcher.ts). Names use the host's `<server>__<tool>` namespacing convention — the way Cursor / Claude Code present a merged multi-server catalog — because each server's own README lists BARE tool names and the host adds the server prefix on merge. PROVENANCE, stated precisely: the `filesystem__*` names are the real @modelcontextprotocol/server-filesystem tool set (read_text_file, write_file, edit_file, list_directory, create_directory, search_files, directory_tree), verified verbatim against https://github.com/modelcontextprotocol/servers/blob/main/src/filesystem/README.md on 2026-06-03, then namespaced. The `postgres__*`, `github__*`, `slack__*`, and `linear__*` names are REPRESENTATIVE — modeled on those services' conventional operations, NOT verified verbatim against their READMEs. `ambiguous_tool_xyz` is a deliberate no-verb-token entry for the fail-safe-to-include path. No test asserts against external truth (the proxy is purely name-driven), so representative names are sufficient; this note exists so a reader knows exactly which names are verified and which are illustrative.",
   "tools": [
     {
       "name": "postgres__query",
@@ -20,20 +20,22 @@
       "inputSchema": { "type": "object", "properties": {} }
     },
     {
-      "name": "filesystem__read_file",
-      "description": "Read the complete contents of a file from the filesystem.",
+      "name": "filesystem__read_text_file",
+      "description": "Read the complete contents of a file as text. Supports optional head/tail line limits.",
       "origin": "filesystem",
       "inputSchema": {
         "type": "object",
         "properties": {
-          "path": { "type": "string", "description": "Absolute file path." }
+          "path": { "type": "string", "description": "Absolute file path." },
+          "head": { "type": "number" },
+          "tail": { "type": "number" }
         },
         "required": ["path"]
       }
     },
     {
       "name": "filesystem__write_file",
-      "description": "Create a new file or overwrite an existing file with new content.",
+      "description": "Create a new file or completely overwrite an existing file with new content.",
       "origin": "filesystem",
       "inputSchema": {
         "type": "object",
@@ -45,8 +47,21 @@
       }
     },
     {
+      "name": "filesystem__edit_file",
+      "description": "Make line-based edits to a text file, returning a git-style diff of the changes.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "path": { "type": "string" },
+          "edits": { "type": "array" }
+        },
+        "required": ["path", "edits"]
+      }
+    },
+    {
       "name": "filesystem__list_directory",
-      "description": "List the contents of a directory.",
+      "description": "List the contents of a directory, marking entries as [FILE] or [DIR].",
       "origin": "filesystem",
       "inputSchema": {
         "type": "object",
@@ -56,7 +71,7 @@
     },
     {
       "name": "filesystem__create_directory",
-      "description": "Create a new directory, including any necessary parents.",
+      "description": "Create a new directory, including any necessary parent directories.",
       "origin": "filesystem",
       "inputSchema": {
         "type": "object",
@@ -66,7 +81,7 @@
     },
     {
       "name": "filesystem__search_files",
-      "description": "Recursively search for files matching a pattern within a directory.",
+      "description": "Recursively search for files and directories matching a pattern within a path.",
       "origin": "filesystem",
       "inputSchema": {
         "type": "object",
@@ -75,6 +90,16 @@
           "pattern": { "type": "string" }
         },
         "required": ["path", "pattern"]
+      }
+    },
+    {
+      "name": "filesystem__directory_tree",
+      "description": "Return a recursive JSON tree view of files and directories under a path.",
+      "origin": "filesystem",
+      "inputSchema": {
+        "type": "object",
+        "properties": { "path": { "type": "string" } },
+        "required": ["path"]
       }
     },
     {
