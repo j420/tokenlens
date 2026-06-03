@@ -7,10 +7,14 @@ import { PostgresSink, isUniqueViolation, type DrizzleDb } from "./postgres.js";
  * no-op/ownership semantics of flush()/close(), and the post-query result
  * shaping (numeric-SUM string coercion, empty-result -> null/0, row mapping).
  *
- * They are NOT a DB integration test: the `db` passed in is a hand-built stub
- * that returns canned rows for the exact builder chain each method uses. A
- * live-Postgres integration test is deferred — no pg driver / in-memory pg
- * (pglite/pg-mem) is available in this workspace (see report).
+ * They are deliberately NOT a DB integration test: the `db` passed in is a
+ * hand-built stub whose chain methods return `this` and ignore their arguments,
+ * so it cannot prove that the SQL the sink builds is correct. That gap (the
+ * conflict targets, set-clauses, column references, the gte() window comparison,
+ * and jsonb behavior) is covered by the REAL execution test in
+ * ./postgres.integration.test.ts, which runs every query against an in-memory
+ * PGlite Postgres. This file is kept only for the pure JS-side edge cases above,
+ * which a live-DB test would not isolate as cleanly.
  */
 
 // ---------------------------------------------------------------------------

@@ -2,8 +2,10 @@
  * PersistenceSink — the interface every Prune storage backend implements.
  *
  * Rows mirror the canonical event schema from @prune/shared/schemas/event.ts
- * so a record stored in LocalSqlite can be flushed verbatim to Postgres
- * later by CompositeSink.
+ * so a record stored in LocalSqlite can be flushed to the matching Postgres
+ * columns later by CompositeSink. (The pure mapper round-trip is unit-tested
+ * and the Postgres SQL path is covered by an executed PGlite integration test;
+ * see packages/persistence/src/postgres.integration.test.ts.)
  */
 
 import type { Provider } from "@prune/shared";

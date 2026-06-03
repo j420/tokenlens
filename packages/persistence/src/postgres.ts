@@ -2,12 +2,26 @@
  * PostgresSink — server-side PersistenceSink for team / enterprise deployments.
  *
  * Backs the same `PersistenceSink` interface as LocalSqliteSink, but writes to
- * the `persistence_*` tables in @prune/db (the lossless-mirror tables added in
- * the Phase 9.7+ block of packages/db/src/schema.ts). Those tables mirror the
- * SQLite schema byte-for-byte — caller-supplied TEXT primary keys, ISO-8601
- * TEXT timestamps, jsonb JSON fields — so a row written by LocalSqliteSink can
- * be flushed verbatim here and read back identical (lossless local -> central
- * export).
+ * the `persistence_*` tables in @prune/db (the mirror tables added in the
+ * Phase 9.7+ block of packages/db/src/schema.ts). Those tables are designed to
+ * mirror the SQLite schema — caller-supplied TEXT primary keys, ISO-8601 TEXT
+ * timestamps, jsonb JSON fields — so a row written by LocalSqliteSink maps onto
+ * the same columns here.
+ *
+ * Fidelity status (be precise about what is PROVEN, not what is intended):
+ *   - The pure row<->column mappers (./postgres-mapping.ts) are exhaustively
+ *     unit-tested: fromXxx(toXxx(row)) deep-equals row for every row type,
+ *     including null/empty normalisation. That proves the MAPPING is lossless.
+ *   - The query layer below (conflict targets, set-clauses, column refs, the
+ *     gte() ISO window comparison, jsonb insert/read) is exercised end-to-end
+ *     against an in-memory PGlite Postgres in ./postgres.integration.test.ts:
+ *     each row type is WRITTEN then READ BACK and asserted equal, upserts are
+ *     verified last-wins on their real conflict targets, and the replay-log
+ *     (session_id, sequence) unique index is verified to reject duplicates.
+ *     PGlite runs the same drizzle-orm version as the production postgres-js
+ *     path, so the SQL shape is genuinely validated — though PGlite is not a
+ *     byte-identical substitute for a production Postgres server, so a final
+ *     live-server smoke test is still advisable before relying on this in prod.
  *
  * Durability model: Postgres is durable on commit, so `flush()` is a no-op and
  * `init()` only verifies connectivity (the schema is provisioned out of band by

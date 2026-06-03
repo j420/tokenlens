@@ -2,7 +2,7 @@
  * Pure row <-> table mappers for PostgresSink.
  *
  * PostgresSink writes to the `persistence_*` tables in @prune/db, which mirror
- * the @prune/persistence SQLite schema **byte-for-byte** (see the Phase 9.7+
+ * the @prune/persistence SQLite schema column-for-column (see the Phase 9.7+
  * block in packages/db/src/schema.ts):
  *   - PRIMARY KEYs are caller-supplied TEXT (never server-generated uuids).
  *   - wall-clock fields are TEXT holding the exact ISO-8601 string the caller
@@ -18,14 +18,19 @@
  * These functions are deliberately framework-free (no drizzle, no driver) and
  * fully exported so the row<->table mapping can be unit-tested exhaustively
  * without a live database. PostgresSink composes them with the drizzle query
- * builder; the SQL it issues is thin enough that the only place a fidelity bug
- * can hide is here.
+ * builder. A fidelity bug can hide in two places: in these mappers (covered by
+ * the unit tests below), AND in the thin query layer that wires them to SQL —
+ * e.g. a wrong onConflict target or a column-name typo. The latter is NOT
+ * provable from this file alone; it is covered by the executed PGlite
+ * integration test (../postgres.integration.test.ts).
  *
- * Fidelity contract: for every row type R,
+ * Mapper fidelity contract: for every row type R,
  *   fromXxxRow(toXxxInsert(r)) deep-equals r
  * with all optional/nullable fields normalised exactly as LocalSqliteSink
  * normalises them (e.g. `team_id ?? null`, `feature_id ?? null`,
- * `metadata ?? {}`), so a SQLite -> Postgres export is lossless.
+ * `metadata ?? {}`). This proves the MAPPING is lossless; whether the mapped
+ * insert actually persists and reads back identically through real SQL is
+ * proven separately by the integration test.
  */
 
 import type {

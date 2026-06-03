@@ -21,7 +21,9 @@
     "sql.js": "^1.10.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.1",
     "@types/node": "^22.10.0",
+    "drizzle-orm": "^0.38.0",
     "@types/proper-lockfile": "^4.1.4",
     "@types/sql.js": "^1.4.9",
     "typescript": "^5.7.0",
