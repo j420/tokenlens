@@ -1237,7 +1237,15 @@ async function preflightCommand(context: vscode.ExtensionContext) {
   incrementTurn();
 
   // Store analysis result and workspace files for use after progress completes
-  let analysisResult: PreflightAnalysis | null = null;
+  // NB: `analysisResult` is only ever assigned inside the `withProgress`
+  // closure below. TypeScript's control-flow analysis does not track
+  // assignments made inside nested closures, so a plain `= null` initializer
+  // would narrow the variable to the literal `null` type for the rest of this
+  // scope — making the `if (analysisResult)` truthy branch resolve to `never`
+  // (TS issues #9998 / #11498). Initializing through the declared union type
+  // keeps the reference type as `PreflightAnalysis | null` so the truthy
+  // branch narrows correctly. No runtime change (the value is still null).
+  let analysisResult: PreflightAnalysis | null = null as PreflightAnalysis | null;
   let workspaceFilesCache: Array<{ path: string; content: string; tokens: number }> = [];
 
   await vscode.window.withProgress(

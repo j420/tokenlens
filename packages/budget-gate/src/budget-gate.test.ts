@@ -72,6 +72,112 @@ describe("accountant", () => {
     });
     expect(r.tokensOut).toBe(500);
   });
+
+  // --- pricing confidence (honesty: never present a fallback rate as fact) ---
+
+  it("computeRecordedCost — a genuinely-priced model is pricedExact, no note", () => {
+    const r = computeRecordedCost({
+      model: "gpt-4o", // in OPENAI_PRICING
+      provider: "openai",
+      tokensIn: 1_000_000,
+      tokensOut: 500_000,
+    });
+    expect(r.pricedExact).toBe(true);
+    expect(r.pricingNote).toBeUndefined();
+    expect(r.costUsd).toBeGreaterThan(0);
+  });
+
+  it("computeRecordedCost — an UNKNOWN model is flagged, cost still recorded from fallback", () => {
+    const r = computeRecordedCost({
+      model: "totally-made-up-model-x",
+      provider: "openai",
+      tokensIn: 1_000_000,
+      tokensOut: 500_000,
+    });
+    expect(r.pricedExact).toBe(false);
+    expect(r.pricingNote).toBe("default fallback rate; model not in price table");
+    // The NON-NULL cost column still gets a real number from DEFAULT_PRICING.
+    expect(typeof r.costUsd).toBe("number");
+    expect(Number.isFinite(r.costUsd)).toBe(true);
+    expect(r.costUsd).toBeGreaterThan(0);
+  });
+
+  it("estimateUpcomingCost — unknown model is flagged; priced model is not", () => {
+    const unknown = estimateUpcomingCost({
+      model: "no-such-model",
+      provider: "openai",
+      estimatedTokensIn: 10_000,
+    });
+    expect(unknown.pricedExact).toBe(false);
+    expect(unknown.pricingNote).toMatch(/fallback rate/);
+
+    const priced = estimateUpcomingCost({
+      model: "gpt-4o",
+      provider: "openai",
+      estimatedTokensIn: 10_000,
+    });
+    expect(priced.pricedExact).toBe(true);
+    expect(priced.pricingNote).toBeUndefined();
+  });
+
+  it("pricedExact is about RATE, independent of source (token-count) certainty", () => {
+    // estimated source + priced rate
+    const r = estimateUpcomingCost({
+      model: "gpt-4o",
+      provider: "openai",
+      estimatedTokensIn: 10_000,
+    });
+    expect(r.source).toBe("estimated");
+    expect(r.pricedExact).toBe(true);
+  });
+
+  it("a charge for an unknown model carries pricedExact:false + note in its metadata", async () => {
+    await gate.createEnvelope({
+      name: "pricing-conf",
+      periodKind: "month",
+      limitUsd: 100,
+    });
+    await gate.record({
+      envelopeName: "pricing-conf",
+      usage: {
+        model: "totally-made-up-model-x",
+        provider: "openai",
+        tokensIn: 1000,
+        tokensOut: 500,
+      },
+      skipAttribution: true,
+    });
+    const env = await gate.getEnvelope("pricing-conf");
+    const charges = await sink.getRecentBudgetCharges(env!.envelope_id, 10);
+    expect(charges).toHaveLength(1);
+    expect(charges[0].metadata.pricedExact).toBe(false);
+    expect(charges[0].metadata.pricingNote).toBe(
+      "default fallback rate; model not in price table"
+    );
+    expect(charges[0].cost_usd).toBeGreaterThan(0);
+  });
+
+  it("a charge for a priced model is pricedExact:true with no note", async () => {
+    await gate.createEnvelope({
+      name: "pricing-conf-2",
+      periodKind: "month",
+      limitUsd: 100,
+    });
+    await gate.record({
+      envelopeName: "pricing-conf-2",
+      usage: {
+        model: "gpt-4o",
+        provider: "openai",
+        tokensIn: 1000,
+        tokensOut: 500,
+      },
+      skipAttribution: true,
+    });
+    const env = await gate.getEnvelope("pricing-conf-2");
+    const charges = await sink.getRecentBudgetCharges(env!.envelope_id, 10);
+    expect(charges[0].metadata.pricedExact).toBe(true);
+    expect(charges[0].metadata.pricingNote).toBeUndefined();
+  });
 });
 
 // ============================================================================

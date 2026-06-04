@@ -202,6 +202,17 @@ export interface PersistenceSink {
   getLatestReplayLog(sessionId: string): Promise<ReplayLogRow | null>;
   getRecentEvents(sessionId: string, limit?: number): Promise<EventRow[]>;
   /**
+   * Count feature-tagged events grouped by `feature_id`, ignoring rows where
+   * `feature_id IS NULL`. Returns a map `{ [featureId]: count }` (a feature
+   * with zero events is simply absent from the map).
+   *
+   * This is the read half of the data-driven promotion-readiness reporter
+   * (`flags.mjs readiness`): how many shadow telemetry events a TCRP feature
+   * has produced is the signal an operator weighs before promoting it out of
+   * shadow. It NEVER promotes — it only counts, so a human decides.
+   */
+  countEventsByFeature(): Promise<Record<string, number>>;
+  /**
    * Commit pending writes to durable storage. Implementations are free to
    * no-op if the underlying store is already durable (e.g. a server-side
    * database). For file-backed sinks, callers that want at-most-N-events
