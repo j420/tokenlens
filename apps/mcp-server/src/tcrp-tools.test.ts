@@ -14,6 +14,7 @@ import {
   handleContextHealthReport,
   handleTrajectoryReplay,
   handleCacheHabits,
+  handleSubagentCostPredict,
   type ReplayCostPlanArgs,
   type McpProxyTrimArgs,
 } from "./tcrp-tools.js";
@@ -367,6 +368,60 @@ describe("cache_habits MCP handler (F9)", () => {
       handleCacheHabits({ action: { now: "2026-06-03T00:00:30.000Z" }, snapshot: {} })
     );
     expect(r.error).toBeTruthy();
+  });
+});
+
+describe("subagent_cost_predict MCP handler (N6)", () => {
+  const MODEL = "claude-sonnet-4-5-20250929";
+
+  it("returns an error when model is missing", () => {
+    const r = JSON.parse(handleSubagentCostPredict({ model: "" }));
+    expect(r.error).toBeTruthy();
+  });
+
+  it("empty history ⇒ insufficient_data with null projections", () => {
+    const r = JSON.parse(handleSubagentCostPredict({ model: MODEL, history: [], proposed_count: 3 }));
+    expect(r.basis).toBe("insufficient_data");
+    expect(r.projectedTotalUsd).toBeNull();
+    expect(r.proposedCount).toBe(3);
+  });
+
+  it("projects per-subagent and total USD for a priced model", () => {
+    const r = JSON.parse(
+      handleSubagentCostPredict({
+        model: MODEL,
+        proposed_count: 2,
+        history: [
+          { tokensIn: 1000, tokensOut: 500 },
+          { tokensIn: 2000, tokensOut: 1000 },
+        ],
+      })
+    );
+    expect(r.basis).toBe("session-history");
+    expect(r.priced).toBe(true);
+    expect(r.perSubagentUsd).not.toBeNull();
+    expect(r.projectedTotalUsd.mean).toBeCloseTo(r.perSubagentUsd.mean * 2);
+  });
+
+  it("UNPRICED model ⇒ priced:false, USD null, tokens still projected", () => {
+    const r = JSON.parse(
+      handleSubagentCostPredict({
+        model: "no-such-model",
+        proposed_count: 4,
+        history: [{ tokensIn: 100, tokensOut: 100 }],
+      })
+    );
+    expect(r.priced).toBe(false);
+    expect(r.perSubagentUsd).toBeNull();
+    expect(r.perSubagentTokens).not.toBeNull();
+    expect(r.projectedTotalTokens.mean).toBeCloseTo(200 * 4);
+  });
+
+  it("defaults proposed_count to 1 when omitted", () => {
+    const r = JSON.parse(
+      handleSubagentCostPredict({ model: MODEL, history: [{ tokensIn: 10, tokensOut: 10 }] })
+    );
+    expect(r.proposedCount).toBe(1);
   });
 });
 

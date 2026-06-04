@@ -49,6 +49,7 @@ import {
   handleReplayCostPlan,
   handleMcpProxyTrim,
   handleCacheHabits,
+  handleSubagentCostPredict,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -667,6 +668,54 @@ const TOOLS = [
         },
       },
       required: ["transcript_path"],
+    },
+  },
+  {
+    name: "subagent_cost_predict",
+    description:
+      "N6 pre-spawn subagent cost predictor. Complements subagent_status (which " +
+      "caps by COUNT) by projecting the DOLLAR cost of a proposed Task fan-out " +
+      "before it runs, from the observed cost of subagents already completed " +
+      "this session. The host supplies per-subagent usage samples (it alone can " +
+      "attribute tokens to a subagent); the predictor returns per-subagent and " +
+      "projected-total token/USD quantiles (p50/p90/mean). Strict pricing: an " +
+      "unpriced model yields null USD (priced:false), never a default rate; an " +
+      "empty history yields basis 'insufficient_data'. Caller-supplied numbers " +
+      "only — nothing is fabricated.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        history: {
+          type: "array" as const,
+          description:
+            "Observed costs of subagents completed this session. Each entry: " +
+            "{ tokensIn, tokensOut, tokensCached?, costUsd? }. costUsd, when " +
+            "present, is used verbatim (most faithful).",
+          items: {
+            type: "object" as const,
+            properties: {
+              tokensIn: { type: "number" as const },
+              tokensOut: { type: "number" as const },
+              tokensCached: { type: "number" as const },
+              costUsd: { type: "number" as const },
+            },
+          },
+        },
+        proposed_count: {
+          type: "number" as const,
+          description: "How many subagents are about to be spawned. Default 1.",
+          default: 1,
+        },
+        model: {
+          type: "string" as const,
+          description: "Model the proposed subagents will run on (for pricing the history).",
+        },
+        provider: {
+          type: "string" as const,
+          description: "Provider hint; inferred from the model name when omitted.",
+        },
+      },
+      required: ["model"],
     },
   },
   {
@@ -2479,6 +2528,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_parallel_in_turn?: number;
           max_subagent_minutes?: number;
         });
+        break;
+      case "subagent_cost_predict":
+        result = handleSubagentCostPredict(
+          args as unknown as Parameters<typeof handleSubagentCostPredict>[0]
+        );
         break;
       case "tool_audit":
         result = handleToolAudit(

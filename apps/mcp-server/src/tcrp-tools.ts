@@ -9,8 +9,10 @@
 
 import {
   auditToolDefinitions,
+  predictSubagentCost,
   type ToolDefinitionInfo,
   type ToolUsageWindow,
+  type SubagentCostSample,
 } from "@prune/intelligence";
 import {
   classifyPareto,
@@ -746,4 +748,44 @@ export function handleCacheHabits(args: CacheHabitsArgs): string {
     null,
     2
   );
+}
+
+// ===========================================================================
+// N6 — subagent_cost_predict (pre-spawn subagent cost predictor)
+// ===========================================================================
+
+export interface SubagentCostPredictArgs {
+  /** Observed per-subagent usage samples from this session (caller-supplied). */
+  history?: SubagentCostSample[];
+  /** How many subagents are about to be spawned. Default 1. */
+  proposed_count?: number;
+  /** Model the proposed subagents will run on (for pricing the history). */
+  model: string;
+  /** Provider hint; inferred from the model name when omitted. */
+  provider?: Provider;
+}
+
+/**
+ * N6 — project the cost of a proposed subagent fan-out before it runs.
+ * Complements the count-based subagent-warden by answering "what will this
+ * cost?". The predictor core is pure and tested in @prune/intelligence; this is
+ * the boundary wrapper: validate the model, default the count, and shape the
+ * JSON. Bad input → a JSON `error`, never a throw across the MCP wire. Strict
+ * pricing and caller-supplied numbers are enforced by the core — nothing here
+ * fabricates a token count or a rate.
+ */
+export function handleSubagentCostPredict(args: SubagentCostPredictArgs): string {
+  if (!args || typeof args.model !== "string" || args.model.length === 0) {
+    return JSON.stringify({
+      error: "subagent_cost_predict requires a `model` string.",
+    });
+  }
+  const prediction = predictSubagentCost({
+    history: Array.isArray(args.history) ? args.history : [],
+    proposedCount:
+      typeof args.proposed_count === "number" ? args.proposed_count : 1,
+    model: args.model,
+    provider: args.provider,
+  });
+  return JSON.stringify(prediction, null, 2);
 }

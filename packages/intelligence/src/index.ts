@@ -125,6 +125,16 @@ export {
   type SubagentPolicyOptions,
 } from "./subagent-policy.js";
 
+// N6 — Pre-spawn subagent cost predictor (complements the warden's count caps)
+export {
+  predictSubagentCost,
+  isModelPriced,
+  type SubagentCostSample,
+  type SubagentCostPredictionInput,
+  type SubagentCostPrediction,
+  type CostQuantiles,
+} from "./subagent-cost-predictor.js";
+
 // F2 — Tool-Definition Auditor (TCRP)
 export {
   auditToolDefinitions,
