@@ -73,6 +73,11 @@ import {
 import { pruneResult, calibrateMaxTokens } from "@prune/response-tuner";
 import { diffEnforce } from "@prune/diff-enforcer";
 import { auditOpenTabs } from "@prune/tab-auditor";
+import {
+  buildCacheHabitsInputs,
+  type ProposedActionInput,
+  type SnapshotContextInput,
+} from "@prune/host-adapters";
 import type { Provider } from "@prune/shared";
 
 // TCRP feature ids for the two MCP-tool features whose quality_proof rides the
@@ -770,6 +775,204 @@ export function handleCacheHabits(args: CacheHabitsArgs): string {
       },
       skipped: report.skipped,
       quality_proof: buildCacheHabitsProof(report, action, snapshot),
+    },
+    null,
+    2
+  );
+}
+
+// ===========================================================================
+// F9 (end-to-end) — cache_habits_from_transcript
+// ---------------------------------------------------------------------------
+// The `cache_habits` tool above requires the CALLER to hand-build the typed
+// `{ action, snapshot }`. This tool removes that burden for the SNAPSHOT half:
+// it reads a REAL Claude Code transcript and DERIVES the session snapshot
+// (active model, idle gap, cumulative cache tokens, turn count) via
+// @prune/host-adapters `buildCacheHabitsInputs`, then runs the same full 12-rule
+// linter. The proposed NEXT action stays caller-supplied — by construction no
+// transcript can record an action before it is taken — so this NARROWS, not
+// closes, the host-wiring gap, and the response says so plainly (the `derived`
+// block separates transcript-derived facts from the caller's declaration).
+//
+// Discipline carried through: the adapter never fabricates a token/cost/clock
+// (absent ⇒ null, and the firing time defaults to the last turn's time so
+// CH-004 can't fire from an invented clock); a missing/unreadable transcript is
+// fail-safe (empty turns ⇒ snapshot.currentModel falls back to the proposed
+// model ⇒ no spurious CH-001 switch); bad input ⇒ a JSON `error`, never a throw
+// across the MCP wire.
+// ===========================================================================
+
+/** Coerce raw args into the host-adapter `ProposedActionInput`. Null ⇒ no model. */
+function coerceProposedActionInput(
+  raw: Record<string, unknown>
+): ProposedActionInput | null {
+  const model = str(raw.model, "");
+  if (!model) return null;
+  const input: ProposedActionInput = { model };
+
+  if (typeof raw.ttl === "string" && VALID_TTL.has(raw.ttl as CacheTtl)) {
+    input.ttl = raw.ttl as CacheTtl;
+  }
+  if (typeof raw.promptText === "string") input.promptText = raw.promptText;
+  if (Array.isArray(raw.pastedBlocks)) {
+    input.pastedBlocks = raw.pastedBlocks.filter(isObj).map((b) => ({
+      tokens: numOr(b.tokens, 0),
+      source: ((): "clipboard" | "url" | "file" | "unknown" => {
+        const s = b.source;
+        return s === "clipboard" || s === "url" || s === "file" ? s : "unknown";
+      })(),
+    }));
+  }
+  // Preserve the adapter's undefined-vs-null contract: an OMITTED field stays
+  // unset (⇒ "unknown"); an explicitly-supplied junk value coerces to null
+  // (⇒ "unknown") — never to a fabricated number/string.
+  if (raw.systemPromptTokens !== undefined) {
+    input.systemPromptTokens = numOrNull(raw.systemPromptTokens);
+  }
+  if (raw.toolListOrderHash !== undefined) {
+    input.toolListOrderHash = strOrNull(raw.toolListOrderHash);
+  }
+  const eff = effortOrNull(raw.reasoningEffort);
+  if (eff) input.reasoningEffort = eff;
+  const temp = numOrNull(raw.temperature);
+  if (temp !== null) input.temperature = temp;
+  if (Array.isArray(raw.mcpServers)) input.mcpServers = strArray(raw.mcpServers);
+  if (typeof raw.now === "string") input.now = raw.now;
+  return input;
+}
+
+/** Coerce raw args into the host-adapter `SnapshotContextInput`. */
+function coerceSnapshotContext(raw: Record<string, unknown>): SnapshotContextInput {
+  const ctx: SnapshotContextInput = {};
+  if (typeof raw.currentTtl === "string" && VALID_TTL.has(raw.currentTtl as CacheTtl)) {
+    ctx.currentTtl = raw.currentTtl as CacheTtl;
+  }
+  if (raw.systemPromptTokens !== undefined) {
+    ctx.systemPromptTokens = numOrNull(raw.systemPromptTokens);
+  }
+  if (raw.toolListOrderHash !== undefined) {
+    ctx.toolListOrderHash = strOrNull(raw.toolListOrderHash);
+  }
+  const eff = effortOrNull(raw.reasoningEffort);
+  if (eff) ctx.reasoningEffort = eff;
+  const temp = numOrNull(raw.temperature);
+  if (temp !== null) ctx.temperature = temp;
+  if (Array.isArray(raw.mcpServers)) ctx.mcpServers = strArray(raw.mcpServers);
+  return ctx;
+}
+
+export interface CacheHabitsFromTranscriptArgs {
+  /** Absolute path to the Claude Code session transcript (JSONL). */
+  transcript_path: string;
+  /**
+   * The host's DECLARED next action. A transcript cannot supply this (the
+   * action hasn't happened yet), so the caller must. At minimum `{ model }`.
+   */
+  proposed_action: unknown;
+  /**
+   * Prior-state the transcript cannot record (configured TTL, system-prompt
+   * token count, tool-list order hash, active effort/temperature, MCP servers).
+   * Optional — omitted fields stay "unknown" and the dependent rules stay quiet.
+   */
+  snapshot_context?: unknown;
+  /** Rule ids to suppress (e.g. one that fires spuriously in this env). */
+  suppress?: string[];
+  /** Per-rule severity overrides, e.g. demote "block" to "warn" in shadow. */
+  severity_overrides?: Record<string, "info" | "warn" | "block">;
+}
+
+/**
+ * F9 end-to-end — derive the snapshot from a real transcript, then run the full
+ * cache-habits linter against the caller's proposed next action.
+ *
+ * Async because it reads the transcript via the same `loadCachedSessionView`
+ * entry point the f6 context-health tool uses. Fail-safe and pure-output:
+ * returns a JSON string, never throws across the MCP wire.
+ */
+export async function handleCacheHabitsFromTranscript(
+  args: CacheHabitsFromTranscriptArgs
+): Promise<string> {
+  if (!args || typeof args.transcript_path !== "string" || !args.transcript_path) {
+    return JSON.stringify({
+      error: "cache_habits_from_transcript requires a `transcript_path` string.",
+    });
+  }
+  if (!isObj(args.proposed_action)) {
+    return JSON.stringify({
+      error:
+        "cache_habits_from_transcript requires a `proposed_action` object — the " +
+        "host's next action, which no transcript can supply. At minimum: { model }.",
+    });
+  }
+  const proposed = coerceProposedActionInput(args.proposed_action);
+  if (!proposed) {
+    return JSON.stringify({
+      error: "cache_habits_from_transcript: proposed_action.model is required.",
+    });
+  }
+  const context = isObj(args.snapshot_context)
+    ? coerceSnapshotContext(args.snapshot_context)
+    : {};
+
+  // Load the transcript view. Fail-safe: a missing/unreadable file yields an
+  // empty turn set, and the adapter then derives currentModel from the proposal
+  // (⇒ no spurious model switch) rather than throwing.
+  let view;
+  try {
+    view = await loadCachedSessionView(args.transcript_path);
+  } catch (e) {
+    return JSON.stringify({
+      error: `cache_habits_from_transcript: could not read transcript — ${(e as Error).message}`,
+    });
+  }
+
+  const { snapshot, action } = buildCacheHabitsInputs(view, proposed, context);
+
+  const suppress = Array.isArray(args.suppress)
+    ? args.suppress.filter((s): s is string => typeof s === "string")
+    : undefined;
+  const severityOverrides =
+    args.severity_overrides && isObj(args.severity_overrides)
+      ? args.severity_overrides
+      : undefined;
+
+  let report;
+  try {
+    report = lintCacheHabits(action, snapshot, { suppress, severityOverrides });
+  } catch (e) {
+    return JSON.stringify({
+      error: `cache_habits_from_transcript: ${(e as Error).message}`,
+    });
+  }
+
+  return JSON.stringify(
+    {
+      featureId: CACHE_HABITS_FEATURE_ID,
+      verdict: report.verdict,
+      findings: report.findings,
+      totals: {
+        estimatedWasteUsd: report.totalEstimatedWasteUsd,
+        estimatedWasteTokens: report.totalEstimatedWasteTokens,
+        findingCount: report.findings.length,
+      },
+      skipped: report.skipped,
+      quality_proof: buildCacheHabitsProof(report, action, snapshot),
+      // Transparency: separate what was DERIVED from the transcript from what the
+      // caller DECLARED. Never hide the boundary — the proposed next action is
+      // always caller-supplied because no transcript records it.
+      derived: {
+        transcriptHadTurns: snapshot.turnsSoFar > 0,
+        turnsObserved: snapshot.turnsSoFar,
+        currentModel: snapshot.currentModel,
+        lastTurnAt: snapshot.lastTurnAt,
+        cacheReadTokensSoFar: snapshot.cacheReadTokensSoFar,
+        cacheCreationTokensSoFar: snapshot.cacheCreationTokensSoFar,
+        note:
+          "The snapshot above is derived from the transcript; the proposed next " +
+          "action (model/ttl/effort/temperature/…) is caller-supplied because a " +
+          "transcript cannot record an action before it is taken. This narrows, " +
+          "not closes, host wiring: the host still declares the next action.",
+      },
     },
     null,
     2

@@ -43,6 +43,7 @@ const TOOL_FEATURE_IDS: Record<string, string> = {
   tool_audit: "f2",
   qpd_report: "f4",
   cache_habits: "f9",
+  cache_habits_from_transcript: "f9",
   mcp_proxy_trim: "f10",
   replay_cost_plan: "f11",
 };

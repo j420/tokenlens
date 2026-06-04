@@ -49,6 +49,7 @@ import {
   handleReplayCostPlan,
   handleMcpProxyTrim,
   handleCacheHabits,
+  handleCacheHabitsFromTranscript,
   handleSubagentCostPredict,
   handleReasoningEffortRoute,
   handleResultPrune,
@@ -1207,6 +1208,69 @@ const TOOLS = [
         },
       },
       required: ["action", "snapshot"],
+    },
+  },
+  {
+    name: "cache_habits_from_transcript",
+    description:
+      "F9 cache-habits linter, driven from a REAL transcript. Same 12 rules as " +
+      "`cache_habits`, but instead of requiring a hand-built SessionSnapshot it " +
+      "DERIVES the snapshot from the live Claude Code transcript (active model, " +
+      "idle gap since the last turn, cumulative cache-read/creation tokens, turn " +
+      "count) via @prune/host-adapters, then lints the caller's PROPOSED next " +
+      "action against it. The proposed action is still caller-supplied — no " +
+      "transcript records an action before it is taken — so this narrows (not " +
+      "closes) host wiring; the response's `derived` block states exactly what " +
+      "came from the transcript vs the caller. Fail-safe: a missing/unreadable " +
+      "transcript yields an empty snapshot (model falls back to the proposal, so " +
+      "no spurious model-switch finding), never an error. No regex, no model " +
+      "call, no fabricated token/cost/clock.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transcript_path: {
+          type: "string" as const,
+          description: "Absolute path to the Claude Code session transcript (JSONL).",
+        },
+        proposed_action: {
+          type: "object" as const,
+          description:
+            "The host's DECLARED next action (a transcript cannot supply it). " +
+            "Fields: { model (required), ttl?, promptText?, pastedBlocks?[], " +
+            "systemPromptTokens?, toolListOrderHash?, reasoningEffort?, " +
+            "temperature?, mcpServers?[], now? }. Omitted fields stay 'unknown' " +
+            "and the dependent rule stays quiet; a value is never invented.",
+          properties: {
+            model: { type: "string" as const, description: "Full model id the next turn will use. Required." },
+            ttl: { type: "string" as const, enum: ["5m", "1h", "none"] },
+            promptText: { type: "string" as const },
+            systemPromptTokens: { type: ["number", "null"] as const },
+            toolListOrderHash: { type: ["string", "null"] as const },
+            reasoningEffort: { type: "string" as const, enum: ["standard", "high", "xhigh", "max"] },
+            temperature: { type: "number" as const },
+            mcpServers: { type: "array" as const, items: { type: "string" as const } },
+            now: { type: "string" as const, description: "ISO 8601 firing time; default = last turn's time (zero idle gap)." },
+          },
+          required: ["model"],
+        },
+        snapshot_context: {
+          type: "object" as const,
+          description:
+            "Prior state the transcript can't record: { currentTtl?, " +
+            "systemPromptTokens?, toolListOrderHash?, reasoningEffort?, " +
+            "temperature?, mcpServers?[] }. Optional; omitted ⇒ that rule stays quiet.",
+        },
+        suppress: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Rule ids to suppress (e.g. one that fires spuriously here).",
+        },
+        severity_overrides: {
+          type: "object" as const,
+          description: "Per-rule severity override, e.g. demote a block to warn in shadow.",
+        },
+      },
+      required: ["transcript_path", "proposed_action"],
     },
   },
   {
@@ -2799,6 +2863,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "cache_habits":
         result = handleCacheHabits(
           args as unknown as Parameters<typeof handleCacheHabits>[0]
+        );
+        break;
+      case "cache_habits_from_transcript":
+        result = await handleCacheHabitsFromTranscript(
+          args as unknown as Parameters<typeof handleCacheHabitsFromTranscript>[0]
         );
         break;
       case "budget_status":
