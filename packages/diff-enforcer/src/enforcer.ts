@@ -19,6 +19,26 @@
  *      files, and a changeRatio threshold favoring rewrite when most lines move.
  *
  * Pure & deterministic given the same tokenizer model. Never throws on input.
+ *
+ * DESIGN: LINE-LEVEL granularity (deliberate, not a limitation)
+ * ------------------------------------------------------------
+ * The diff is line-level: a one-character change re-sends that whole line on
+ * both the "-" and "+" sides. This is the correct granularity for an EDIT-COST
+ * decision, and is chosen over char/word-level intra-line diffing on purpose:
+ *   1. SOUNDNESS. The round-trip verify (apply the serialized diff, require
+ *      byte-equality) is simple and total at line granularity. Intra-line
+ *      patch formats are materially harder to apply unambiguously and would
+ *      weaken the one property that makes a diff safe to recommend.
+ *   2. APPLICABILITY. Coding agents apply edits as line/region replacements;
+ *      a char-level patch is not how the downstream tool consumes the change.
+ *   3. MARGINAL TOKEN DELTA. Source lines are short (~tens of chars); the extra
+ *      tokens from resending a changed line vs. a char-span are small, and the
+ *      enforcer's `minSavingFraction` gate already routes the few cases where
+ *      diff overhead isn't worth it to "rewrite". The dominant win (a small
+ *      change in a large file) is fully captured at line level.
+ * The LCS primitive in lcs.ts operates on any token array, so a caller that
+ * genuinely needs sub-line diffing can reuse it on characters/words — but the
+ * enforcer's verified recommendation stays line-level by design.
  */
 
 import { countTokens } from "@prune/tokenizer";
@@ -71,6 +91,19 @@ export interface Decision {
   changeRatio: number;
   /** True iff the computed diff round-tripped to `proposed` exactly. */
   diffVerified: boolean;
+  /**
+   * How diffTokens/rewriteTokens were obtained: "exact" (the model has an exact
+   * tokenizer — OpenAI) or "estimated" (e.g. a Claude model, where
+   * @prune/tokenizer approximates). The diff-vs-rewrite COMPARISON is valid
+   * either way (both sides use the same tokenizer); this just never presents an
+   * estimate as exact.
+   */
+  tokenCountMethod: "exact" | "estimated";
+}
+
+/** Token-count method for a model — depends only on the model, not the text. */
+function tokenMethodFor(model: string): "exact" | "estimated" {
+  return countTokens("", model).source === "exact" ? "exact" : "estimated";
 }
 
 const DEFAULTS = {
@@ -99,6 +132,16 @@ export function diffEnforce(
   proposed: string,
   options: DiffEnforceOptions = {}
 ): Decision {
+  const model = options.model ?? DEFAULTS.model;
+  // Stamp the honest token-count method onto whatever the core decides.
+  return { ...computeDecision(original, proposed, options), tokenCountMethod: tokenMethodFor(model) };
+}
+
+function computeDecision(
+  original: string,
+  proposed: string,
+  options: DiffEnforceOptions = {}
+): Omit<Decision, "tokenCountMethod"> {
   const model = options.model ?? DEFAULTS.model;
   const context = Math.max(0, options.context ?? DEFAULTS.context);
   const changeRatioThreshold =

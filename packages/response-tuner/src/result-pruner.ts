@@ -87,6 +87,21 @@ export interface PruneOptions {
   middleElisionTriggerLines?: number;
   /** Lines kept at head and tail when eliding. Default 500 each. */
   middleElisionKeep?: number;
+  /**
+   * Above this input length (chars), token counts are ESTIMATED (deterministic
+   * sample-and-scale) instead of tokenizing the whole input, and reported as
+   * `tokenCountMethod: "estimated"`. Bounds the tokenizer cost on multi-MB
+   * results (the tokenizer is O(input) and can hang on a multi-megabyte single
+   * token). Default 500_000. The pruning itself is unaffected — only the
+   * accounting is bounded. Set Infinity to always tokenize exactly.
+   */
+  maxTokenizeChars?: number;
+  /**
+   * Minimum Shannon entropy (bits/char) a candidate run must have to be treated
+   * as an opaque blob — an extra guard against collapsing a low-diversity run.
+   * Default 2.5.
+   */
+  blobMinEntropyBitsPerChar?: number;
 }
 
 export interface PruneResult {
@@ -96,6 +111,13 @@ export interface PruneResult {
   savedTokens: number;
   /** Percentage saved, 0..100, rounded to 2 decimals. 0 when nothing saved. */
   savedPct: number;
+  /**
+   * How the token counts were obtained: "exact" (tokenized in full),
+   * "estimated" (input exceeded maxTokenizeChars OR the model has no exact
+   * tokenizer — e.g. a Claude model, where @prune/tokenizer is approximate).
+   * Never presented as exact when it isn't.
+   */
+  tokenCountMethod: "exact" | "estimated";
   /**
    * True only if the transform removed no information — i.e. no manifest
    * entries AND no characters were dropped (trailing-whitespace stripping is
@@ -121,6 +143,8 @@ const DEFAULTS: Required<PruneOptions> = {
   middleElision: true,
   middleElisionTriggerLines: 2000,
   middleElisionKeep: 500,
+  maxTokenizeChars: 500_000,
+  blobMinEntropyBitsPerChar: 2.5,
 };
 
 // Hard cap on per-line length we will scan character-by-character for blobs, to
@@ -166,19 +190,90 @@ interface BlobSpan {
   end: number; // exclusive
 }
 
+// A genuine hex blob (hash/digest/hex dump) uses a broad slice of the 16 hex
+// symbols; a real base64 payload uses most of its 64-symbol alphabet. These
+// distinct-symbol floors, combined with the class and entropy tests below, are
+// what separate an OPAQUE encoded blob from a long identifier, URL fragment, or
+// prose run — without any regex or linguistic model.
+const HEX_DISTINCT_MIN = 8;
+const BASE64_DISTINCT_MIN = 32;
+
 /**
- * Scan a single line for maximal runs of blob characters whose length is
- * >= `minChars`. Pure linear scan over char codes — no regex.
+ * Decide whether a maximal blob-char run `line[start, end)` is an OPAQUE
+ * base64/hex/data-URI blob worth collapsing. Structural + statistical,
+ * deterministic, NO regex:
  *
- * A run must also be "opaque enough": we require at least a couple of distinct
- * digit-vs-letter transitions OR contain a base64/hex-only structure. To keep
- * it mechanical and false-positive-resistant against e.g. a long lowercase
- * English word with no spaces, we additionally require the run to contain at
- * least one DIGIT or one of the base64 special chars (+ / = _) OR a mix of
- * upper and lower case — properties that natural single words rarely satisfy
- * across 512+ chars. This is a mechanical content test, not structural regex.
+ *   HEX    — every char is a hex digit ([0-9a-fA-F]), with ≥ HEX_DISTINCT_MIN
+ *            distinct symbols AND at least one digit AND one hex letter (rejects
+ *            a long decimal number and a single repeated char).
+ *   BASE64 — all three of {upper, lower, digit} present AND ≥ BASE64_DISTINCT_MIN
+ *            distinct symbols. Random base64 over 512 chars satisfies this with
+ *            probability ≈ 1; a lowercase identifier, a hyphenated "word-2024-…"
+ *            token (only 2 classes), or prose does NOT.
+ *
+ * Both additionally require Shannon entropy ≥ `minEntropy` bits/char, which
+ * rejects degenerate low-diversity runs (e.g. "aaaa…a"). URLs are excluded for
+ * free: '.' and ':' are not blob chars, so a URL never forms a single long run.
+ *
+ * Favors FALSE NEGATIVES (skip when unsure) — the safe direction: we save fewer
+ * tokens, never collapse content that wasn't actually an opaque blob.
  */
-function scanBlobRuns(line: string, minChars: number): BlobSpan[] {
+function classifyOpaqueRun(
+  line: string,
+  start: number,
+  end: number,
+  minEntropy: number
+): boolean {
+  const len = end - start;
+  if (len <= 0) return false;
+  let hasDigit = false;
+  let hasUpper = false;
+  let hasLower = false;
+  let hasHexLetter = false;
+  let allHex = true;
+  const freq = new Map<number, number>();
+  for (let i = start; i < end; i++) {
+    const c = line.charCodeAt(i);
+    freq.set(c, (freq.get(c) ?? 0) + 1);
+    if (c >= 48 && c <= 57) {
+      hasDigit = true;
+    } else if (c >= 65 && c <= 90) {
+      hasUpper = true;
+      if (c <= 70) hasHexLetter = true; // A-F
+      else allHex = false; // G-Z
+    } else if (c >= 97 && c <= 122) {
+      hasLower = true;
+      if (c <= 102) hasHexLetter = true; // a-f
+      else allHex = false; // g-z
+    } else {
+      allHex = false; // + / = - _
+    }
+  }
+  // Shannon entropy over the run's character distribution (bits/char).
+  let entropy = 0;
+  for (const count of freq.values()) {
+    const p = count / len;
+    entropy -= p * Math.log2(p);
+  }
+  if (entropy < minEntropy) return false;
+
+  const distinct = freq.size;
+  const isHex = allHex && hasDigit && hasHexLetter && distinct >= HEX_DISTINCT_MIN;
+  const isBase64 =
+    hasUpper && hasLower && hasDigit && distinct >= BASE64_DISTINCT_MIN;
+  return isHex || isBase64;
+}
+
+/**
+ * Scan a single line for maximal runs of blob characters that classify as an
+ * opaque base64/hex blob (see `classifyOpaqueRun`). Pure linear scan over char
+ * codes — no regex. Bounded by MAX_BLOB_SCAN_LINE_LEN.
+ */
+function scanBlobRuns(
+  line: string,
+  minChars: number,
+  minEntropy: number
+): BlobSpan[] {
   const spans: BlobSpan[] = [];
   if (line.length < minChars) return spans;
   if (line.length > MAX_BLOB_SCAN_LINE_LEN) return spans; // bounded
@@ -191,23 +286,9 @@ function scanBlobRuns(line: string, minChars: number): BlobSpan[] {
       continue;
     }
     const start = i;
-    let hasDigit = false;
-    let hasUpper = false;
-    let hasLower = false;
-    let hasSpecial = false;
-    while (i < n && isBlobChar(line.charCodeAt(i))) {
-      const c = line.charCodeAt(i);
-      if (c >= 48 && c <= 57) hasDigit = true;
-      else if (c >= 65 && c <= 90) hasUpper = true;
-      else if (c >= 97 && c <= 122) hasLower = true;
-      else hasSpecial = true;
-      i++;
-    }
-    const len = i - start;
-    if (len >= minChars) {
-      const opaque =
-        hasSpecial || hasDigit || (hasUpper && hasLower);
-      if (opaque) spans.push({ start, end: i });
+    while (i < n && isBlobChar(line.charCodeAt(i))) i++;
+    if (i - start >= minChars && classifyOpaqueRun(line, start, i, minEntropy)) {
+      spans.push({ start, end: i });
     }
   }
   return spans;
@@ -244,9 +325,10 @@ function isBlank(line: string): boolean {
 function applyBlobLayer(
   line: string,
   minChars: number,
+  minEntropy: number,
   entries: PruneManifestEntry[]
 ): string {
-  const spans = scanBlobRuns(line, minChars);
+  const spans = scanBlobRuns(line, minChars, minEntropy);
   if (spans.length === 0) return line;
   let out = "";
   let cursor = 0;
@@ -279,7 +361,33 @@ function neutralResult(text: string): PruneResult {
     savedPct: 0,
     lossless: true,
     manifest: [],
+    tokenCountMethod: "exact",
   };
+}
+
+/**
+ * Count tokens with a BOUNDED cost. At or under `cap` chars we tokenize exactly
+ * and report the tokenizer's own source ("exact" for OpenAI models, "estimated"
+ * for models without an exact tokenizer — e.g. Claude). Above `cap`, tokenizing
+ * the whole string is O(input) and can hang on a multi-megabyte single token, so
+ * we tokenize a `cap`-char sample exactly and scale by the length ratio — a
+ * deterministic ESTIMATE, labeled as such. Never fabricates an "exact" count.
+ */
+function countTokensBounded(
+  text: string,
+  model: string,
+  cap: number
+): { tokens: number; method: "exact" | "estimated" } {
+  if (text.length === 0) return { tokens: 0, method: "exact" };
+  if (text.length <= cap) {
+    const c = countTokens(text, model);
+    return { tokens: c.tokens, method: c.source === "exact" ? "exact" : "estimated" };
+  }
+  // Sample-and-scale: tokenize the leading `cap` chars, project to full length.
+  const sample = countTokens(text.slice(0, cap), model);
+  const charsPerToken = sample.tokens > 0 ? cap / sample.tokens : 4;
+  const estimated = Math.round(text.length / charsPerToken);
+  return { tokens: estimated, method: "estimated" };
 }
 
 export function pruneResult(
@@ -309,6 +417,15 @@ export function pruneResult(
     Number.isFinite(opt.middleElisionKeep) && opt.middleElisionKeep >= 0
       ? Math.floor(opt.middleElisionKeep)
       : DEFAULTS.middleElisionKeep;
+  const maxTokenizeChars =
+    typeof opt.maxTokenizeChars === "number" && opt.maxTokenizeChars > 0
+      ? Math.floor(opt.maxTokenizeChars)
+      : DEFAULTS.maxTokenizeChars;
+  const minEntropy =
+    Number.isFinite(opt.blobMinEntropyBitsPerChar) &&
+    opt.blobMinEntropyBitsPerChar >= 0
+      ? opt.blobMinEntropyBitsPerChar
+      : DEFAULTS.blobMinEntropyBitsPerChar;
 
   const model = typeof opt.model === "string" && opt.model ? opt.model : "gpt-4o";
 
@@ -332,7 +449,7 @@ export function pruneResult(
 
     if (opt.collapseBlobs) {
       const lineEntries: PruneManifestEntry[] = [];
-      const rewritten = applyBlobLayer(line, blobMin, lineEntries);
+      const rewritten = applyBlobLayer(line, blobMin, minEntropy, lineEntries);
       if (lineEntries.length > 0) {
         losslessSoFar = false;
         line = rewritten;
@@ -479,17 +596,28 @@ export function pruneResult(
   manifest.push(...fullManifest);
 
   // ---- rejoin --------------------------------------------------------------
+  // Restore the trailing newline iff the input had one. NOT gated on length:
+  // a lone "\n" input has finalLines [""] which joins to "" — gating on length
+  // would drop the newline and silently change the bytes. Collapses always keep
+  // ≥1 line, so this never spuriously appends to a genuinely empty result.
   let pruned = finalLines.join("\n");
-  if (hadTrailingNewline && pruned.length > 0) pruned += "\n";
+  if (hadTrailingNewline) pruned += "\n";
 
-  // ---- real token accounting ----------------------------------------------
-  const originalTokens = countTokens(input, model).tokens;
-  const prunedTokens = countTokens(pruned, model).tokens;
+  // ---- bounded, honestly-labeled token accounting -------------------------
+  const origCount = countTokensBounded(input, model, maxTokenizeChars);
+  const prunedCount = countTokensBounded(pruned, model, maxTokenizeChars);
+  const originalTokens = origCount.tokens;
+  const prunedTokens = prunedCount.tokens;
   const savedTokens = originalTokens - prunedTokens;
   const savedPct =
     originalTokens > 0
       ? Math.round((savedTokens / originalTokens) * 10000) / 100
       : 0;
+  // If either count was estimated, the pair is reported as estimated (honest).
+  const tokenCountMethod: "exact" | "estimated" =
+    origCount.method === "exact" && prunedCount.method === "exact"
+      ? "exact"
+      : "estimated";
 
   // lossless is true only if no manifest entry exists AND text is byte-identical
   const lossless = manifest.length === 0 && pruned === input && losslessSoFar;
@@ -502,5 +630,6 @@ export function pruneResult(
     savedPct,
     lossless,
     manifest,
+    tokenCountMethod,
   };
 }

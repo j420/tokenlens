@@ -150,6 +150,50 @@ describe("pruneResult — blank-run collapse", () => {
   });
 });
 
+describe("pruneResult — token accounting method (W2/W3 honesty)", () => {
+  it("labels normal OpenAI-model counts as exact", () => {
+    const r = pruneResult("line one\nline two\n", { model: "gpt-4o" });
+    expect(r.tokenCountMethod).toBe("exact");
+  });
+
+  it("labels counts as estimated when input exceeds maxTokenizeChars (bounded)", () => {
+    // A 60k-char input with a small cap forces the sample-and-scale estimate;
+    // the key property is it stays BOUNDED and is honestly labeled.
+    const big = "some log line with words\n".repeat(2500); // ~60k chars
+    const r = pruneResult(big, { maxTokenizeChars: 5000, model: "gpt-4o" });
+    expect(r.tokenCountMethod).toBe("estimated");
+    expect(r.originalTokens).toBeGreaterThan(0);
+  });
+
+  it("labels Claude-model counts as estimated (tokenizer is approximate there)", () => {
+    const r = pruneResult("hello world\n", { model: "claude-sonnet-4-5-20250929" });
+    expect(r.tokenCountMethod).toBe("estimated");
+  });
+});
+
+describe("pruneResult — byte-identity rejoin (W5)", () => {
+  it.each([
+    ["lone newline", "\n"],
+    ["no trailing newline", "a\nb"],
+    ["trailing newline", "a\nb\n"],
+    ["two trailing blanks (no collapse)", "a\n\n"],
+    ["crlf-ish content", "a\r\nb\r\n"],
+    ["unicode", "café ☕\nnaïve\n"],
+  ])("collapse-nothing input round-trips byte-for-byte: %s", (_name, input) => {
+    // Disable every lossy layer → output must equal input exactly.
+    const r = pruneResult(input, {
+      collapseIdenticalRuns: false,
+      collapseBlankRuns: false,
+      collapseBlobs: false,
+      stripTrailingWhitespace: false,
+      middleElision: false,
+    });
+    expect(r.pruned).toBe(input);
+    expect(r.lossless).toBe(true);
+    expect(r.manifest).toHaveLength(0);
+  });
+});
+
 describe("pruneResult — blob collapse (char-set scan, no regex)", () => {
   const base64ish = (n: number): string => {
     // deterministic pseudo-base64 with mixed classes so it qualifies as opaque
@@ -182,11 +226,43 @@ describe("pruneResult — blob collapse (char-set scan, no regex)", () => {
     expect(r.manifest.filter((m) => m.kind === "blob")).toHaveLength(0);
   });
 
-  it("does collapse a long mixed-case run (case mix => opaque)", () => {
+  it("does NOT collapse a degenerate low-diversity mixed-case run (e.g. aBaBaB…)", () => {
+    // Only 2 distinct symbols, entropy 1.0 — NOT an opaque blob. The old loose
+    // heuristic wrongly collapsed this; the structural detector correctly skips
+    // it (favoring false negatives — never collapse content that isn't a blob).
     let s = "";
     for (let i = 0; i < 600; i++) s += i % 2 === 0 ? "a" : "B";
     const r = pruneResult(s);
+    expect(r.manifest.filter((m) => m.kind === "blob")).toHaveLength(0);
+  });
+
+  it("DOES collapse a genuine lowercase hex blob (digest/hash style)", () => {
+    // 0-9a-f only, many distinct symbols, high entropy → hex blob.
+    const hexAlpha = "0123456789abcdef";
+    let hex = "";
+    for (let i = 0; i < 600; i++) hex += hexAlpha[(i * 11 + 5) % 16];
+    const r = pruneResult(`sha: ${hex} :end`, { stripTrailingWhitespace: false });
     expect(r.manifest.filter((m) => m.kind === "blob")).toHaveLength(1);
+    expect(r.pruned).toContain("[blob: 600 chars");
+  });
+
+  it("does NOT collapse a long hyphenated lowercase+digit identifier (the false-positive case)", () => {
+    // "feature-flag-2024-rollout-…" — has a digit and a special ('-') and would
+    // pass the OLD heuristic, but only 2 char classes and low distinct-symbol
+    // count, so the structural detector refuses it. No false positive.
+    const parts = ["feature", "flag", "2024", "rollout", "config", "alpha"];
+    let id = "";
+    while (id.length < 800) id += parts[(id.length) % parts.length] + "-";
+    const r = pruneResult(id, { stripTrailingWhitespace: false });
+    expect(r.manifest.filter((m) => m.kind === "blob")).toHaveLength(0);
+  });
+
+  it("does NOT collapse a long run of realistic dotted URLs ('.'/':' break the alphabet)", () => {
+    // Real URLs are full of '.' ':' '?' '&' — none are blob chars — so no single
+    // 512+ opaque run ever forms, even across a long concatenation.
+    const url = "https://cdn.example.com/v2/assets/main.bundle.js?h=ab12 ".repeat(40);
+    const r = pruneResult(url, { stripTrailingWhitespace: false });
+    expect(r.manifest.filter((m) => m.kind === "blob")).toHaveLength(0);
   });
 
   it("respects blobMinChars threshold", () => {

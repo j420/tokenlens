@@ -412,3 +412,14 @@ describe("applyUnifiedDiff — fail-safe on corrupted diffs", () => {
     );
   });
 });
+
+describe("tokenCountMethod (W3 honesty)", () => {
+  it("labels OpenAI-model counts exact and Claude-model counts estimated", () => {
+    const a = "one\ntwo\nthree\n";
+    const b = "one\ntwo CHANGED\nthree\n";
+    expect(diffEnforce(a, b, { model: "gpt-4o" }).tokenCountMethod).toBe("exact");
+    expect(diffEnforce(a, b, { model: "claude-sonnet-4-5-20250929" }).tokenCountMethod).toBe(
+      "estimated",
+    );
+  });
+});

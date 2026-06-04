@@ -50,3 +50,10 @@ export {
   hopProximity,
   pathProximity,
 } from "./graph.js";
+
+// Derive the import graph from REAL source (via @prune/repo-map), so relevance
+// reflects how the codebase is actually wired — not only caller-supplied edges.
+export {
+  buildImportEdges,
+  type SourceFile,
+} from "./graph-from-source.js";
