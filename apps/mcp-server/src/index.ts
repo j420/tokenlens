@@ -50,6 +50,7 @@ import {
   handleMcpProxyTrim,
   handleCacheHabits,
   handleSubagentCostPredict,
+  handleReasoningEffortRoute,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1202,6 +1203,60 @@ const TOOLS = [
         },
       },
       required: ["action", "snapshot"],
+    },
+  },
+  {
+    name: "reasoning_effort_route",
+    description:
+      "Reasoning-Effort Auto-Router. Recommends the LOWEST reasoning effort " +
+      "(standard<high<xhigh<max) that is statistically quality-non-inferior to " +
+      "the current dial on the caller's own task class — so the dial is set " +
+      "right up front and never needs a mid-session change (which would bust the " +
+      "prompt cache; this actuates the CH-009 warning). Down-route only (never " +
+      "spends more), respects a floor, and HOLDS on insufficient data or when no " +
+      "lower effort clears the AR/TPR/cost/sample-size gates. Caller supplies the " +
+      "per-effort acceptance/cost stats — nothing is fabricated. Reuses the " +
+      "qpd-bench non-inferiority gates.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        current_effort: {
+          type: "string" as const,
+          enum: ["standard", "high", "xhigh", "max"],
+          description: "The effort dial currently in use.",
+        },
+        outcomes: {
+          type: "array" as const,
+          description:
+            "Per-effort outcome stats on the user's task class. Each: " +
+            "{ effort, n, acceptedCount, testPassRate?, testN?, testPassedCount?, meanCostUsd }. " +
+            "meanCostUsd is caller-computed from real token usage × price.",
+          items: {
+            type: "object" as const,
+            properties: {
+              effort: { type: "string" as const, enum: ["standard", "high", "xhigh", "max"] },
+              n: { type: "number" as const },
+              acceptedCount: { type: "number" as const },
+              testPassRate: { type: ["number", "null"] as const },
+              testN: { type: "number" as const },
+              testPassedCount: { type: "number" as const },
+              meanCostUsd: { type: "number" as const },
+            },
+            required: ["effort", "n", "acceptedCount", "meanCostUsd"],
+          },
+        },
+        task_class: { type: "string" as const, description: "Task class id (cluster). Default 'default'." },
+        floor: {
+          type: "string" as const,
+          enum: ["standard", "high", "xhigh", "max"],
+          description: "Never recommend below this effort. Default 'standard'.",
+        },
+        ar_margin: { type: "number" as const, description: "AR non-inferiority margin (default 0.05)." },
+        tpr_margin: { type: "number" as const, description: "TPR non-inferiority margin (default 0.03)." },
+        cost_dominance_ratio: { type: "number" as const, description: "Max candidate/baseline cost ratio (default 0.7)." },
+        min_samples: { type: "number" as const, description: "Min samples per effort to trust (default 30)." },
+      },
+      required: ["current_effort", "outcomes"],
     },
   },
 ];
@@ -2532,6 +2587,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "subagent_cost_predict":
         result = handleSubagentCostPredict(
           args as unknown as Parameters<typeof handleSubagentCostPredict>[0]
+        );
+        break;
+      case "reasoning_effort_route":
+        result = handleReasoningEffortRoute(
+          args as unknown as Parameters<typeof handleReasoningEffortRoute>[0]
         );
         break;
       case "tool_audit":

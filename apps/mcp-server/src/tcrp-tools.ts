@@ -17,7 +17,10 @@ import {
 import {
   classifyPareto,
   recommendForCluster,
+  routeReasoningEffort,
   type ModelAggregate,
+  type EffortOutcomeStats,
+  type ReasoningEffort,
 } from "@prune/qpd-bench";
 import { loadCachedSessionView } from "@prune/telemetry";
 import {
@@ -788,4 +791,48 @@ export function handleSubagentCostPredict(args: SubagentCostPredictArgs): string
     provider: args.provider,
   });
   return JSON.stringify(prediction, null, 2);
+}
+
+// ===========================================================================
+// 2.4(d) — reasoning_effort_route (Reasoning-Effort Auto-Router)
+// ===========================================================================
+
+export interface ReasoningEffortRouteArgs {
+  /** The effort dial currently in use. */
+  current_effort: ReasoningEffort;
+  /** Per-effort outcome stats on the user's task class (caller-supplied). */
+  outcomes: EffortOutcomeStats[];
+  /** Task class id (qpd cluster). Default "default". */
+  task_class?: string;
+  /** Never recommend below this effort. Default "standard". */
+  floor?: ReasoningEffort;
+  ar_margin?: number;
+  tpr_margin?: number;
+  cost_dominance_ratio?: number;
+  min_samples?: number;
+}
+
+/**
+ * 2.4(d) — recommend the lowest reasoning effort that is quality-non-inferior to
+ * the current one on the caller's task class, so the dial is set right up front
+ * (actuating CH-009, which warns about mid-session effort changes). Down-route
+ * only; holds on insufficient data or when no lower effort clears the gates.
+ * Pure; bad input → a JSON error, never a throw across the MCP wire.
+ */
+export function handleReasoningEffortRoute(args: ReasoningEffortRouteArgs): string {
+  if (!args || typeof args.current_effort !== "string" || !Array.isArray(args.outcomes)) {
+    return JSON.stringify({
+      error:
+        "reasoning_effort_route requires `current_effort` and an `outcomes` array.",
+    });
+  }
+  const rec = routeReasoningEffort(args.current_effort, args.outcomes, {
+    taskClass: args.task_class,
+    floor: args.floor,
+    arMargin: args.ar_margin,
+    tprMargin: args.tpr_margin,
+    costDominanceRatio: args.cost_dominance_ratio,
+    minSamples: args.min_samples,
+  });
+  return JSON.stringify(rec, null, 2);
 }

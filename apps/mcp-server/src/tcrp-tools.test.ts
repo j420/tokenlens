@@ -15,6 +15,7 @@ import {
   handleTrajectoryReplay,
   handleCacheHabits,
   handleSubagentCostPredict,
+  handleReasoningEffortRoute,
   type ReplayCostPlanArgs,
   type McpProxyTrimArgs,
 } from "./tcrp-tools.js";
@@ -422,6 +423,44 @@ describe("subagent_cost_predict MCP handler (N6)", () => {
       handleSubagentCostPredict({ model: MODEL, history: [{ tokensIn: 10, tokensOut: 10 }] })
     );
     expect(r.proposedCount).toBe(1);
+  });
+});
+
+describe("reasoning_effort_route MCP handler (2.4d)", () => {
+  const big = (effort: string, ar: number, cost: number, n = 200) => ({
+    effort,
+    n,
+    acceptedCount: Math.round(n * ar),
+    meanCostUsd: cost,
+  });
+
+  it("recommends a cheaper non-inferior effort with savings", () => {
+    const r = JSON.parse(
+      handleReasoningEffortRoute({
+        current_effort: "max" as never,
+        outcomes: [big("max", 0.9, 0.1), big("high", 0.92, 0.02)] as never,
+      })
+    );
+    expect(r.hold).toBe(false);
+    expect(r.recommendedEffort).toBe("high");
+    expect(r.projectedSavingsPct).toBeGreaterThan(70);
+  });
+
+  it("holds when no lower effort is non-inferior", () => {
+    const r = JSON.parse(
+      handleReasoningEffortRoute({
+        current_effort: "max" as never,
+        outcomes: [big("max", 0.92, 0.1), big("high", 0.7, 0.02)] as never,
+      })
+    );
+    expect(r.hold).toBe(true);
+    expect(r.recommendedEffort).toBe("max");
+  });
+
+  it("returns an error for malformed input", () => {
+    expect(
+      JSON.parse(handleReasoningEffortRoute({ current_effort: undefined as never, outcomes: undefined as never })).error
+    ).toBeTruthy();
   });
 });
 
