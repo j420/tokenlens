@@ -11,6 +11,7 @@
 import {
   calculateCost,
   detectProvider,
+  isModelPriced,
   type Provider,
 } from "@prune/shared";
 
@@ -53,13 +54,46 @@ export interface CostResult {
   tokensOut: number;
   tokensCached: number;
   source: "exact" | "estimated";
+  /**
+   * Whether `costUsd` was computed from a RATE that genuinely exists in the
+   * price table for this (provider, model). When false, the numeric cost is a
+   * `DEFAULT_PRICING` fallback — recorded so the NON-NULL `cost_usd` column
+   * still gets a number, but flagged so no reader mistakes it for an exact
+   * rate. This is independent of `source`: `source` is about token-count
+   * certainty (recorded vs estimated), `pricedExact` is about RATE certainty.
+   */
+  pricedExact: boolean;
+  /**
+   * Human-readable note present ONLY when `pricedExact` is false, explaining
+   * that the cost used a fallback rate. Absent (undefined) when the rate is
+   * genuinely from the table — so its mere presence flags an unpriced charge.
+   */
+  pricingNote?: string;
 }
 
 const DEFAULT_OUT_FLOOR = 500;
 const DEFAULT_OUT_FRACTION = 0.3;
 
+const UNPRICED_NOTE =
+  "default fallback rate; model not in price table";
+
 function resolveProvider(model: string, override?: Provider): Provider {
   return override ?? detectProvider(model);
+}
+
+/**
+ * Resolve the rate-confidence for a (provider, model) pair using the STRICT
+ * pricing API. `isModelPriced` is the single source of truth — it checks the
+ * table directly with no DEFAULT_PRICING fallback, so an unknown model yields
+ * `pricedExact: false` and a note, never a silently-exact rate.
+ */
+function pricingConfidence(provider: Provider, model: string): {
+  pricedExact: boolean;
+  pricingNote?: string;
+} {
+  return isModelPriced(provider, model)
+    ? { pricedExact: true }
+    : { pricedExact: false, pricingNote: UNPRICED_NOTE };
 }
 
 export function computeRecordedCost(usage: RecordedUsage): CostResult {
@@ -79,6 +113,7 @@ export function computeRecordedCost(usage: RecordedUsage): CostResult {
     tokensOut: usage.tokensOut,
     tokensCached: usage.tokensCached ?? 0,
     source: "exact",
+    ...pricingConfidence(provider, usage.model),
   };
 }
 
@@ -96,5 +131,6 @@ export function estimateUpcomingCost(req: CostEstimateRequest): CostResult {
     tokensOut: estOut,
     tokensCached: 0,
     source: req.estimatedTokensOut === undefined ? "estimated" : "exact",
+    ...pricingConfidence(provider, req.model),
   };
 }

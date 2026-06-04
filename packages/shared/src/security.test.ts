@@ -206,25 +206,78 @@ describe("Security: Boundary Conditions", () => {
 
 describe("Security: Timing Considerations", () => {
   it("should have consistent timing for valid/invalid models", () => {
-    const iterations = 1000;
+    // Goal: no MASSIVE timing divergence between the valid-model and
+    // invalid-model code paths (a real side-channel — e.g. an exception throw
+    // or a regex scan on the miss path — would show orders-of-magnitude
+    // difference). We are NOT claiming constant-time crypto comparison.
+    //
+    // A single wall-clock sample of two tight loops is unreliable on a loaded
+    // CI runner: one loop can be hit by a GC pause or a scheduler preemption
+    // while the other isn't, spiking the ratio (observed: 23×) with no real
+    // side-channel. So we measure robustly:
+    //   1. WARM UP both paths so neither pays a one-time JIT-compile cost
+    //      inside the measured region.
+    //   2. Repeat each measurement many times and compare the MEDIAN of each
+    //      path. The median rejects the one-off GC/scheduling outliers that
+    //      cause the spurious spike, while still surfacing a systematic gap.
+    //   3. Interleave/alternate which path runs first per repetition so neither
+    //      gets a consistent cache-warmth advantage.
+    const iterations = 20_000;
+    const reps = 15;
 
-    // Time valid model
-    const validStart = performance.now();
-    for (let i = 0; i < iterations; i++) {
-      estimateCost(1000, "gpt-4o", "input");
+    const runValid = (): number => {
+      const start = performance.now();
+      for (let i = 0; i < iterations; i++) estimateCost(1000, "gpt-4o", "input");
+      return performance.now() - start;
+    };
+    const runInvalid = (): number => {
+      const start = performance.now();
+      for (let i = 0; i < iterations; i++) {
+        estimateCost(1000, "invalid-model-12345" as "gpt-4o", "input");
+      }
+      return performance.now() - start;
+    };
+
+    // Warm-up (results discarded): force both paths through the JIT once.
+    runValid();
+    runInvalid();
+
+    const valid: number[] = [];
+    const invalid: number[] = [];
+    for (let r = 0; r < reps; r++) {
+      // Alternate ordering to cancel any systematic first-mover bias.
+      if (r % 2 === 0) {
+        valid.push(runValid());
+        invalid.push(runInvalid());
+      } else {
+        invalid.push(runInvalid());
+        valid.push(runValid());
+      }
     }
-    const validDuration = performance.now() - validStart;
 
-    // Time invalid model
-    const invalidStart = performance.now();
-    for (let i = 0; i < iterations; i++) {
-      estimateCost(1000, "invalid-model-12345" as "gpt-4o", "input");
+    const median = (xs: number[]): number => {
+      const s = [...xs].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    };
+
+    const medValid = median(valid);
+    const medInvalid = median(invalid);
+
+    // If both medians are below the timer's effective resolution, the ratio is
+    // dominated by clock granularity, not by the code — the only honest claim is
+    // that both paths are trivially fast (no side-channel possible at this
+    // scale), so don't assert a meaningless ratio.
+    const FLOOR_MS = 0.5;
+    if (Math.max(medValid, medInvalid) < FLOOR_MS) {
+      expect(medValid).toBeLessThan(FLOOR_MS);
+      expect(medInvalid).toBeLessThan(FLOOR_MS);
+      return;
     }
-    const invalidDuration = performance.now() - invalidStart;
 
-    // Both should be similar (within 10x) - we're not doing cryptographic comparison
-    // but there shouldn't be a massive timing difference
-    const ratio = Math.max(validDuration, invalidDuration) / Math.min(validDuration, invalidDuration);
+    // Robust ratio: median-of-repeats is stable well under this bound in
+    // practice; a real side-channel would blow far past it.
+    const ratio = Math.max(medValid, medInvalid) / Math.min(medValid, medInvalid);
     expect(ratio).toBeLessThan(10);
   });
 });

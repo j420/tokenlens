@@ -4,9 +4,17 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) is an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage. It works with any VS Code-based editor. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~37-workspace monorepo** (34 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
+
+**What ships today, beyond the original extension:**
+
+- **TCRP feature library (f1–f13 + Phase-8 Tier-1):** trajectory diet, tool-def auditing, semantic cache, QpD bench, context health, lazy-schema MCP proxy, what-if replay-cost, skill library, speculative tool pipeline, plus the five Phase-8 features (tool-result pruner, max_tokens calibrator, diff-vs-rewrite enforcer, reasoning-effort router, open-tab auditor). See **TCRP Feature Map** below.
+- **MCP tool surface (~30 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
+- **Hooks system:** `apps/extension/hooks/*.mjs` — Claude Code lifecycle hooks (advisors, recorders, breakers, forwarders) with a flag system and an auto-installer.
+- **Persistence + telemetry:** local SQLite + a real Postgres sink (`@prune/persistence`), with open-standard exporters (OpenTelemetry GenAI + FOCUS FinOps).
+- **Strict, honest pricing:** unknown model → `null`, never a fabricated default rate (`@prune/shared`).
 
 ---
 
@@ -36,25 +44,128 @@ tokenlens/
 ├── apps/
 │   ├── extension/              # Editor extension (Cursor / Claude Code / Codex)
 │   │   ├── src/
-│   │   │   ├── extension.ts          # Entry point, commands, status bar
+│   │   │   ├── extension.ts          # Entry point, commands, status bar, installHooks
 │   │   │   ├── token-saver.ts        # Smart Copy, Pre-flight, Session Memory, Compaction
-│   │   │   ├── squeezer.ts           # WASM tree-sitter code compression
+│   │   │   ├── squeezer.ts           # tree-sitter code compression
 │   │   │   ├── context-analyzer.ts   # File-level relevance scoring
-│   │   │   ├── prune-intelligence.ts # v2 engine: symbol-level DAG analysis
-│   │   │   └── prune-intelligence.test.ts
-│   │   └── wasm/               # Tree-sitter WASM grammars
-│   ├── dashboard/              # Next.js web dashboard (in progress)
-│   └── mcp-server/             # MCP server for AI self-regulation
-├── packages/
-│   ├── tokenizer/              # Local token counting (gpt-tokenizer)
-│   ├── squeezer/               # Code compression library
-│   ├── state-scraper/          # Cursor usage tracking (sql.js)
-│   ├── intelligence/           # Core algorithms (relevance, ROI, cost)
-│   ├── shared/                 # Shared types, pricing, config
-│   └── db/                     # PostgreSQL schema (Drizzle ORM)
+│   │   │   └── prune-intelligence.ts # v2 engine: symbol-level DAG analysis
+│   │   └── hooks/             # Claude Code lifecycle hooks (.mjs) + flags + installer
+│   ├── dashboard/              # Next.js web dashboard + telemetry read-side
+│   └── mcp-server/             # MCP server: ~30 tools for AI self-regulation
+├── packages/                   # 34 workspaces — grouped by role below
+│   # --- Core / foundation ---
+│   ├── shared/                 # Shared types + STRICT pricing (unknown model → null)
+│   ├── tokenizer/              # Local token counting (OpenAI + Anthropic)
+│   ├── intelligence/           # Core algorithms: relevance, ROI, subagent-cost-predictor
+│   ├── db/                     # Postgres schema (Drizzle ORM) + ORM re-exports (orm.ts)
+│   ├── persistence/            # PersistenceSink: local SQLite + PostgresSink + forwarder
+│   ├── telemetry/              # Telemetry event types / recording path
+│   ├── equivalence/            # Output-equivalence relations (gate for cost transforms)
+│   ├── quality/                # Statistical non-inferiority testing for TCRP
+│   # --- TCRP features f1–f13 ---
+│   ├── trajectory-diet/        # f1  — low-influence retrieval-step advisor
+│   ├── tab-auditor/            # (Phase-8) IDE open-tab relevance auditor
+│   ├── qpd-bench/              # f4  — Pareto quality-per-dollar bench + effort-router
+│   ├── context-health/         # f6  — Effective Context Fullness + CUSUM inflection warns
+│   ├── semantic-cache/         # f7  — in-process embedder + equivalence-gated cache
+│   ├── code-mode-mcp/          # f8  — JSON-schema → typed TS API + vm sandbox
+│   ├── cache-habits/           # f9/E3 — pre-action prompt-cache-killer linter
+│   ├── mcp-proxy/              # f10/E1 — lazy-schema cross-vendor MCP proxy
+│   ├── replay-cost/            # f11/E2 — what-if deterministic replay cost engine
+│   ├── replay-vault/           # tamper-evident audit log (canonicalization source)
+│   ├── skill-library/          # f12/E4 — cross-session typed skill reuse
+│   ├── speculative-pipeline/   # f13/E5 — speculative read-only tool pipeline + worktree exec
+│   ├── response-tuner/         # (Phase-8) tool-result sub-token pruner + max_tokens calibrator
+│   ├── diff-enforcer/          # (Phase-8) diff-vs-rewrite cost enforcer
+│   # --- Routing / governance / safety ---
+│   ├── router/                 # Deterministic three-tier routing (Haiku/Sonnet/Opus)
+│   ├── budget-gate/            # Active budget tracking + enforcement
+│   ├── slo/                    # Cost SLO + circuit-breaker (error-budget pattern)
+│   ├── sentinel/               # Secret detection + MCP prompt-injection shield
+│   ├── attribution/            # Per-dev / per-PR / per-project cost attribution
+│   ├── export/                 # OpenTelemetry GenAI + FOCUS FinOps exporters
+│   ├── agent-sdk-adapter/      # Provider-neutral Agent SDK control plane
+│   ├── host-adapters/          # Real Claude Code session data → typed tool inputs
+│   # --- Code intelligence ---
+│   ├── squeezer/               # TS Compiler API code compression
+│   ├── squeezer-py/            # Python code compression
+│   ├── repo-map/               # Symbol-level repo map (PageRank, signatures-only)
+│   ├── response-tuner/         # (see above)
+│   ├── state-scraper/          # Cursor usage tracking (sql.js, zero-key)
+│   ├── sentinel/               # (see above)
+│   ├── qpd-bench/              # (see above)
+│   └── ...                     # (also: code-mode-mcp tests, qpd-bench, etc.)
 ├── turbo.json
 └── package.json
 ```
+
+> Note: a few packages appear under more than one role above for readability;
+> the authoritative one-line description for each lives in its own `package.json`
+> `description` field.
+
+---
+
+## TCRP Feature Map
+
+The Token-Cost Reduction Program features. Each is a standalone, tested package;
+most are also surfaced as an MCP tool and/or a Claude Code hook. All are
+deterministic (no model calls in decision logic, no regex parsing/classification),
+fail-safe, and never fabricate a token/cost number.
+
+| Feature | Package | What it does |
+|---------|---------|--------------|
+| **f1** Trajectory Diet | `trajectory-diet` | Predicts low-influence retrieval steps; advises skipping similar steps (advisory-only). |
+| **f2** Tool-Def Auditor | `mcp-server` (`tool_audit`) | Flags MCP tool-definition bloat consuming context. |
+| **f4** QpD Bench | `qpd-bench` | Finds model tiers statistically quality-equivalent to the current one at lower cost. |
+| **f5** HUD | `extension` | Status-bar token/cost HUD (honest: shows `insufficient_data` when a model is unpriced). |
+| **f6** Context Health | `context-health` | Effective Context Fullness + CUSUM change-point inflection warnings. |
+| **f7** Semantic Cache | `semantic-cache` | In-process char-n-gram + IDF cosine cache; equivalence-gated; content-SHA poisoning defense. |
+| **f8** Code-Mode MCP | `code-mode-mcp` | JSON-schema → typed TS API; vm sandbox; equivalence-proof harness. |
+| **f9 / E3** Cache-Habits Linter | `cache-habits` | Pre-action warnings before a documented prompt-cache-killer pattern fires. |
+| **f10 / E1** MCP Proxy | `mcp-proxy` | Lazy-schema cross-vendor proxy; returns only intent-matching tools. |
+| **f11 / E2** Replay-Cost | `replay-cost` | What-if deterministic replay: shared-prefix re-serve vs cold re-run cost. |
+| **f12 / E4** Skill Library | `skill-library` | Captures influential trajectory subset; replays typed skill on matching tasks. |
+| **f13 / E5** Speculative Pipeline | `speculative-pipeline` | Parallel speculative READ-ONLY tool execution against a sandboxed worktree. |
+| **P8(a)** Tool-Result Pruner | `response-tuner` | Sub-token pruning of large tool results. |
+| **P8(b)** max_tokens Calibrator | `response-tuner` | Statistical `max_tokens` calibration. |
+| **P8(c)** Diff-vs-Rewrite Enforcer | `diff-enforcer` | Decides diff vs full rewrite by real token cost (sound round-trip guarantee). |
+| **P8(d)** Reasoning-Effort Router | `qpd-bench` (`effort-router`) | Routes reasoning effort by task; actuates cache-habit CH-009. |
+| **P8(e)** Open-Tab Auditor | `tab-auditor` | Scores open editor tabs; recommends dropping low-relevance tabs from AI context. |
+
+---
+
+## MCP Tool Surface
+
+`apps/mcp-server` registers ~30 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
+including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
+`cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
+`routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
+`slo_status`, `attribution_rollup`, `export_focus_csv`, `export_otel_genai`,
+`sentinel_scan_prompt` / `sentinel_scan_mcp`, `repo_map`, `replay_verify` /
+`replay_list`, `subagent_status` / `subagent_cost_predict`, `budget_status` /
+`budget_configure`, `compaction_check`, `tool_audit`, `qpd_report`,
+`code_mode_generate_api` / `code_mode_harness`, `semantic_cache_probe`,
+`trajectory_replay_report`, `context_health_report`, `open_tab_audit`.
+
+Some tools are **caller-fed**: they require typed inputs (e.g. a proposed-action
+diff) that a Claude Code hook payload doesn't carry; `@prune/host-adapters`
+converts available session data into those inputs, and any value absent from the
+source is `null`, never guessed.
+
+---
+
+## Hooks System
+
+`apps/extension/hooks/*.mjs` are Claude Code lifecycle hooks, installable via the
+`prune.installHooks` command (`install.mjs`) and gated by a flag system
+(`flags.mjs`; features f7–f13 currently ship in `mode: shadow`). Hooks include
+advisors (`cache-habits-advisor`, `context-health-advisor`, `skill-advisor`,
+`trajectory-diet`), recorders (`replay-recorder`, `skill-capture`,
+`speculative-record`), breakers (`loop-breaker`, `slo-breaker`,
+`subagent-warden`), safety (`sentinel-prompt`, `sentinel-mcp`), cache
+(`cache-stabilize`, `speculative-prune`), recovery (`compaction-recover`), budget
+(`budget-gate`), and the telemetry forwarder (`telemetry-forward`). Hooks are
+fail-safe: they must never hang, throw uncaught, or block the agent.
 
 ---
 

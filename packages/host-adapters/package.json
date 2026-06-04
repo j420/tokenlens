@@ -1,0 +1,28 @@
+{
+  "name": "@prune/host-adapters",
+  "version": "0.1.0",
+  "description": "Host adapters — turn REAL, available Claude Code session data (typed transcript view, f5 HUD transitions) into the typed inputs the caller-fed MCP tools require. No fabrication: any value absent from the source is null, never guessed. No regex parsing; structure is derived from the typed transcript view and explicit field comparisons.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/cache-habits": "0.1.0",
+    "@prune/persistence": "0.1.0",
+    "@prune/telemetry": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

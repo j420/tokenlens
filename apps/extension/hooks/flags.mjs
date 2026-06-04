@@ -25,7 +25,13 @@
  */
 
 import { homedir } from "node:os";
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes } from "node:crypto";
 
@@ -37,13 +43,64 @@ import {
   withFeatureMutation,
 } from "@prune/shared";
 
+import {
+  buildReadinessReport,
+  formatReadiness,
+} from "./_readiness.mjs";
+
 export const DEFAULT_FLAG_PATH = join(homedir(), ".prune", "feature-flags.json");
+
+/** Local events DB the readiness reporter reads (override PRUNE_EVENTS_SQLITE). */
+export const DEFAULT_EVENTS_DB = join(homedir(), ".prune", "events.sqlite");
 
 /** The two modes a feature may be promoted INTO via `enable`. */
 const ENABLE_MODES = new Set(["general", "canary"]);
 
 export function flagPath(env = process.env) {
   return env.PRUNE_FLAGS_PATH || DEFAULT_FLAG_PATH;
+}
+
+/** Events DB path the readiness reporter reads. Override with PRUNE_EVENTS_SQLITE. */
+export function eventsDbPath(env = process.env) {
+  return env.PRUNE_EVENTS_SQLITE || DEFAULT_EVENTS_DB;
+}
+
+/**
+ * Read per-feature shadow-event counts from the local events sink, fail-safe.
+ * Returns `{ counts, hadDb }`: a missing DB or any read error yields an empty
+ * map with `hadDb:false` so the caller can print a clean "no telemetry yet"
+ * message rather than an error. Never throws.
+ *
+ * The persistence package is imported dynamically so this CLI module stays
+ * importable in tests (pure-logic tests don't pull in sql.js/WASM), mirroring
+ * how the hooks defer heavy deps.
+ */
+export async function readFeatureCounts(dbPath, deps = {}) {
+  const exists = deps.existsSync ?? existsSync;
+  // No DB yet ⇒ no telemetry. Not an error.
+  if (!exists(dbPath)) return { counts: {}, hadDb: false };
+  let sink = null;
+  try {
+    const mod = deps.loadPersistence
+      ? await deps.loadPersistence()
+      : await import("@prune/persistence");
+    const { LocalSqliteSink } = mod;
+    sink = new LocalSqliteSink({ path: dbPath });
+    await sink.init();
+    const counts = await sink.countEventsByFeature();
+    return { counts: counts ?? {}, hadDb: true };
+  } catch {
+    // Locked by a concurrent writer, corrupt file, open failure — best-effort.
+    return { counts: {}, hadDb: false };
+  } finally {
+    if (sink) {
+      try {
+        await sink.close();
+      } catch {
+        /* ignore close errors */
+      }
+    }
+  }
 }
 
 /** Read + validate the flag file. A missing/malformed file ⇒ validated defaults. */
@@ -99,7 +156,36 @@ export function parseArgs(argv) {
     if (!id) return { error: unknownIdMsg(idOrName) };
     return { kind: "disable", id };
   }
-  return { error: `unknown subcommand "${cmd}". Try: list | enable | disable` };
+  if (cmd === "readiness") {
+    // readiness [--min N] — report-only, never promotes.
+    let min;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === "--min") {
+        const v = rest[i + 1];
+        if (v === undefined) return { error: `--min requires a number` };
+        i++;
+        const n = Number(v);
+        if (!Number.isFinite(n) || n <= 0) {
+          return { error: `--min must be a positive number, got "${v}"` };
+        }
+        min = Math.trunc(n);
+      } else if (a.startsWith("--min=")) {
+        const v = a.slice("--min=".length);
+        const n = Number(v);
+        if (!Number.isFinite(n) || n <= 0) {
+          return { error: `--min must be a positive number, got "${v}"` };
+        }
+        min = Math.trunc(n);
+      } else {
+        return { error: `readiness: unexpected argument "${a}"` };
+      }
+    }
+    return { kind: "readiness", min };
+  }
+  return {
+    error: `unknown subcommand "${cmd}". Try: list | enable | disable | readiness`,
+  };
 }
 
 function unknownIdMsg(idOrName) {
@@ -145,9 +231,33 @@ const HELP = `prune flags — promote/demote TCRP feature flags (${"~/.prune/fea
   list                       Show every feature's id, name, enabled, mode.
   enable  <id|name> <mode>   Enable a feature; mode is "general" or "canary".
   disable <id|name>          Disable a feature (enabled=false, mode="disabled").
+  readiness [--min N]        Report per-feature shadow-event counts and mark each
+                             READY / NOT-READY for promotion at threshold N
+                             (default 50). REPORT ONLY — never promotes.
 
   <id|name> accepts an id (f10) or a name (mcpProxy).
-  Override the file with PRUNE_FLAGS_PATH.`;
+  Override the flags file with PRUNE_FLAGS_PATH, the events DB with PRUNE_EVENTS_SQLITE.`;
+
+/**
+ * Run the `readiness` report. Async (reads the events sink). Returns an exit
+ * code. Report-only: it computes counts + READY/NOT-READY and prints them; it
+ * NEVER mutates flags. A missing/locked DB prints a clean "no telemetry yet".
+ * Injectable readCounts for tests.
+ */
+export async function runReadiness(
+  command,
+  {
+    env = process.env,
+    out = (s) => process.stdout.write(s),
+    readCounts = readFeatureCounts,
+  } = {}
+) {
+  const dbPath = eventsDbPath(env);
+  const { counts } = await readCounts(dbPath, { env });
+  const report = buildReadinessReport(TCRP_FEATURE_IDS, counts, command.min);
+  out(`${formatReadiness(report, (id) => TCRP_FEATURE_NAMES[id])}\n`);
+  return 0;
+}
 
 /**
  * Run the CLI. Returns an exit code. Injectable env/out/err for tests; defaults
@@ -166,6 +276,10 @@ export function run(
   if (command.kind === "help") {
     out(`${HELP}\n`);
     return 0;
+  }
+  if (command.kind === "readiness") {
+    // Async, report-only. Returns a Promise<number>; the CLI entry awaits it.
+    return runReadiness(command, { env, out, err });
   }
 
   const path = flagPath(env);
@@ -194,5 +308,7 @@ export function run(
 const invokedDirectly =
   process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href;
 if (invokedDirectly) {
-  process.exit(run(process.argv.slice(2)));
+  // run() returns a number for sync commands and a Promise<number> for the
+  // async `readiness` report; await covers both.
+  Promise.resolve(run(process.argv.slice(2))).then((code) => process.exit(code));
 }

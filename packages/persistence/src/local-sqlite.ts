@@ -746,6 +746,35 @@ export class LocalSqliteSink implements PersistenceSink {
   }
 
   /**
+   * Count feature-tagged events grouped by feature_id (feature_id IS NOT NULL).
+   * Returns `{ [featureId]: count }`; a feature with no events is simply absent.
+   *
+   * Defensive hydration: a non-string feature_id or a non-finite/negative count
+   * coming back from the driver is skipped rather than poisoning the map, so a
+   * corrupt row can never make the readiness reporter throw or report nonsense.
+   */
+  async countEventsByFeature(): Promise<Record<string, number>> {
+    const db = this.ensure();
+    const stmt = db.prepare(
+      `SELECT feature_id AS fid, COUNT(*) AS n
+       FROM events
+       WHERE feature_id IS NOT NULL
+       GROUP BY feature_id`
+    );
+    const out: Record<string, number> = {};
+    while (stmt.step()) {
+      const r = stmt.getAsObject() as Record<string, unknown>;
+      const fid = r.fid;
+      const n = r.n;
+      if (typeof fid !== "string" || fid.length === 0) continue;
+      if (typeof n !== "number" || !Number.isFinite(n) || n < 0) continue;
+      out[fid] = n;
+    }
+    stmt.free();
+    return out;
+  }
+
+  /**
    * Read feature-tagged events (feature_id IS NOT NULL) in forward order —
    * (timestamp ASC, event_id ASC) — strictly AFTER `cursor`, capped at `limit`.
    *

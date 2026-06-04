@@ -268,7 +268,16 @@ export class BudgetGate {
       tokens_cache_creation: req.usage.tokensCacheCreation ?? 0,
       cost_usd: cost.costUsd,
       source: "recorded",
-      metadata: { ...attributionMeta, ...(req.metadata ?? {}) },
+      // Stamp rate-confidence so an unpriced charge is FLAGGED, never presented
+      // as exact. cost_usd is still a number (DEFAULT_PRICING fallback) to honor
+      // the NON-NULL column; pricedExact:false + pricingNote say it's a fallback.
+      // Caller metadata can override these keys if it knows better.
+      metadata: {
+        ...attributionMeta,
+        pricedExact: cost.pricedExact,
+        ...(cost.pricingNote ? { pricingNote: cost.pricingNote } : {}),
+        ...(req.metadata ?? {}),
+      },
     };
     await this.sink.recordBudgetCharge(charge);
 

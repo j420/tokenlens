@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Standard build + unit/integration test pass.
+  # The live-Postgres suite is gated (PRUNE_PG_TEST_URL unset) and self-skips
+  # here, so this job stays green without a database.
+  # --------------------------------------------------------------------------
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm run test
+
+  # --------------------------------------------------------------------------
+  # Gated live-Postgres integration test for @prune/persistence PostgresSink
+  # (pending action 1.1). Runs the suite that PGlite (WASM) cannot prove:
+  # real postgres-js driver result shaping, numeric/jsonb coercion, and genuine
+  # connection-pool concurrency, against a REAL Postgres 16 server.
+  # --------------------------------------------------------------------------
+  postgres-live:
+    name: Live Postgres integration test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # Matches the connection URL below: trust auth, default "postgres" user,
+          # and a dedicated throwaway database created via POSTGRES_DB.
+          POSTGRES_USER: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: prunetest
+        ports:
+          # Map the container's 5432 to host 5433 to match the URL the test docs
+          # use (postgres://postgres@127.0.0.1:5433/prunetest).
+          - 5433:5432
+        # Wait until Postgres is actually accepting connections before the job
+        # steps run, so the test's beforeAll connect doesn't race startup.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # The test reads process.env.PRUNE_PG_TEST_URL; when set it runs (otherwise
+      # describe.skip). The "prunetest" DB is provisioned by POSTGRES_DB above;
+      # the suite then creates its own throwaway tables (self-contained DDL).
+      PRUNE_PG_TEST_URL: postgres://postgres@127.0.0.1:5433/prunetest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # The live test imports from @prune/db/orm (compiled ./dist/orm.js) and
+      # @prune/persistence's own sources, so the workspace deps must be built
+      # before vitest can resolve them.
+      - name: Build workspace
+        run: npm run build
+
+      # Belt-and-suspenders: the service container's health check already gates
+      # job start, but confirm connectivity (and surface a clear error if the
+      # service ever changes) before running the suite.
+      - name: Wait for Postgres
+        run: |
+          for i in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p 5433 -U postgres; then
+              echo "Postgres is ready"
+              exit 0
+            fi
+            echo "Waiting for Postgres... ($i)"
+            sleep 2
+          done
+          echo "Postgres did not become ready in time" >&2
+          exit 1
+
+      - name: Run live-Postgres integration test
+        run: npx vitest run packages/persistence/src/postgres.live.integration.test.ts

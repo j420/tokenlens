@@ -233,6 +233,11 @@ describe("extractFeatureProof", () => {
     expect(ex!.featureId).toBe("f9");
     expect(ex!.qualityProof.featureId).toBe("f9");
   });
+  it("maps cache_habits_from_transcript to f9 (same proof shape)", () => {
+    const ex = extractFeatureProof("cache_habits_from_transcript", f9Result());
+    expect(ex).not.toBeNull();
+    expect(ex!.featureId).toBe("f9");
+  });
 });
 
 describe("isUnsafeTelemetryPath", () => {

@@ -602,6 +602,43 @@ describe("PostgresSink.getRecentEvents (real ORDER BY DESC)", () => {
 });
 
 // ===========================================================================
+// countEventsByFeature — real COUNT(*) GROUP BY against PGlite, proving the
+// raw `sql` template and the bigint-count coercion actually execute.
+// ===========================================================================
+
+describe("PostgresSink.countEventsByFeature (real GROUP BY)", () => {
+  it("groups feature-tagged events and ignores feature_id NULL rows", async () => {
+    // 3× f3, 2× f9, plus a real usage turn with feature_id NULL.
+    await sink.recordEvent({ ...sampleEvent, event_id: "f3-a", feature_id: "f3" });
+    await sink.recordEvent({ ...sampleEvent, event_id: "f3-b", feature_id: "f3" });
+    await sink.recordEvent({ ...sampleEvent, event_id: "f3-c", feature_id: "f3" });
+    await sink.recordEvent({ ...sampleEvent, event_id: "f9-a", feature_id: "f9" });
+    await sink.recordEvent({ ...sampleEvent, event_id: "f9-b", feature_id: "f9" });
+    await sink.recordEvent({
+      ...sampleEvent,
+      event_id: "usage-1",
+      feature_id: null,
+      quality_proof: null,
+    });
+
+    const counts = await sink.countEventsByFeature();
+    // COUNT(*) comes back as a bigint from Postgres; the sink coerces to number.
+    expect(counts).toEqual({ f3: 3, f9: 2 });
+    expect(Object.values(counts).every((n) => typeof n === "number")).toBe(true);
+  });
+
+  it("returns {} when there are no feature-tagged events", async () => {
+    await sink.recordEvent({
+      ...sampleEvent,
+      event_id: "usage-only",
+      feature_id: null,
+      quality_proof: null,
+    });
+    expect(await sink.countEventsByFeature()).toEqual({});
+  });
+});
+
+// ===========================================================================
 // getReplayLogBySession ordering (ASC) + appendReplayLog duplicate rejection
 // via the REAL (session_id, sequence) unique index.
 // ===========================================================================

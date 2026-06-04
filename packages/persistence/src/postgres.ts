@@ -351,6 +351,47 @@ export class PostgresSink implements PersistenceSink {
     return rows.map(fromEventRow);
   }
 
+  /**
+   * Count feature-tagged events grouped by feature_id (feature_id IS NOT NULL).
+   * Returns `{ [featureId]: count }`; a feature with no events is simply absent.
+   *
+   * Mirrors LocalSqliteSink.countEventsByFeature so the readiness reporter sees
+   * the same shape from either backend. Defensive hydration: a non-string id or
+   * a non-finite/negative count from the driver is skipped rather than poisoning
+   * the map. Raw `sql` is used because the COUNT(*) aggregate + GROUP BY shape
+   * isn't expressible through the columns the typed select returns.
+   */
+  async countEventsByFeature(): Promise<Record<string, number>> {
+    const result = await this.db.execute(sql`
+      SELECT feature_id AS fid, COUNT(*) AS n
+      FROM ${persistenceEvents}
+      WHERE feature_id IS NOT NULL
+      GROUP BY feature_id
+    `);
+    // postgres-js / PGlite both surface execute() results as an iterable of row
+    // objects; normalize to an array defensively for either shape.
+    const rows: Array<Record<string, unknown>> = Array.isArray(result)
+      ? (result as Array<Record<string, unknown>>)
+      : Array.from(
+          (result as { rows?: Iterable<Record<string, unknown>> }).rows ?? []
+        );
+    const out: Record<string, number> = {};
+    for (const r of rows) {
+      const fid = r.fid;
+      // COUNT(*) comes back as a bigint string from postgres-js; coerce safely.
+      const n =
+        typeof r.n === "number"
+          ? r.n
+          : typeof r.n === "string" || typeof r.n === "bigint"
+            ? Number(r.n)
+            : NaN;
+      if (typeof fid !== "string" || fid.length === 0) continue;
+      if (!Number.isFinite(n) || n < 0) continue;
+      out[fid] = n;
+    }
+    return out;
+  }
+
   /** No-op: Postgres is durable on commit. */
   async flush(): Promise<void> {
     // intentionally empty — see class docstring.
