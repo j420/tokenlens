@@ -80,3 +80,9 @@ export {
   flushMicrotasks,
   type PendingExecution,
 } from "./test-harness.js";
+export {
+  createWorktreeExecutor,
+  globToRegExp,
+  WorktreeSecurityError,
+  type WorktreeExecutorOptions,
+} from "./worktree-executor.js";
