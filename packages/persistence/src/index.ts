@@ -12,8 +12,12 @@
  * query layer is executed against an in-memory PGlite Postgres
  * (postgres.integration.test.ts) which writes then reads back each row type and
  * verifies upsert conflict targets and the replay-log unique index. PGlite is
- * not a byte-identical stand-in for a production server, so a live-server smoke
- * test remains advisable.
+ * not a byte-identical stand-in for a production server, so a gated live-server
+ * smoke test (postgres.live.integration.test.ts) covers the rest — real
+ * postgres-js driver result shaping, server numeric/jsonb coercion, pooled
+ * concurrency, and the unique-index race. It runs only when PRUNE_PG_TEST_URL
+ * points at a throwaway Postgres, and skips otherwise so CI without a DB stays
+ * green.
  */
 
 export * from "./sink.js";
