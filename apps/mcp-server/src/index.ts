@@ -51,6 +51,10 @@ import {
   handleCacheHabits,
   handleSubagentCostPredict,
   handleReasoningEffortRoute,
+  handleResultPrune,
+  handleMaxTokensCalibrate,
+  handleDiffVsRewrite,
+  handleOpenTabAudit,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1257,6 +1261,135 @@ const TOOLS = [
         min_samples: { type: "number" as const, description: "Min samples per effort to trust (default 30)." },
       },
       required: ["current_effort", "outcomes"],
+    },
+  },
+  {
+    name: "result_prune",
+    description:
+      "Phase-8 Tool-Result Sub-Token Pruner. Shrinks the token cost of a large " +
+      "tool RESULT (file dump, grep/log output, JSON blob) by layered, fully-" +
+      "accounted reduction: identical-line-run collapse, blank-run collapse, " +
+      "opaque-blob collapse (char-set scan → sha256, NOT regex), trailing-" +
+      "whitespace strip, and head/tail middle elision. Returns the pruned text, " +
+      "REAL before/after token counts (@prune/tokenizer), savings, a lossless " +
+      "flag, and a manifest accounting for every byte removed. Deterministic, " +
+      "idempotent, never throws.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        text: { type: "string" as const, description: "The tool-result text to prune." },
+        options: {
+          type: "object" as const,
+          description:
+            "Optional PruneOptions: layer toggles + thresholds (blobMinChars, " +
+            "middleElisionTriggerLines, headTailLines, …). The core sanitizes.",
+        },
+      },
+      required: ["text"],
+    },
+  },
+  {
+    name: "max_tokens_calibrate",
+    description:
+      "Phase-8 max_tokens Calibrator. From observed OUTPUT-token-count samples " +
+      "for a task class, recommends a max_tokens reservation = nearest-rank " +
+      "quantile(p) × (1+safetyMargin) rounded up to a bucket, and reports the " +
+      "estimated truncation rate at the recommendation and at the current cap " +
+      "plus over-reservation vs the max observed. Returns insufficient_data " +
+      "(null recommendation) below minSamples — never guesses. Deterministic.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        samples: {
+          type: "array" as const,
+          items: { type: "number" as const },
+          description: "Observed output-token counts (NaN/negative/non-number are filtered).",
+        },
+        options: {
+          type: "object" as const,
+          description:
+            "Optional CalibrateOptions: p (default 0.95), safetyMargin (0.15), " +
+            "bucket (256), minSamples (20), currentMaxTokens.",
+        },
+      },
+      required: ["samples"],
+    },
+  },
+  {
+    name: "diff_vs_rewrite",
+    description:
+      "Phase-8 Diff-vs-Rewrite Enforcer. Given an original file and a proposed " +
+      "new version, decides whether a line-level unified DIFF or a FULL REWRITE " +
+      "costs fewer REAL tokens (@prune/tokenizer). The diff is computed with a " +
+      "hand-written LCS dynamic program over lines (bounded; no regex, no diff " +
+      "library) and is ROUND-TRIP VERIFIED — the serialized diff is re-applied " +
+      "to the original and must reconstruct the proposed exactly; an unsound " +
+      "diff is never recommended (falls back to rewrite). Returns the " +
+      "recommendation, the diff, both token counts, savings, changeRatio, and " +
+      "diffVerified.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        original: { type: "string" as const, description: "The current file content." },
+        proposed: { type: "string" as const, description: "The proposed new content." },
+        options: {
+          type: "object" as const,
+          description:
+            "Optional DiffEnforceOptions: model, context lines, changeRatio " +
+            "rewrite threshold, minSavingFraction, maxCells bound.",
+        },
+      },
+      required: ["original", "proposed"],
+    },
+  },
+  {
+    name: "open_tab_audit",
+    description:
+      "Phase-8 IDE Open-Tab Auditor. Editors auto-attach open tabs to the AI " +
+      "context; many are irrelevant and waste tokens. Scores each tab's " +
+      "relevance to the current task from STRUCTURAL signals (import-graph BFS " +
+      "proximity or path distance, access recency, task-keyword token overlap, " +
+      "and a size penalty — no regex) and recommends which to DROP from auto-" +
+      "context with honest, null-aware token savings. ALWAYS keeps the active " +
+      "file and any dirty (unsaved) tab. Deterministic.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        tabs: {
+          type: "array" as const,
+          description: "Open tabs: { path, tokenCount?, lastAccessedAt?, isDirty? }.",
+          items: {
+            type: "object" as const,
+            properties: {
+              path: { type: "string" as const },
+              tokenCount: { type: ["number", "null"] as const },
+              lastAccessedAt: { type: ["string", "null"] as const },
+              isDirty: { type: "boolean" as const },
+            },
+            required: ["path"],
+          },
+        },
+        activeFile: { type: "string" as const, description: "Path of the active editor file (always kept)." },
+        task_keywords: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Keywords describing the current task (for token-overlap relevance).",
+        },
+        import_edges: {
+          type: "array" as const,
+          description: "Optional import graph edges for proximity scoring.",
+          items: {
+            type: "object" as const,
+            properties: { from: { type: "string" as const }, to: { type: "string" as const } },
+            required: ["from", "to"],
+          },
+        },
+        options: {
+          type: "object" as const,
+          description: "Optional AuditOptions: dropThreshold (default 0.35), weights.",
+        },
+      },
+      required: ["tabs", "activeFile"],
     },
   },
 ];
@@ -2592,6 +2725,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "reasoning_effort_route":
         result = handleReasoningEffortRoute(
           args as unknown as Parameters<typeof handleReasoningEffortRoute>[0]
+        );
+        break;
+      case "result_prune":
+        result = handleResultPrune(
+          args as unknown as Parameters<typeof handleResultPrune>[0]
+        );
+        break;
+      case "max_tokens_calibrate":
+        result = handleMaxTokensCalibrate(
+          args as unknown as Parameters<typeof handleMaxTokensCalibrate>[0]
+        );
+        break;
+      case "diff_vs_rewrite":
+        result = handleDiffVsRewrite(
+          args as unknown as Parameters<typeof handleDiffVsRewrite>[0]
+        );
+        break;
+      case "open_tab_audit":
+        result = handleOpenTabAudit(
+          args as unknown as Parameters<typeof handleOpenTabAudit>[0]
         );
         break;
       case "tool_audit":

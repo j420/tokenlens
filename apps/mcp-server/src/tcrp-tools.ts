@@ -70,6 +70,9 @@ import {
   type CacheTtl,
   type ModelFamily,
 } from "@prune/cache-habits";
+import { pruneResult, calibrateMaxTokens } from "@prune/response-tuner";
+import { diffEnforce } from "@prune/diff-enforcer";
+import { auditOpenTabs } from "@prune/tab-auditor";
 import type { Provider } from "@prune/shared";
 
 // TCRP feature ids for the two MCP-tool features whose quality_proof rides the
@@ -855,4 +858,92 @@ export function handleReasoningEffortRoute(args: ReasoningEffortRouteArgs): stri
     minSamples: args.min_samples,
   });
   return JSON.stringify(rec, null, 2);
+}
+
+// ===========================================================================
+// Phase-8 Tier-1 features (boundary wrappers over tested package cores).
+// Each parses args, calls the pure core, and shapes JSON. The cores live in
+// @prune/response-tuner, @prune/diff-enforcer, @prune/tab-auditor and own the
+// real algorithms + tests; these handlers add only arg validation and the
+// "never throw across the wire → JSON error" boundary discipline.
+// ===========================================================================
+
+export interface ResultPruneArgs {
+  /** The large tool-result text to prune. */
+  text: string;
+  /** Pass-through PruneOptions (layer toggles, thresholds). The core sanitizes. */
+  options?: Record<string, unknown>;
+}
+
+/** 2.4(a) — shrink a large tool result; real token accounting + manifest. */
+export function handleResultPrune(args: ResultPruneArgs): string {
+  if (!args || typeof args.text !== "string") {
+    return JSON.stringify({ error: "result_prune requires a `text` string." });
+  }
+  return JSON.stringify(pruneResult(args.text, args.options ?? {}), null, 2);
+}
+
+export interface MaxTokensCalibrateArgs {
+  /** Observed output-token-count samples for the task class. */
+  samples: number[];
+  /** Pass-through CalibrateOptions (p, safetyMargin, bucket, minSamples, …). */
+  options?: Record<string, unknown>;
+}
+
+/** 2.4(b) — recommend a max_tokens reservation from observed output lengths. */
+export function handleMaxTokensCalibrate(args: MaxTokensCalibrateArgs): string {
+  if (!args || !Array.isArray(args.samples)) {
+    return JSON.stringify({
+      error: "max_tokens_calibrate requires a `samples` array of output-token counts.",
+    });
+  }
+  return JSON.stringify(calibrateMaxTokens(args.samples, args.options ?? {}), null, 2);
+}
+
+export interface DiffVsRewriteArgs {
+  original: string;
+  proposed: string;
+  /** Pass-through DiffEnforceOptions (model, context, thresholds). */
+  options?: Record<string, unknown>;
+}
+
+/** 2.4(c) — recommend diff vs full rewrite by real token cost, diff verified. */
+export function handleDiffVsRewrite(args: DiffVsRewriteArgs): string {
+  if (!args || typeof args.original !== "string" || typeof args.proposed !== "string") {
+    return JSON.stringify({
+      error: "diff_vs_rewrite requires `original` and `proposed` strings.",
+    });
+  }
+  return JSON.stringify(diffEnforce(args.original, args.proposed, args.options ?? {}), null, 2);
+}
+
+export interface OpenTabAuditArgs {
+  tabs: unknown[];
+  activeFile: string;
+  task_keywords?: string[];
+  import_edges?: Array<{ from: string; to: string }>;
+  /** Pass-through AuditOptions (dropThreshold, weights). */
+  options?: Record<string, unknown>;
+}
+
+/** 2.4(e) — score open editor tabs and recommend drops with honest savings. */
+export function handleOpenTabAudit(args: OpenTabAuditArgs): string {
+  if (!args || !Array.isArray(args.tabs) || typeof args.activeFile !== "string") {
+    return JSON.stringify({
+      error: "open_tab_audit requires a `tabs` array and an `activeFile` string.",
+    });
+  }
+  return JSON.stringify(
+    auditOpenTabs(
+      {
+        tabs: args.tabs as never,
+        activeFile: args.activeFile,
+        taskKeywords: args.task_keywords,
+        importEdges: args.import_edges,
+      },
+      args.options ?? {}
+    ),
+    null,
+    2
+  );
 }

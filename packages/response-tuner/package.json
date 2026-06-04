@@ -1,0 +1,26 @@
+{
+  "name": "@prune/response-tuner",
+  "version": "0.1.0",
+  "description": "Output-side token reduction: sub-token pruning of large tool results and statistical max_tokens calibration. Reduces the cost of what the model reads back and reserves, without losing information.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/tokenizer": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
