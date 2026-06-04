@@ -1,0 +1,31 @@
+{
+  "name": "@prune/e2e-harness",
+  "version": "0.1.0",
+  "private": true,
+  "description": "INTERNAL, DEV-ONLY end-to-end scenario harness. Drives one realistic coding session through every product face (extension core, MCP tools, Claude Code hooks as real child processes, and the dashboard observability loop) with real code on every hop, asserts an edge-case matrix, and renders a narrated demo. Never published, never bundled into the extension VSIX; the dependency arrow is one-way (it imports product packages; nothing in the product imports it).",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "tsx --import ./src/_vscode-register.mjs src/demo.ts"
+  },
+  "dependencies": {
+    "@prune/mcp-server": "0.1.0",
+    "@prune/squeezer": "0.1.0",
+    "@prune/tokenizer": "0.1.0",
+    "@prune/shared": "0.1.0",
+    "@prune/persistence": "0.1.0",
+    "@prune/telemetry": "0.1.0",
+    "@prune/cache-habits": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "next": "^14.2.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
