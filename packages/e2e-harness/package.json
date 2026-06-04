@@ -10,7 +10,8 @@
     "build": "tsc",
     "test": "vitest run",
     "test:watch": "vitest",
-    "demo": "tsx --import ./src/_vscode-register.mjs src/demo.ts"
+    "demo": "tsx --import ./src/_vscode-register.mjs src/demo.ts",
+    "report": "vitest run --reporter=default --reporter=json --outputFile=vitest-results.json ; tsx --import ./src/_vscode-register.mjs src/build-report.ts"
   },
   "dependencies": {
     "@prune/mcp-server": "0.1.0",
