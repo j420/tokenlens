@@ -50,3 +50,6 @@ packages/db/drizzle/
 
 # Claude Code agent worktree scratch (transient; never committed)
 .claude/worktrees/
+
+# Transient agent test scratch (never committed)
+_scratch_*
