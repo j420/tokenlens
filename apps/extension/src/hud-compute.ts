@@ -83,6 +83,71 @@ export function classifySeverity(
   return "green";
 }
 
+// ===========================================================================
+// F5 telemetry — the discrete signal of an always-on display.
+//
+// The HUD updates on every keystroke; recording per render would be spam (it
+// violates the "only on a meaningful signal" discipline) and writing to the
+// events sink on the UI render path would violate this codebase's architecture
+// (every telemetry writer is a hook / MCP tool, never the editor render loop).
+//
+// DECISION (pending action 1.3): f5 emits ONLY on a spend-SEVERITY TRANSITION
+// (green→yellow→red and back) — a genuine, infrequent cost-escalation event,
+// not a per-render heartbeat. The detector and proof builder below are the pure,
+// tested contract; the HUD invokes an injected callback on a transition so the
+// actual sink write (if wanted) rides an injected recorder rather than the
+// render hot path. The dashboard already rolls f5 up generically.
+// ===========================================================================
+
+export const F5_FEATURE_ID = "f5" as const;
+
+export type HudSeverity = HudComputation["severity"];
+
+export interface SeverityTransition {
+  from: HudSeverity;
+  to: HudSeverity;
+  /** True when spend moved to a HIGHER zone (green<yellow<red). */
+  escalated: boolean;
+}
+
+const SEVERITY_RANK: Record<HudSeverity, number> = { green: 0, yellow: 1, red: 2 };
+
+/**
+ * Detect a spend-zone transition. Returns null when there is no prior severity
+ * (first render — not a transition) or the zone is unchanged. Pure.
+ */
+export function detectSeverityTransition(
+  prev: HudSeverity | null,
+  next: HudSeverity
+): SeverityTransition | null {
+  if (prev === null || prev === next) return null;
+  return { from: prev, to: next, escalated: SEVERITY_RANK[next] > SEVERITY_RANK[prev] };
+}
+
+/**
+ * Build the PII-safe f5 quality_proof for a transition. Carries only the
+ * severities, the triggering cost/token figures, and the active thresholds —
+ * never the prompt text. Shape mirrors the other features' proofs so the
+ * dashboard's generic f5 rollup (and any future rich decoder) can read it.
+ */
+export function buildHudQualityProof(
+  transition: SeverityTransition,
+  computation: Pick<HudComputation, "tokens" | "cost" | "source">,
+  thresholds: HudThresholds
+): Record<string, unknown> {
+  return {
+    featureId: F5_FEATURE_ID,
+    event: "severity_transition",
+    from: transition.from,
+    to: transition.to,
+    escalated: transition.escalated,
+    tokens: computation.tokens,
+    costUsd: computation.cost,
+    costSource: computation.source,
+    thresholds: { greenUsd: thresholds.greenUsd, redUsd: thresholds.redUsd },
+  };
+}
+
 /**
  * Pure heuristic for whether a document URI scheme + language id signals a
  * chat-input surface. Kept in sync with the editor-host watchers in

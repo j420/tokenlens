@@ -70,6 +70,18 @@ lands in one stream the dashboard / Postgres export reads, keyed by
 - `context-health-advisor` (f6, UserPromptSubmit) — records the regime when an
   advisory is produced
 
+**f5 (HUD)** is deliberately not in this list. The HUD is an always-on
+status-bar display that recomputes on every keystroke (under a p99 ≤ 10ms
+budget), and every telemetry writer in this codebase is a hook / MCP tool —
+never the editor render loop. So per-render recording would be both spam and an
+architecture violation. The decision (pending 1.3): f5's only discrete signal is
+a spend-**severity transition** (green→yellow→red). `hud-compute.ts` exposes the
+pure, tested contract (`detectSeverityTransition`, `buildHudQualityProof`,
+`F5_FEATURE_ID`) and `activateHud` invokes an injected `onSeverityTransition`
+recorder on a transition only (best-effort, fully isolated from the display). The
+sink write stays opt-in / host-injected rather than running on the render path;
+the dashboard already rolls f5 up generically.
+
 All record BEFORE the feature-flag gate (shadow collects telemetry; only the
 user-facing advisory is gated) and ONLY on a meaningful signal (no per-no-op-call
 spam). The `events.feature_id` / `events.quality_proof` columns existed before
