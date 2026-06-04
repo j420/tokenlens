@@ -115,6 +115,49 @@ export function detectProvider(model: string): Provider {
   return "openai";
 }
 
+// ---------------------------------------------------------------------------
+// STRICT pricing API (the discipline: "unknown model → null, never a default").
+//
+// `getModelPricing` / `getModelPricingByName` / `calculateCost` / `estimateCost`
+// below return a DEFAULT rate on a miss for BACK-COMPAT: the persistence schema
+// (events.estimated_cost_usd, budget_charges.cost_usd) is NON-NULL, so the
+// cost-accounting callers (budget-gate, router, agent-sdk-adapter) legitimately
+// need a number — making an unpriced charge null is a product decision (block?
+// estimate? error?), not a mechanical change. Code that DISPLAYS a price or
+// DECIDES on it (HUDs, predictors, dashboards) must instead use the strict
+// helpers here and treat null as "insufficient_data" — never present a default
+// rate as fact. (`@prune/intelligence` subagent-cost-predictor and
+// `@prune/replay-cost` already do this.)
+// ---------------------------------------------------------------------------
+
+/** Is this (provider, model) genuinely in the price table? No default fallback. */
+export function isModelPriced(provider: Provider, model: string): boolean {
+  return Object.prototype.hasOwnProperty.call(PRICING_BY_PROVIDER[provider], model);
+}
+
+/** Is this model (any provider) genuinely in the price table? No fallback. */
+export function isModelPricedByName(model: string): boolean {
+  return Object.prototype.hasOwnProperty.call(FLAT_PRICING, model);
+}
+
+/** Strict lookup: real pricing, or null when the model isn't registered. */
+export function getModelPricingStrict(
+  provider: Provider,
+  model: string
+): ModelPricing | null {
+  return PRICING_BY_PROVIDER[provider][model] ?? null;
+}
+
+/** Strict by-name lookup: real pricing, or null when unregistered. */
+export function getModelPricingStrictByName(model: string): ModelPricing | null {
+  return FLAT_PRICING[model] ?? null;
+}
+
+/**
+ * Back-compat lookup. Returns DEFAULT_PRICING for an unknown (provider, model).
+ * Cost-accounting callers that must yield a number use this; callers that need
+ * honesty about unknown models should use getModelPricingStrict / isModelPriced.
+ */
 export function getModelPricing(
   provider: Provider,
   model: string
@@ -123,6 +166,7 @@ export function getModelPricing(
   return providerPricing[model] ?? DEFAULT_PRICING;
 }
 
+/** Back-compat by-name lookup. Returns DEFAULT_PRICING on a miss. See note above. */
 export function getModelPricingByName(model: string): ModelPricing {
   return FLAT_PRICING[model] ?? DEFAULT_PRICING;
 }

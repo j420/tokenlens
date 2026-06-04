@@ -16,6 +16,10 @@ import {
   handleCacheHabits,
   handleSubagentCostPredict,
   handleReasoningEffortRoute,
+  handleResultPrune,
+  handleMaxTokensCalibrate,
+  handleDiffVsRewrite,
+  handleOpenTabAudit,
   type ReplayCostPlanArgs,
   type McpProxyTrimArgs,
 } from "./tcrp-tools.js";
@@ -496,6 +500,70 @@ describe("reasoning_effort_route MCP handler (2.4d)", () => {
     expect(
       JSON.parse(handleReasoningEffortRoute({ current_effort: undefined as never, outcomes: undefined as never })).error
     ).toBeTruthy();
+  });
+});
+
+describe("Phase-8 Tier-1 MCP handlers (boundary)", () => {
+  it("result_prune collapses an identical-line run and reports real token savings", () => {
+    const text = Array(20).fill("DEBUG same line").join("\n") + "\nunique tail\n";
+    const r = JSON.parse(handleResultPrune({ text }));
+    expect(typeof r.originalTokens).toBe("number");
+    expect(r.prunedTokens).toBeLessThan(r.originalTokens);
+    expect(r.pruned).toMatch(/identical lines/);
+    expect(Array.isArray(r.manifest)).toBe(true);
+  });
+  it("result_prune errors (no throw) on a non-string text", () => {
+    expect(JSON.parse(handleResultPrune({ text: 123 as never })).error).toBeTruthy();
+  });
+
+  it("max_tokens_calibrate recommends from samples and reports truncation rate", () => {
+    const samples = Array.from({ length: 100 }, (_, i) => 100 + i * 4); // 100..496
+    const r = JSON.parse(handleMaxTokensCalibrate({ samples }));
+    expect(r.recommendedMaxTokens).toBeGreaterThan(0);
+    expect(r.estimatedTruncationRateAtRecommended).toBeGreaterThanOrEqual(0);
+    expect(r.estimatedTruncationRateAtRecommended).toBeLessThanOrEqual(1);
+  });
+  it("max_tokens_calibrate returns insufficient_data on too few samples", () => {
+    const r = JSON.parse(handleMaxTokensCalibrate({ samples: [10, 20] }));
+    expect(r.status).toBe("insufficient_data");
+    expect(r.recommendedMaxTokens).toBeNull();
+  });
+  it("max_tokens_calibrate errors (no throw) on a non-array samples", () => {
+    expect(JSON.parse(handleMaxTokensCalibrate({ samples: "x" as never })).error).toBeTruthy();
+  });
+
+  it("diff_vs_rewrite recommends a verified diff for a 1-line change in a big file", () => {
+    const lines = Array.from({ length: 800 }, (_, i) => `line ${i}`);
+    const original = lines.join("\n");
+    const proposed = lines.map((l, i) => (i === 400 ? "line 400 CHANGED" : l)).join("\n");
+    const r = JSON.parse(handleDiffVsRewrite({ original, proposed }));
+    expect(r.recommendation).toBe("diff");
+    expect(r.diffVerified).toBe(true);
+    expect(r.diffTokens).toBeLessThan(r.rewriteTokens);
+  });
+  it("diff_vs_rewrite errors (no throw) on missing inputs", () => {
+    expect(JSON.parse(handleDiffVsRewrite({ original: "a", proposed: 5 as never })).error).toBeTruthy();
+  });
+
+  it("open_tab_audit keeps the active file and drops a big irrelevant tab", () => {
+    const r = JSON.parse(
+      handleOpenTabAudit({
+        tabs: [
+          { path: "src/active.ts", tokenCount: 500 },
+          { path: "vendor/huge-unrelated.ts", tokenCount: 80000, lastAccessedAt: "2020-01-01T00:00:00Z" },
+        ],
+        activeFile: "src/active.ts",
+        task_keywords: ["active"],
+      })
+    );
+    const active = r.tabs.find((t: { path: string }) => t.path === "src/active.ts");
+    const huge = r.tabs.find((t: { path: string }) => t.path === "vendor/huge-unrelated.ts");
+    expect(active.recommendation).toBe("keep");
+    expect(huge.recommendation).toBe("drop");
+    expect(r.totalDroppableTokens).toBeGreaterThanOrEqual(80000);
+  });
+  it("open_tab_audit errors (no throw) on missing activeFile", () => {
+    expect(JSON.parse(handleOpenTabAudit({ tabs: [], activeFile: 1 as never })).error).toBeTruthy();
   });
 });
 

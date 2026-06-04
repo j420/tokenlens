@@ -1,6 +1,45 @@
 import { describe, it, expect } from "vitest";
-import { getModelPricing, calculateCost, formatCost, formatTokens } from "./pricing.js";
+import {
+  getModelPricing,
+  calculateCost,
+  formatCost,
+  formatTokens,
+  isModelPriced,
+  isModelPricedByName,
+  getModelPricingStrict,
+  getModelPricingStrictByName,
+  DEFAULT_PRICING,
+} from "./pricing.js";
 import type { Provider } from "./schemas/event.js";
+
+describe("strict pricing API (unknown model → null, never a default)", () => {
+  it("isModelPriced is true for a real (provider, model), false for unknown", () => {
+    expect(isModelPriced("anthropic", "claude-sonnet-4-20250514")).toBe(true);
+    expect(isModelPriced("openai", "gpt-4o")).toBe(true);
+    expect(isModelPriced("openai", "totally-made-up")).toBe(false);
+    // A real model under the WRONG provider is NOT priced (the bypass class).
+    expect(isModelPriced("google", "gpt-4o")).toBe(false);
+  });
+
+  it("isModelPricedByName checks the flat table", () => {
+    expect(isModelPricedByName("gpt-4o")).toBe(true);
+    expect(isModelPricedByName("nope")).toBe(false);
+    expect(isModelPricedByName("")).toBe(false);
+  });
+
+  it("getModelPricingStrict returns real pricing or null — never DEFAULT_PRICING", () => {
+    expect(getModelPricingStrict("openai", "gpt-4o")).not.toBeNull();
+    expect(getModelPricingStrict("openai", "unknown-x")).toBeNull();
+    expect(getModelPricingStrict("google", "gpt-4o")).toBeNull(); // wrong provider
+    expect(getModelPricingStrictByName("unknown-x")).toBeNull();
+  });
+
+  it("the back-compat getModelPricing STILL returns DEFAULT_PRICING for unknown (documented)", () => {
+    expect(getModelPricing("openai", "unknown-x")).toBe(DEFAULT_PRICING);
+    // ...while the strict variant refuses to fabricate.
+    expect(getModelPricingStrict("openai", "unknown-x")).toBeNull();
+  });
+});
 
 // ============================================================================
 // GET MODEL PRICING TESTS

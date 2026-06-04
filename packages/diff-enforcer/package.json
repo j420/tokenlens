@@ -1,0 +1,26 @@
+{
+  "name": "@prune/diff-enforcer",
+  "version": "0.1.0",
+  "description": "Phase-8 Tier-1 Diff-vs-Rewrite Enforcer. Decides, with a sound round-trip guarantee, whether sending a line-level unified diff or a full rewrite is cheaper in real tokens for a proposed file change.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/tokenizer": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
