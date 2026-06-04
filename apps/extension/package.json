@@ -91,6 +91,10 @@
       {
         "command": "prune.listFeatures",
         "title": "Prune: List TCRP Features"
+      },
+      {
+        "command": "prune.installHooks",
+        "title": "Prune: Install Claude Code Hooks"
       }
     ],
     "configuration": {

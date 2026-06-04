@@ -33,9 +33,25 @@ echo '{"hook_event_name":"Stop","transcript_path":"/abs/path/to/session.jsonl"}'
 | `telemetry-forward.mjs` | `Stop` | Closes the observability loop: ships the developer's local `~/.prune/events.sqlite` FORWARDABLE rows (feature-tagged events only — no file bodies, aggregate-only `quality_proof`) to a hosted dashboard's `POST /api/v1/events`, resuming from a persisted high-water-mark cursor so re-runs never re-send. **OPT-IN** — a pure no-op unless `PRUNE_FORWARD_ENDPOINT` is set (forwarding sends data off-machine). Fail-safe: a missing DB, a held write-lock, or any network failure resolves quietly; stops on the first delivery failure so the cursor never skips an undelivered event (at-least-once, ≤1 re-send on a crash). Config: `PRUNE_FORWARD_ENDPOINT`, `PRUNE_EVENTS_SQLITE`, `PRUNE_FORWARD_CURSOR`, `PRUNE_FORWARD_BATCH`, `PRUNE_FORWARD_MAX`, `PRUNE_FORWARD_TIMEOUT_MS`, `PRUNE_TELEMETRY_DISABLED`. |
 | `cache-habits-advisor.mjs` (F9) | `UserPromptSubmit` | Runs the transcript-derivable subset of the cache-habits linter — CH-004 (idle gap exceeded the active TTL → cached prefix expired, this turn rewrites it). The richer rules (model switch, tool-list reorder, system-prompt mutation, large paste) need the host's proposed-action diff, which the hook payload doesn't carry, and run in the editor integration / the `cache_habits` MCP tool instead. Gated on f9. Config: `PRUNE_CACHE_TTL` (`5m`/`1h`/`none`), `PRUNE_CACHE_HABITS_DISABLED`. |
 
-Install (manual for now): point a Claude Code hook entry at the script
-path. A future `prune.installHooks` extension command will automate
-this with user-scoped vs project-scoped settings management.
+## Install
+
+Automated via `install.mjs` (the registry in that file is the single source of
+truth for the hook→event/matcher mapping):
+
+```bash
+node apps/extension/hooks/install.mjs --dry-run     # preview, write nothing
+node apps/extension/hooks/install.mjs               # → ~/.claude/settings.json (user)
+node apps/extension/hooks/install.mjs --project     # → ./.claude/settings.json (workspace)
+```
+
+It is **idempotent** (re-running adds nothing — commands are matched exactly),
+**non-destructive** (your other settings and your own hooks are preserved), and
+writes atomically (tmp + rename). The VS Code command **`Prune: Install Claude
+Code Hooks`** (`prune.installHooks`) wraps the same CLI with a user/project
+scope picker and a dry-run preview + confirm step.
+
+Tests (run on demand — the extension package has no turbo `test` task):
+`npx vitest run apps/extension/hooks/install.test.mjs`.
 
 ## Feature telemetry (`quality_proof` → events sink)
 
