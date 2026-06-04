@@ -22,19 +22,36 @@ echo '{"hook_event_name":"Stop","transcript_path":"/abs/path/to/session.jsonl"}'
 | `budget-gate.mjs` | `Stop` | Active budget enforcement. Records each new turn's usage as a charge against a named envelope; emits `decision:block` on hard-cap breach, `additionalContext` on soft-cap / burn-rate warning. Configure via env vars `PRUNE_BUDGET_ENVELOPE`, `PRUNE_BUDGET_SQLITE`, `PRUNE_BUDGET_DISABLED`. Create the envelope first via the `budget_configure` MCP tool. |
 | `subagent-warden.mjs` | `PreToolUse` (matcher: `Task`) | Runaway-prevention. Reads the live session, projects the proposed Task into the activity state, and blocks on documented incident patterns (`FAN_OUT_RUNAWAY` 49-subagent burst, `UNATTENDED_LOOP` 23-subagent 3-day, `CONCURRENT_CAP`, `PEAK_PARALLEL_IN_TURN`). Configure via env vars `PRUNE_SUBAGENT_MAX_CONCURRENT` (15), `PRUNE_SUBAGENT_MAX_BURST` (10), `PRUNE_SUBAGENT_MAX_PARALLEL` (12), `PRUNE_SUBAGENT_MAX_MINUTES` (30), `PRUNE_SUBAGENT_DISABLED`. |
 | `replay-recorder.mjs` | `Stop`, `PostToolUse` (any matcher) | Tamper-evident audit log. Appends each hook fire to the local hash-chained + ed25519-signed `ReplayVault` for EU AI Act Art 12 / ISO 42001 A.6.1.6 / NIST RMF Measure 2.5 compliance. Configure via `PRUNE_VAULT_SQLITE`, `PRUNE_VAULT_KEY`, `PRUNE_VAULT_DISABLED`. Verify integrity with the `replay_verify` MCP tool. |
-| `sentinel-prompt.mjs` | `UserPromptSubmit` | Pre-prompt secret scanner. Blocks vendor API keys, private keys, connection URLs (gitleaks/TruffleHog patterns) before they enter the cloud context. Responds to GitGuardian's 3.2% AI-commit leak baseline. Configure via `PRUNE_SENTINEL_DISABLED`, `PRUNE_SENTINEL_WARN_ONLY`. |
-| `sentinel-mcp.mjs` | `PostToolUse` (any matcher) | MCP-response prompt-injection shield. Blocks SHADOWING / PATH_TRAVERSAL / ARGUMENT_INJECTION signatures in tool results. Responds to the Jan 20 2026 RCE in Anthropic's Git MCP server (arXiv 2601.17548). Configure via `PRUNE_SENTINEL_MCP_DISABLED`, `PRUNE_SENTINEL_MCP_WARN_ONLY`. |
+| `sentinel-prompt.mjs` | `UserPromptSubmit` | Pre-prompt secret scanner. Blocks vendor API keys, private keys, connection URLs (gitleaks/TruffleHog patterns) before they enter the cloud context. Responds to GitGuardian's documented 3.2%-vs-1.5% Claude-Code-commit secret-leak rate ([State of Secrets Sprawl 2026](https://blog.gitguardian.com/the-state-of-secrets-sprawl-2026/)). Configure via `PRUNE_SENTINEL_DISABLED`, `PRUNE_SENTINEL_WARN_ONLY`. |
+| `sentinel-mcp.mjs` | `PostToolUse` (any matcher) | MCP-response prompt-injection shield. Blocks SHADOWING / PATH_TRAVERSAL / ARGUMENT_INJECTION signatures in tool results. Responds to the Jan 20 2026 RCE in Anthropic's Git MCP server (CVE-2025-68143/68144/68145; attack class surveyed in [arXiv 2601.17548](https://arxiv.org/abs/2601.17548)). Configure via `PRUNE_SENTINEL_MCP_DISABLED`, `PRUNE_SENTINEL_MCP_WARN_ONLY`. |
 | `slo-breaker.mjs` | `Stop` | Cost SLO + circuit-breaker (SRE Error Budget pattern for AI cost). Reads the named SLO from the sink and emits `decision:block` when the error budget is exhausted, or `additionalContext` when the warning threshold trips. Wire AFTER budget-gate.mjs so the latest turn's charge is recorded first. Configure via `PRUNE_SLO_NAME`, `PRUNE_SLO_SQLITE`, `PRUNE_SLO_DISABLED`, `PRUNE_SLO_WARN_ONLY`. |
 | `trajectory-diet.mjs` (TCRP F1) | `PreToolUse` | Scores the proposed tool call for predicted influence on the final output and, when F1 is promoted past shadow (`~/.prune/feature-flags.json`), emits an advisory to skip/narrow a low-influence step. Never blocks, never skips — advisory only. Conservative online (utilization unknowable pre-execution); F1's high-confidence skips come from offline trajectory analysis. |
 | `speculative-prune.mjs` (TCRP F3) | `PreToolUse` | Advisory: when a proposed `Read` targets a file byte-identical (content-SHA) to one already read this session, nudges the agent that it already has the current content — saving the re-read. Goes silent the moment the file changes. Reads the cache built by `speculative-record.mjs`. Gated by the F3 flag (shadow ⇒ no-op). Hard verified substitution is the Agent SDK adapter's job (per the per-surface honesty matrix). |
 | `speculative-record.mjs` (TCRP F3) | `PostToolUse` (matcher: `Read`) | Builds the session-scoped speculative cache (`~/.prune/cache/spec-<hash>.json`) that the PreToolUse advisory reads: stores each read file's content with its content-SHA freshness token. Runs regardless of flag (building the cache is harmless; only surfacing is gated). |
 | `skill-capture.mjs` (F12) | `Stop` | Distills the session's INFLUENTIAL trajectory (the complement of trajectory-diet's low-influence advisories) into a typed skill and appends it to the local skill library (`~/.prune/skills/library.json`, atomic write, content-hash dedup, LRU prune at `PRUNE_SKILLS_MAX`). Building the library is a harmless local write, so capture runs regardless of flag; the library is only surfaced by `skill-advisor.mjs`. Config: `PRUNE_SKILLS_PATH`, `PRUNE_SKILLS_MAX`, `PRUNE_SKILLS_DISABLED`. |
 | `skill-advisor.mjs` (F12) | `UserPromptSubmit` | Fingerprints the new prompt and matches it (Jaccard ≥ `PRUNE_SKILLS_THRESHOLD`) against the skill library. On a match, emits an `additionalContext` advisory naming the cached influential tool sequence and the projected token/$ saving, so the agent can skip re-discovery. Advisory only; the host must verify target freshness before acting. Gated on f12. Config: `PRUNE_SKILLS_PATH`, `PRUNE_SKILLS_THRESHOLD`, `PRUNE_SKILLS_MODEL`, `PRUNE_SKILLS_DISABLED`. |
+| `telemetry-forward.mjs` | `Stop` | Closes the observability loop: ships the developer's local `~/.prune/events.sqlite` FORWARDABLE rows (feature-tagged events only — no file bodies, aggregate-only `quality_proof`) to a hosted dashboard's `POST /api/v1/events`, resuming from a persisted high-water-mark cursor so re-runs never re-send. **OPT-IN** — a pure no-op unless `PRUNE_FORWARD_ENDPOINT` is set (forwarding sends data off-machine). Fail-safe: a missing DB, a held write-lock, or any network failure resolves quietly; stops on the first delivery failure so the cursor never skips an undelivered event (at-least-once, ≤1 re-send on a crash). Config: `PRUNE_FORWARD_ENDPOINT`, `PRUNE_EVENTS_SQLITE`, `PRUNE_FORWARD_CURSOR`, `PRUNE_FORWARD_BATCH`, `PRUNE_FORWARD_MAX`, `PRUNE_FORWARD_TIMEOUT_MS`, `PRUNE_TELEMETRY_DISABLED`. |
 | `cache-habits-advisor.mjs` (F9) | `UserPromptSubmit` | Runs the transcript-derivable subset of the cache-habits linter — CH-004 (idle gap exceeded the active TTL → cached prefix expired, this turn rewrites it). The richer rules (model switch, tool-list reorder, system-prompt mutation, large paste) need the host's proposed-action diff, which the hook payload doesn't carry, and run in the editor integration / the `cache_habits` MCP tool instead. Gated on f9. Config: `PRUNE_CACHE_TTL` (`5m`/`1h`/`none`), `PRUNE_CACHE_HABITS_DISABLED`. |
 
-Install (manual for now): point a Claude Code hook entry at the script
-path. A future `prune.installHooks` extension command will automate
-this with user-scoped vs project-scoped settings management.
+## Install
+
+Automated via `install.mjs` (the registry in that file is the single source of
+truth for the hook→event/matcher mapping):
+
+```bash
+node apps/extension/hooks/install.mjs --dry-run     # preview, write nothing
+node apps/extension/hooks/install.mjs               # → ~/.claude/settings.json (user)
+node apps/extension/hooks/install.mjs --project     # → ./.claude/settings.json (workspace)
+```
+
+It is **idempotent** (re-running adds nothing — commands are matched exactly),
+**non-destructive** (your other settings and your own hooks are preserved), and
+writes atomically (tmp + rename). The VS Code command **`Prune: Install Claude
+Code Hooks`** (`prune.installHooks`) wraps the same CLI with a user/project
+scope picker and a dry-run preview + confirm step.
+
+Tests (run on demand — the extension package has no turbo `test` task):
+`npx vitest run apps/extension/hooks/install.test.mjs`.
 
 ## Feature telemetry (`quality_proof` → events sink)
 
@@ -52,6 +69,18 @@ lands in one stream the dashboard / Postgres export reads, keyed by
   still collects (only the surfaced advisory is gated)
 - `context-health-advisor` (f6, UserPromptSubmit) — records the regime when an
   advisory is produced
+
+**f5 (HUD)** is deliberately not in this list. The HUD is an always-on
+status-bar display that recomputes on every keystroke (under a p99 ≤ 10ms
+budget), and every telemetry writer in this codebase is a hook / MCP tool —
+never the editor render loop. So per-render recording would be both spam and an
+architecture violation. The decision (pending 1.3): f5's only discrete signal is
+a spend-**severity transition** (green→yellow→red). `hud-compute.ts` exposes the
+pure, tested contract (`detectSeverityTransition`, `buildHudQualityProof`,
+`F5_FEATURE_ID`) and `activateHud` invokes an injected `onSeverityTransition`
+recorder on a transition only (best-effort, fully isolated from the display). The
+sink write stays opt-in / host-injected rather than running on the render path;
+the dashboard already rolls f5 up generically.
 
 All record BEFORE the feature-flag gate (shadow collects telemetry; only the
 user-facing advisory is gated) and ONLY on a meaningful signal (no per-no-op-call

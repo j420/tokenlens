@@ -17,7 +17,9 @@
  *   - DETERMINISTIC ordering: features are always emitted f9, f10, f11, f12,
  *     f13 regardless of input order or which ids are present.
  *
- * The shapes we decode mirror each package's `src/quality-proof.ts`:
+ * The shapes we decode mirror each feature's emitted quality_proof:
+ *   f2  tool-def-auditor    → recoverableTokensPerWeek + recommendationCount + toolCount
+ *   f4  qpd-bench           → candidateCount + recommendedCount + bestProjectedSavingsPct
  *   f9  cache-habits        → verdict + findings + totals.estimatedWasteUsd
  *   f10 mcp-proxy           → audit.savedTokens / fullCatalogTokens / shippedTokens
  *   f11 replay-cost         → cost.savedUsd / naiveCostUsd / replayCostUsd
@@ -39,7 +41,7 @@ export const TELEMETRY_FEATURE_IDS = [
 ] as const;
 /** Ids with a rich, schema-specific decoder. The rest get a generic rollup. */
 export const RICH_DECODER_IDS: ReadonlySet<string> = new Set([
-  "f9", "f10", "f11", "f12", "f13",
+  "f2", "f4", "f9", "f10", "f11", "f12", "f13",
 ]);
 export type TelemetryFeatureId = (typeof TELEMETRY_FEATURE_IDS)[number];
 
@@ -47,6 +49,32 @@ export type TelemetryFeatureId = (typeof TELEMETRY_FEATURE_IDS)[number];
 // Per-feature summary shapes. Every numeric field is `number | null`: null
 // means "we could not read this defensibly from any row", NOT zero.
 // ---------------------------------------------------------------------------
+
+/** f2 toolDefAuditor: MCP tool-definition bloat the auditor flagged. */
+export interface ToolAuditSummary {
+  /** Sum of recoverable tokens/week the auditor found across rows. null if unreadable. */
+  recoverableTokensPerWeek: number | null;
+  /** Sum of total tool-definition tokens seen. null if unreadable. */
+  totalDefinitionTokens: number | null;
+  /** Sum of removal recommendations across rows. null if unreadable. */
+  recommendationCount: number | null;
+  /** Sum of tools audited across rows. null if unreadable. */
+  toolsAudited: number | null;
+}
+
+/** f4 qpdBench: quality-per-dollar model-routing recommendations. */
+export interface QpdBenchSummary {
+  /** Sum of candidate models evaluated across rows. null if unreadable. */
+  candidatesEvaluated: number | null;
+  /** Sum of candidates that passed every gate (recommended). null if unreadable. */
+  recommendedCount: number | null;
+  /**
+   * Latest readable best-candidate projected savings %. Surfaces the most
+   * recent row's value (a per-cluster figure that can't be summed), mirroring
+   * f13's latestHitRate. null if no row carried it.
+   */
+  latestBestProjectedSavingsPct: number | null;
+}
 
 /** f9 cacheHabits: lint verdicts + estimated waste surfaced by the linter. */
 export interface CacheHabitsSummary {
@@ -120,6 +148,8 @@ export interface SpeculativePipelineSummary {
 }
 
 export type FeatureSummary =
+  | { kind: "f2"; data: ToolAuditSummary }
+  | { kind: "f4"; data: QpdBenchSummary }
   | { kind: "f9"; data: CacheHabitsSummary }
   | { kind: "f10"; data: McpProxySummary }
   | { kind: "f11"; data: ReplayCostSummary }
@@ -127,7 +157,7 @@ export type FeatureSummary =
   | { kind: "f13"; data: SpeculativePipelineSummary }
   /**
    * Features that emit telemetry but have no schema-specific decoder yet
-   * (f1–f8). The headline metrics (eventCount, tokensIn, estimatedCostUsd,
+   * (f1, f3, f5–f8). The headline metrics (eventCount, tokensIn, estimatedCostUsd,
    * malformedProofCount) on FeatureRollup still apply; there is just no
    * decoded per-feature summary. Honest: a generic presence, not a fabricated
    * one.
@@ -230,6 +260,16 @@ export function aggregateFeatureTelemetry(
   const base = {} as Record<TelemetryFeatureId, MutableRollup>;
   for (const id of TELEMETRY_FEATURE_IDS) base[id] = emptyMutable();
 
+  // f2
+  const f2Recoverable = new NullableSum();
+  const f2DefTokens = new NullableSum();
+  const f2Recommendations = new NullableSum();
+  const f2ToolsAudited = new NullableSum();
+  // f4
+  const f4Candidates = new NullableSum();
+  const f4Recommended = new NullableSum();
+  let f4LatestSavingsPct: number | null = null;
+  let f4SeenSavingsPct = false;
   // f9
   const f9Verdicts: Record<string, number> = {};
   const f9Findings = new NullableSum();
@@ -286,6 +326,25 @@ export function aggregateFeatureTelemetry(
     }
 
     switch (id) {
+      case "f2": {
+        f2Recoverable.add(proof.recoverableTokensPerWeek);
+        f2DefTokens.add(proof.totalDefinitionTokens);
+        f2Recommendations.add(proof.recommendationCount);
+        f2ToolsAudited.add(proof.toolCount);
+        break;
+      }
+      case "f4": {
+        f4Candidates.add(proof.candidateCount);
+        f4Recommended.add(proof.recommendedCount);
+        if (!f4SeenSavingsPct) {
+          const pct = num(proof.bestProjectedSavingsPct);
+          if (pct !== null) {
+            f4LatestSavingsPct = pct;
+            f4SeenSavingsPct = true;
+          }
+        }
+        break;
+      }
       case "f9": {
         const verdict = proof.verdict;
         if (typeof verdict === "string") {
@@ -354,6 +413,23 @@ export function aggregateFeatureTelemetry(
   }
 
   const richSummaries: Partial<Record<TelemetryFeatureId, FeatureSummary>> = {
+    f2: {
+      kind: "f2",
+      data: {
+        recoverableTokensPerWeek: f2Recoverable.value(),
+        totalDefinitionTokens: f2DefTokens.value(),
+        recommendationCount: f2Recommendations.value(),
+        toolsAudited: f2ToolsAudited.value(),
+      },
+    },
+    f4: {
+      kind: "f4",
+      data: {
+        candidatesEvaluated: f4Candidates.value(),
+        recommendedCount: f4Recommended.value(),
+        latestBestProjectedSavingsPct: f4LatestSavingsPct,
+      },
+    },
     f9: {
       kind: "f9",
       data: {

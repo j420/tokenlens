@@ -76,6 +76,48 @@ function FeatureSummaryBody({ rollup }: { rollup: FeatureRollup }) {
   }
 
   switch (s.kind) {
+    case "f2":
+      return (
+        <div className="divide-y divide-border">
+          <MetricRow
+            label="Recoverable / week"
+            value={tokensOrDash(s.data.recoverableTokensPerWeek)}
+          />
+          <MetricRow
+            label="Definition tokens"
+            value={tokensOrDash(s.data.totalDefinitionTokens)}
+          />
+          <MetricRow
+            label="Removal recs"
+            value={countOrDash(s.data.recommendationCount)}
+          />
+          <MetricRow
+            label="Tools audited"
+            value={countOrDash(s.data.toolsAudited)}
+          />
+        </div>
+      );
+    case "f4":
+      return (
+        <div className="divide-y divide-border">
+          <MetricRow
+            label="Candidates evaluated"
+            value={countOrDash(s.data.candidatesEvaluated)}
+          />
+          <MetricRow
+            label="Recommended"
+            value={countOrDash(s.data.recommendedCount)}
+          />
+          <MetricRow
+            label="Best projected savings"
+            value={pctOrDash(
+              s.data.latestBestProjectedSavingsPct === null
+                ? null
+                : s.data.latestBestProjectedSavingsPct / 100
+            )}
+          />
+        </div>
+      );
     case "f9": {
       const verdicts = Object.entries(s.data.verdictCounts).sort(([a], [b]) =>
         a.localeCompare(b)

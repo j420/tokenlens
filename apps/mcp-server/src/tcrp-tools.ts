@@ -9,13 +9,18 @@
 
 import {
   auditToolDefinitions,
+  predictSubagentCost,
   type ToolDefinitionInfo,
   type ToolUsageWindow,
+  type SubagentCostSample,
 } from "@prune/intelligence";
 import {
   classifyPareto,
   recommendForCluster,
+  routeReasoningEffort,
   type ModelAggregate,
+  type EffortOutcomeStats,
+  type ReasoningEffort,
 } from "@prune/qpd-bench";
 import { loadCachedSessionView } from "@prune/telemetry";
 import {
@@ -56,7 +61,23 @@ import {
   type IntentOverride,
   type ToolTokenCost,
 } from "@prune/mcp-proxy";
+import {
+  lint as lintCacheHabits,
+  buildQualityProof as buildCacheHabitsProof,
+  CACHE_HABITS_FEATURE_ID,
+  type ProposedAction,
+  type SessionSnapshot,
+  type CacheTtl,
+  type ModelFamily,
+} from "@prune/cache-habits";
 import type { Provider } from "@prune/shared";
+
+// TCRP feature ids for the two MCP-tool features whose quality_proof rides the
+// caller-side telemetry path (PRUNE_MCP_TELEMETRY) exactly like f10/f11. Kept
+// local so the id lives next to the handler that stamps it; the recorder's
+// TOOL_FEATURE_IDS map is the matching half of this contract.
+const TOOL_AUDIT_FEATURE_ID = "f2";
+const QPD_REPORT_FEATURE_ID = "f4";
 
 export interface ToolAuditArgs {
   tools: ToolDefinitionInfo[];
@@ -80,18 +101,44 @@ export function handleToolAudit(args: ToolAuditArgs): string {
   if (!Array.isArray(args.tools) || !args.usage) {
     return JSON.stringify({ error: "tool_audit requires `tools` and `usage`." });
   }
+  try {
+    return runToolAudit(args);
+  } catch (e) {
+    // Honor the per-handler contract — a malformed element (e.g. a null in
+    // `tools`) returns a JSON error, never a throw across the MCP wire.
+    return JSON.stringify({ error: `tool_audit: ${(e as Error).message}` });
+  }
+}
+
+function runToolAudit(args: ToolAuditArgs): string {
   const report = auditToolDefinitions(args.tools, args.usage, {
     criticalAllowlist: args.critical_allowlist,
     vendor: args.vendor,
   });
+  const recoverableTokensPerWeek = Math.round(report.recoverableTokensPerWeek);
   return JSON.stringify(
     {
       windowDays: report.windowDays,
       sessionsInWindow: report.sessionsInWindow,
       totalDefinitionTokens: report.totalDefinitionTokens,
-      recoverableTokensPerWeek: Math.round(report.recoverableTokensPerWeek),
+      recoverableTokensPerWeek,
       recommendationCount: report.recommendationCount,
       newInstallGuardActive: report.newInstallGuardActive,
+      // PII-safe quality_proof: aggregate counts/tokens only — never tool names,
+      // schemas, or per-tool rationale. The caller-side recorder persists this
+      // (gated on PRUNE_MCP_TELEMETRY) so f2 lands in the same events stream as
+      // f10/f11; the dashboard's f2 decoder reads exactly these fields.
+      quality_proof: {
+        featureId: TOOL_AUDIT_FEATURE_ID,
+        vendor: args.vendor ?? "unknown",
+        windowDays: report.windowDays,
+        sessionsInWindow: report.sessionsInWindow,
+        toolCount: report.entries.length,
+        totalDefinitionTokens: report.totalDefinitionTokens,
+        recoverableTokensPerWeek,
+        recommendationCount: report.recommendationCount,
+        newInstallGuardActive: report.newInstallGuardActive,
+      },
       entries: report.entries.map((e) => ({
         name: e.name,
         server: e.server,
@@ -121,6 +168,16 @@ export function handleQpdReport(args: QpdReportArgs): string {
       error: "qpd_report requires `baseline` and `candidates` aggregates.",
     });
   }
+  try {
+    return runQpdReport(args);
+  } catch (e) {
+    // Per-handler contract: a malformed baseline/candidate element returns a
+    // JSON error rather than throwing across the MCP wire.
+    return JSON.stringify({ error: `qpd_report: ${(e as Error).message}` });
+  }
+}
+
+function runQpdReport(args: QpdReportArgs): string {
   const rec = recommendForCluster(args.baseline, args.candidates, {
     arMargin: args.ar_margin,
     costDominanceRatio: args.cost_dominance_ratio,
@@ -132,10 +189,26 @@ export function handleQpdReport(args: QpdReportArgs): string {
       quality: m.acceptanceRate,
     }))
   );
+  const recommendedCount = rec.recommendations.filter((r) => r.recommended).length;
+  const paretoFrontierSize = frontier.filter((p) => p.onFrontier).length;
   return JSON.stringify(
     {
       clusterId: rec.clusterId,
       baselineModel: rec.baselineModel,
+      // PII-safe quality_proof: cluster id + model identifiers (not user data)
+      // and aggregate gate outcomes. Rides PRUNE_MCP_TELEMETRY like f10/f11; the
+      // dashboard's f4 decoder reads exactly these fields.
+      quality_proof: {
+        featureId: QPD_REPORT_FEATURE_ID,
+        clusterId: rec.clusterId,
+        baselineModel: rec.baselineModel,
+        candidateCount: args.candidates.length,
+        recommendedCount,
+        bestProjectedSavingsPct: rec.best
+          ? Number(rec.best.projectedSavingsPct.toFixed(1))
+          : null,
+        paretoFrontierSize,
+      },
       best: rec.best
         ? {
             model: rec.best.model,
@@ -533,4 +606,253 @@ export function handleMcpProxyTrim(args: McpProxyTrimArgs): string {
   }
 
   return JSON.stringify(result, null, 2);
+}
+
+// ===========================================================================
+// F9 — cache_habits (full pre-action cache-habits linter)
+// ===========================================================================
+
+const VALID_TTL = new Set<CacheTtl>(["5m", "1h", "none"]);
+const VALID_FAMILY = new Set<ModelFamily>([
+  "sonnet", "opus", "haiku", "gpt-4o", "gpt-4o-mini", "other",
+]);
+const VALID_EFFORT = new Set(["standard", "high", "xhigh", "max"]);
+
+function isObj(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function str(v: unknown, fallback: string): string {
+  return typeof v === "string" ? v : fallback;
+}
+function strOrNull(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+function numOr(v: unknown, fallback: number): number {
+  return typeof v === "number" && Number.isFinite(v) ? v : fallback;
+}
+function numOrNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+function strArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+function effortOrNull(v: unknown): "standard" | "high" | "xhigh" | "max" | null {
+  return typeof v === "string" && VALID_EFFORT.has(v)
+    ? (v as "standard" | "high" | "xhigh" | "max")
+    : null;
+}
+
+function coerceProposedAction(raw: Record<string, unknown>): ProposedAction {
+  const prompt = isObj(raw.prompt) ? raw.prompt : {};
+  const changes = isObj(raw.changes) ? raw.changes : {};
+  const pasted = Array.isArray(prompt.pastedBlocks) ? prompt.pastedBlocks : [];
+  const family = raw.modelFamily;
+  return {
+    modelFamily: (typeof family === "string" && VALID_FAMILY.has(family as ModelFamily)
+      ? family
+      : "other") as ModelFamily,
+    model: str(raw.model, ""),
+    ttl: (typeof raw.ttl === "string" && VALID_TTL.has(raw.ttl as CacheTtl)
+      ? raw.ttl
+      : "none") as CacheTtl,
+    prompt: {
+      text: str(prompt.text, ""),
+      pastedBlocks: pasted
+        .filter(isObj)
+        .map((b) => ({
+          tokens: numOr(b.tokens, 0),
+          source: ((): "clipboard" | "url" | "file" | "unknown" => {
+            const s = b.source;
+            return s === "clipboard" || s === "url" || s === "file" ? s : "unknown";
+          })(),
+        })),
+    },
+    changes: {
+      systemPromptTokens: numOrNull(changes.systemPromptTokens),
+      toolListOrderHash: strOrNull(changes.toolListOrderHash),
+      reasoningEffort: effortOrNull(changes.reasoningEffort),
+      temperature: numOrNull(changes.temperature),
+      mcpServersAdded: strArray(changes.mcpServersAdded),
+      mcpServersRemoved: strArray(changes.mcpServersRemoved),
+    },
+    now: str(raw.now, new Date().toISOString()),
+  };
+}
+
+function coerceSnapshot(
+  raw: Record<string, unknown>,
+  fallbackModel: string
+): SessionSnapshot {
+  const effort = effortOrNull(raw.reasoningEffort);
+  const snap: SessionSnapshot = {
+    currentModel: str(raw.currentModel, fallbackModel),
+    currentTtl: (typeof raw.currentTtl === "string" && VALID_TTL.has(raw.currentTtl as CacheTtl)
+      ? raw.currentTtl
+      : "none") as CacheTtl,
+    lastTurnAt: strOrNull(raw.lastTurnAt),
+    turnsSoFar: numOr(raw.turnsSoFar, 0),
+    cacheReadTokensSoFar: numOr(raw.cacheReadTokensSoFar, 0),
+    cacheCreationTokensSoFar: numOr(raw.cacheCreationTokensSoFar, 0),
+    systemPromptTokens: numOrNull(raw.systemPromptTokens),
+    toolListOrderHash: strOrNull(raw.toolListOrderHash),
+    mcpServers: strArray(raw.mcpServers),
+  };
+  if (effort) snap.reasoningEffort = effort;
+  const temp = numOrNull(raw.temperature);
+  if (temp !== null) snap.temperature = temp;
+  return snap;
+}
+
+export interface CacheHabitsArgs {
+  /** What the user is about to send — the host's proposed-action diff. */
+  action: unknown;
+  /** Prior session state to compare against. */
+  snapshot: unknown;
+  /** Rule ids to suppress (e.g. a rule that fires spuriously in this env). */
+  suppress?: string[];
+  /** Per-rule severity overrides, e.g. demote "block" to "warn" in shadow. */
+  severity_overrides?: Record<string, "info" | "warn" | "block">;
+}
+
+/**
+ * F9 — run the FULL cache-habits linter (all 12 rules CH-001..CH-012) over a
+ * caller-supplied proposed-action diff. This is the runtime surface for the 11
+ * rules a transcript hook can't reach: those need the host's proposed-action vs
+ * session-snapshot diff (model switch, tool-list reorder, system-prompt
+ * mutation, large paste, MCP server mutation, TTL/effort/temperature changes),
+ * which only the editor/host has. The cache-habits-advisor hook still handles
+ * the one transcript-derivable rule (CH-004 idle-TTL); this tool handles the
+ * rest. Pure + deterministic; bad input → a JSON `error`, never a throw across
+ * the MCP wire. Emits the f9 quality_proof on the caller-side telemetry path.
+ */
+export function handleCacheHabits(args: CacheHabitsArgs): string {
+  if (!args || !isObj(args.action) || !isObj(args.snapshot)) {
+    return JSON.stringify({
+      error:
+        "cache_habits requires `action` (ProposedAction) and `snapshot` (SessionSnapshot) objects.",
+    });
+  }
+  const action = coerceProposedAction(args.action);
+  if (!action.model) {
+    return JSON.stringify({ error: "cache_habits: action.model is required." });
+  }
+  const snapshot = coerceSnapshot(args.snapshot, action.model);
+
+  const suppress = Array.isArray(args.suppress)
+    ? args.suppress.filter((s): s is string => typeof s === "string")
+    : undefined;
+  const severityOverrides =
+    args.severity_overrides && isObj(args.severity_overrides)
+      ? args.severity_overrides
+      : undefined;
+
+  let report;
+  try {
+    // No default suppression — the WHOLE point of this surface is the full rule
+    // set the hook can't run. Callers may still opt to suppress explicitly.
+    report = lintCacheHabits(action, snapshot, { suppress, severityOverrides });
+  } catch (e) {
+    return JSON.stringify({ error: `cache_habits: ${(e as Error).message}` });
+  }
+
+  return JSON.stringify(
+    {
+      featureId: CACHE_HABITS_FEATURE_ID,
+      verdict: report.verdict,
+      findings: report.findings,
+      totals: {
+        estimatedWasteUsd: report.totalEstimatedWasteUsd,
+        estimatedWasteTokens: report.totalEstimatedWasteTokens,
+        findingCount: report.findings.length,
+      },
+      skipped: report.skipped,
+      quality_proof: buildCacheHabitsProof(report, action, snapshot),
+    },
+    null,
+    2
+  );
+}
+
+// ===========================================================================
+// N6 — subagent_cost_predict (pre-spawn subagent cost predictor)
+// ===========================================================================
+
+export interface SubagentCostPredictArgs {
+  /** Observed per-subagent usage samples from this session (caller-supplied). */
+  history?: SubagentCostSample[];
+  /** How many subagents are about to be spawned. Default 1. */
+  proposed_count?: number;
+  /** Model the proposed subagents will run on (for pricing the history). */
+  model: string;
+  /** Provider hint; inferred from the model name when omitted. */
+  provider?: Provider;
+}
+
+/**
+ * N6 — project the cost of a proposed subagent fan-out before it runs.
+ * Complements the count-based subagent-warden by answering "what will this
+ * cost?". The predictor core is pure and tested in @prune/intelligence; this is
+ * the boundary wrapper: validate the model, default the count, and shape the
+ * JSON. Bad input → a JSON `error`, never a throw across the MCP wire. Strict
+ * pricing and caller-supplied numbers are enforced by the core — nothing here
+ * fabricates a token count or a rate.
+ */
+export function handleSubagentCostPredict(args: SubagentCostPredictArgs): string {
+  if (!args || typeof args.model !== "string" || args.model.length === 0) {
+    return JSON.stringify({
+      error: "subagent_cost_predict requires a `model` string.",
+    });
+  }
+  const prediction = predictSubagentCost({
+    history: Array.isArray(args.history) ? args.history : [],
+    proposedCount:
+      typeof args.proposed_count === "number" ? args.proposed_count : 1,
+    model: args.model,
+    provider: args.provider,
+  });
+  return JSON.stringify(prediction, null, 2);
+}
+
+// ===========================================================================
+// 2.4(d) — reasoning_effort_route (Reasoning-Effort Auto-Router)
+// ===========================================================================
+
+export interface ReasoningEffortRouteArgs {
+  /** The effort dial currently in use. */
+  current_effort: ReasoningEffort;
+  /** Per-effort outcome stats on the user's task class (caller-supplied). */
+  outcomes: EffortOutcomeStats[];
+  /** Task class id (qpd cluster). Default "default". */
+  task_class?: string;
+  /** Never recommend below this effort. Default "standard". */
+  floor?: ReasoningEffort;
+  ar_margin?: number;
+  tpr_margin?: number;
+  cost_dominance_ratio?: number;
+  min_samples?: number;
+}
+
+/**
+ * 2.4(d) — recommend the lowest reasoning effort that is quality-non-inferior to
+ * the current one on the caller's task class, so the dial is set right up front
+ * (actuating CH-009, which warns about mid-session effort changes). Down-route
+ * only; holds on insufficient data or when no lower effort clears the gates.
+ * Pure; bad input → a JSON error, never a throw across the MCP wire.
+ */
+export function handleReasoningEffortRoute(args: ReasoningEffortRouteArgs): string {
+  if (!args || typeof args.current_effort !== "string" || !Array.isArray(args.outcomes)) {
+    return JSON.stringify({
+      error:
+        "reasoning_effort_route requires `current_effort` and an `outcomes` array.",
+    });
+  }
+  const rec = routeReasoningEffort(args.current_effort, args.outcomes, {
+    taskClass: args.task_class,
+    floor: args.floor,
+    arMargin: args.ar_margin,
+    tprMargin: args.tpr_margin,
+    costDominanceRatio: args.cost_dominance_ratio,
+    minSamples: args.min_samples,
+  });
+  return JSON.stringify(rec, null, 2);
 }

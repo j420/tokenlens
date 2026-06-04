@@ -13,6 +13,9 @@ import {
   handleQpdReport,
   handleContextHealthReport,
   handleTrajectoryReplay,
+  handleCacheHabits,
+  handleSubagentCostPredict,
+  handleReasoningEffortRoute,
   type ReplayCostPlanArgs,
   type McpProxyTrimArgs,
 } from "./tcrp-tools.js";
@@ -78,6 +81,63 @@ describe("tool_audit MCP handler (F2)", () => {
   it("returns an error object for malformed input", () => {
     const r = JSON.parse(handleToolAudit({ tools: undefined as never, usage: undefined as never }));
     expect(r.error).toBeTruthy();
+  });
+
+  it("emits an f2 quality_proof with PII-safe aggregate fields only", () => {
+    const json = handleToolAudit({
+      tools: [
+        { name: "github_pr", server: "github", definitionTokens: 500 },
+        { name: "jira_create", server: "jira", definitionTokens: 900 },
+      ],
+      usage: {
+        windowDays: 30,
+        sessionsInWindow: 60,
+        invocations: { github_pr: 40 },
+        lastUsedAgeDays: { github_pr: 0.5, jira_create: Infinity },
+        sessionsLoadingTool: { github_pr: 60, jira_create: 60 },
+      },
+    });
+    const r = JSON.parse(json);
+    expect(r.quality_proof).toBeDefined();
+    expect(r.quality_proof.featureId).toBe("f2");
+    expect(r.quality_proof.toolCount).toBe(2);
+    expect(r.quality_proof.totalDefinitionTokens).toBe(1400);
+    expect(r.quality_proof.recoverableTokensPerWeek).toBe(r.recoverableTokensPerWeek);
+    expect(r.quality_proof.recommendationCount).toBe(1);
+    // PII-safe: the proof must NOT carry per-tool names or schemas.
+    expect(JSON.stringify(r.quality_proof)).not.toContain("jira_create");
+    expect(JSON.stringify(r.quality_proof)).not.toContain("github_pr");
+  });
+
+  it("error responses carry NO quality_proof (recorder must skip them)", () => {
+    const r = JSON.parse(
+      handleToolAudit({ tools: undefined as never, usage: undefined as never })
+    );
+    expect(r.quality_proof).toBeUndefined();
+  });
+
+  it("never throws on a malformed element in `tools`; a throwing element → JSON error", () => {
+    const usage = {
+      windowDays: 30,
+      sessionsInWindow: 60,
+      invocations: {},
+      lastUsedAgeDays: {},
+      sessionsLoadingTool: {},
+    };
+    // Contract is "never throw across the wire". For any malformed element the
+    // handler returns parseable JSON (the core tolerates some shapes and emits a
+    // report; others throw and are converted to an error). Either way: no throw.
+    for (const bad of [[null], [5], [{}]]) {
+      let json = "";
+      expect(() => {
+        json = handleToolAudit({ tools: bad as never, usage: usage as never });
+      }).not.toThrow();
+      expect(() => JSON.parse(json)).not.toThrow();
+    }
+    // [null] specifically threw before the guard; now it's a clean error w/o proof.
+    const r = JSON.parse(handleToolAudit({ tools: [null] as never, usage: usage as never }));
+    expect(r.error).toBeTruthy();
+    expect(r.quality_proof).toBeUndefined();
   });
 
   it("vendor=anthropic-claude-code short-circuits with the vendor-native notice", () => {
@@ -185,6 +245,257 @@ describe("qpd_report MCP handler (F4)", () => {
       handleQpdReport({ baseline: undefined as never, candidates: undefined as never })
     );
     expect(r.error).toBeTruthy();
+  });
+
+  it("emits an f4 quality_proof with the cluster's aggregate gate outcomes", () => {
+    const json = handleQpdReport({
+      baseline: agg("opus", 500, 0.92, 0.1),
+      candidates: [agg("sonnet", 500, 0.9, 0.02), agg("haiku", 500, 0.71, 0.004)],
+    });
+    const r = JSON.parse(json);
+    expect(r.quality_proof).toBeDefined();
+    expect(r.quality_proof.featureId).toBe("f4");
+    expect(r.quality_proof.clusterId).toBe("refactor-ts");
+    expect(r.quality_proof.candidateCount).toBe(2);
+    // sonnet passes every gate; haiku fails AR ⇒ exactly one recommended.
+    expect(r.quality_proof.recommendedCount).toBe(1);
+    expect(r.quality_proof.bestProjectedSavingsPct).toBe(r.best.projectedSavingsPct);
+    expect(r.quality_proof.paretoFrontierSize).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a malformed element in `candidates` returns a JSON error, never a throw", () => {
+    const baseline = agg("opus", 500, 0.92, 0.1);
+    for (const bad of [[null], [5], [{}]]) {
+      const r = JSON.parse(
+        handleQpdReport({ baseline, candidates: bad as never })
+      );
+      expect(r.error).toBeTruthy();
+      expect(r.quality_proof).toBeUndefined();
+    }
+  });
+
+  it("a no-recommendation cluster still emits a proof with null bestProjectedSavingsPct", () => {
+    const json = handleQpdReport({
+      baseline: agg("opus", 500, 0.92, 0.1),
+      candidates: [agg("haiku", 500, 0.71, 0.004)], // fails AR gate
+    });
+    const r = JSON.parse(json);
+    expect(r.quality_proof.featureId).toBe("f4");
+    expect(r.quality_proof.recommendedCount).toBe(0);
+    expect(r.quality_proof.bestProjectedSavingsPct).toBeNull();
+  });
+});
+
+describe("cache_habits MCP handler (F9)", () => {
+  const SECRET_PROMPT = "REFACTOR the super_secret_function_name in auth.ts";
+
+  function snapshot(over: Record<string, unknown> = {}) {
+    return {
+      currentModel: "claude-sonnet-4-5-20250929",
+      currentTtl: "5m",
+      lastTurnAt: "2026-06-03T00:00:00.000Z",
+      turnsSoFar: 3,
+      cacheReadTokensSoFar: 5000,
+      cacheCreationTokensSoFar: 8000,
+      systemPromptTokens: 2000,
+      toolListOrderHash: "hashA",
+      mcpServers: ["github"],
+      ...over,
+    };
+  }
+  function action(over: Record<string, unknown> = {}, changes: Record<string, unknown> = {}) {
+    return {
+      modelFamily: "sonnet",
+      model: "claude-sonnet-4-5-20250929",
+      ttl: "5m",
+      prompt: { text: SECRET_PROMPT, pastedBlocks: [] },
+      changes: {
+        systemPromptTokens: null,
+        toolListOrderHash: null,
+        reasoningEffort: null,
+        temperature: null,
+        mcpServersAdded: [],
+        mcpServersRemoved: [],
+        ...changes,
+      },
+      now: "2026-06-03T00:00:30.000Z", // 30s later — well within the 5m TTL
+      ...over,
+    };
+  }
+
+  it("fires CH-001 on a mid-session model switch (a rule the transcript hook cannot reach)", () => {
+    const json = handleCacheHabits({
+      action: action({ model: "claude-opus-4-5-20251101", modelFamily: "opus" }),
+      snapshot: snapshot(),
+    });
+    const r = JSON.parse(json);
+    expect(r.featureId).toBe("f9");
+    const ids = r.findings.map((f: { ruleId: string }) => f.ruleId);
+    expect(ids).toContain("CH-001");
+    expect(r.quality_proof.featureId).toBe("f9");
+    expect(r.totals.findingCount).toBe(r.findings.length);
+  });
+
+  it("runs the FULL rule set — multiple cache-killers in one diff", () => {
+    const json = handleCacheHabits({
+      action: action(
+        { model: "claude-opus-4-5-20251101", modelFamily: "opus" },
+        {
+          toolListOrderHash: "hashB", // CH-005 reorder
+          systemPromptTokens: 2500, // CH-006 system-prompt mutation
+          mcpServersAdded: ["jira"], // CH-007 mcp server mutation
+        }
+      ),
+      snapshot: snapshot(),
+    });
+    const r = JSON.parse(json);
+    const ids = new Set(r.findings.map((f: { ruleId: string }) => f.ruleId));
+    expect(ids.has("CH-001")).toBe(true);
+    expect(ids.has("CH-005")).toBe(true);
+    expect(ids.has("CH-006")).toBe(true);
+    expect(ids.has("CH-007")).toBe(true);
+    expect(["info", "warn", "block"]).toContain(r.verdict);
+  });
+
+  it("a stable action produces no findings (verdict info)", () => {
+    const json = handleCacheHabits({ action: action(), snapshot: snapshot() });
+    const r = JSON.parse(json);
+    expect(r.findings).toHaveLength(0);
+    expect(r.verdict).toBe("info");
+    expect(r.totals.findingCount).toBe(0);
+  });
+
+  it("never leaks the prompt text into findings or the proof (PII hygiene)", () => {
+    const json = handleCacheHabits({
+      action: action({ model: "claude-opus-4-5-20251101", modelFamily: "opus" }),
+      snapshot: snapshot(),
+    });
+    expect(json).not.toContain("super_secret_function_name");
+  });
+
+  it("honors an explicit suppress list", () => {
+    const json = handleCacheHabits({
+      action: action({ model: "claude-opus-4-5-20251101", modelFamily: "opus" }),
+      snapshot: snapshot(),
+      suppress: ["CH-001"],
+    });
+    const r = JSON.parse(json);
+    expect(r.findings.map((f: { ruleId: string }) => f.ruleId)).not.toContain("CH-001");
+    expect(r.skipped).toContain("CH-001");
+  });
+
+  it("coerces loose input (missing changes/pastedBlocks) without throwing", () => {
+    const json = handleCacheHabits({
+      action: { model: "claude-sonnet-4-5-20250929", now: "2026-06-03T00:00:30.000Z" },
+      snapshot: { currentModel: "claude-sonnet-4-5-20250929" },
+    });
+    const r = JSON.parse(json);
+    expect(r.featureId).toBe("f9");
+    expect(Array.isArray(r.findings)).toBe(true);
+  });
+
+  it("returns an error for missing action/snapshot", () => {
+    expect(JSON.parse(handleCacheHabits({ action: undefined as never, snapshot: {} })).error).toBeTruthy();
+    expect(JSON.parse(handleCacheHabits({ action: {}, snapshot: undefined as never })).error).toBeTruthy();
+  });
+
+  it("returns an error when action.model is missing", () => {
+    const r = JSON.parse(
+      handleCacheHabits({ action: { now: "2026-06-03T00:00:30.000Z" }, snapshot: {} })
+    );
+    expect(r.error).toBeTruthy();
+  });
+});
+
+describe("subagent_cost_predict MCP handler (N6)", () => {
+  const MODEL = "claude-sonnet-4-5-20250929";
+
+  it("returns an error when model is missing", () => {
+    const r = JSON.parse(handleSubagentCostPredict({ model: "" }));
+    expect(r.error).toBeTruthy();
+  });
+
+  it("empty history ⇒ insufficient_data with null projections", () => {
+    const r = JSON.parse(handleSubagentCostPredict({ model: MODEL, history: [], proposed_count: 3 }));
+    expect(r.basis).toBe("insufficient_data");
+    expect(r.projectedTotalUsd).toBeNull();
+    expect(r.proposedCount).toBe(3);
+  });
+
+  it("projects per-subagent and total USD for a priced model", () => {
+    const r = JSON.parse(
+      handleSubagentCostPredict({
+        model: MODEL,
+        proposed_count: 2,
+        history: [
+          { tokensIn: 1000, tokensOut: 500 },
+          { tokensIn: 2000, tokensOut: 1000 },
+        ],
+      })
+    );
+    expect(r.basis).toBe("session-history");
+    expect(r.priced).toBe(true);
+    expect(r.perSubagentUsd).not.toBeNull();
+    expect(r.projectedTotalUsd.mean).toBeCloseTo(r.perSubagentUsd.mean * 2);
+  });
+
+  it("UNPRICED model ⇒ priced:false, USD null, tokens still projected", () => {
+    const r = JSON.parse(
+      handleSubagentCostPredict({
+        model: "no-such-model",
+        proposed_count: 4,
+        history: [{ tokensIn: 100, tokensOut: 100 }],
+      })
+    );
+    expect(r.priced).toBe(false);
+    expect(r.perSubagentUsd).toBeNull();
+    expect(r.perSubagentTokens).not.toBeNull();
+    expect(r.projectedTotalTokens.mean).toBeCloseTo(200 * 4);
+  });
+
+  it("defaults proposed_count to 1 when omitted", () => {
+    const r = JSON.parse(
+      handleSubagentCostPredict({ model: MODEL, history: [{ tokensIn: 10, tokensOut: 10 }] })
+    );
+    expect(r.proposedCount).toBe(1);
+  });
+});
+
+describe("reasoning_effort_route MCP handler (2.4d)", () => {
+  const big = (effort: string, ar: number, cost: number, n = 200) => ({
+    effort,
+    n,
+    acceptedCount: Math.round(n * ar),
+    meanCostUsd: cost,
+  });
+
+  it("recommends a cheaper non-inferior effort with savings", () => {
+    const r = JSON.parse(
+      handleReasoningEffortRoute({
+        current_effort: "max" as never,
+        outcomes: [big("max", 0.9, 0.1), big("high", 0.92, 0.02)] as never,
+      })
+    );
+    expect(r.hold).toBe(false);
+    expect(r.recommendedEffort).toBe("high");
+    expect(r.projectedSavingsPct).toBeGreaterThan(70);
+  });
+
+  it("holds when no lower effort is non-inferior", () => {
+    const r = JSON.parse(
+      handleReasoningEffortRoute({
+        current_effort: "max" as never,
+        outcomes: [big("max", 0.92, 0.1), big("high", 0.7, 0.02)] as never,
+      })
+    );
+    expect(r.hold).toBe(true);
+    expect(r.recommendedEffort).toBe("max");
+  });
+
+  it("returns an error for malformed input", () => {
+    expect(
+      JSON.parse(handleReasoningEffortRoute({ current_effort: undefined as never, outcomes: undefined as never })).error
+    ).toBeTruthy();
   });
 });
 

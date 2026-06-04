@@ -163,7 +163,7 @@ export function scanMcpResponseForInjection(
       reason:
         `Sentinel blocked MCP response: ${blockers.length} hostile signature(s) ` +
         `[${cats}]. Pattern matches the Jan 20 2026 Anthropic Git MCP RCE ` +
-        `incident class (arXiv 2601.17548).`,
+        `incident class (CVE-2025-68143/68144/68145).`,
       injectionFindings: findings,
     };
   }

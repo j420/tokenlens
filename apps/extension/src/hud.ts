@@ -13,8 +13,22 @@
 
 import * as vscode from "vscode";
 import { isFeatureEnabled, type TcrpFeatureFlags } from "@prune/shared";
-import { computeHud, isChatInputSurface } from "./hud-compute.js";
+import {
+  computeHud,
+  isChatInputSurface,
+  detectSeverityTransition,
+  buildHudQualityProof,
+  type HudSeverity,
+} from "./hud-compute.js";
 import type { FeatureFlagStore } from "./feature-flags-store.js";
+
+/**
+ * Optional recorder for the one discrete f5 signal: a spend-severity
+ * transition. Injected so the actual telemetry write (if any) never runs on the
+ * render hot path's critical section and never couples the HUD to a sink. Must
+ * be best-effort and non-throwing; the HUD additionally guards the call.
+ */
+export type HudTransitionRecorder = (proof: Record<string, unknown>) => void;
 
 const FEATURE_ID = "f5" as const;
 const DEBOUNCE_MS = 100;
@@ -49,7 +63,8 @@ function isChatInputDocument(doc: vscode.TextDocument): boolean {
 export function activateHud(
   context: vscode.ExtensionContext,
   flagStore: FeatureFlagStore,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  onSeverityTransition?: HudTransitionRecorder
 ): vscode.Disposable {
   const statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Left,
@@ -60,6 +75,8 @@ export function activateHud(
 
   let debounceTimer: NodeJS.Timeout | null = null;
   let config = readConfig();
+  // Last rendered spend zone, for transition detection. Null until first render.
+  let lastSeverity: HudSeverity | null = null;
 
   const featureLive = (flags: TcrpFeatureFlags): boolean =>
     isFeatureEnabled(flags, FEATURE_ID);
@@ -81,8 +98,30 @@ export function activateHud(
     }
     if (c.tokens === 0) {
       statusBarItem.hide();
+      // An empty buffer resets the zone so the next non-empty render that lands
+      // in a non-green zone is reported as a fresh transition.
+      lastSeverity = null;
       return;
     }
+    // f5 telemetry: fire the injected recorder ONLY on a real zone transition
+    // (never per render). Best-effort and fully isolated — a recorder failure
+    // can never affect the status-bar display.
+    if (onSeverityTransition) {
+      const transition = detectSeverityTransition(lastSeverity, c.severity);
+      if (transition) {
+        try {
+          onSeverityTransition(
+            buildHudQualityProof(transition, c, {
+              greenUsd: config.greenUsd,
+              redUsd: config.redUsd,
+            })
+          );
+        } catch {
+          // never breaks the render
+        }
+      }
+    }
+    lastSeverity = c.severity;
     statusBarItem.text = c.displayText;
     statusBarItem.tooltip = c.tooltipText;
     statusBarItem.backgroundColor =

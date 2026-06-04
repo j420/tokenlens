@@ -120,6 +120,95 @@ describe("aggregateFeatureTelemetry — generic column sums", () => {
   });
 });
 
+describe("aggregateFeatureTelemetry — f2 toolDefAuditor decoding", () => {
+  it("sums recoverable tokens / definition tokens / recs / tools across rows", () => {
+    const report = aggregateFeatureTelemetry([
+      makeRow({
+        feature_id: "f2",
+        quality_proof: {
+          featureId: "f2",
+          recoverableTokensPerWeek: 1200,
+          totalDefinitionTokens: 5000,
+          recommendationCount: 2,
+          toolCount: 8,
+        },
+      }),
+      makeRow({
+        feature_id: "f2",
+        quality_proof: {
+          featureId: "f2",
+          recoverableTokensPerWeek: 300,
+          totalDefinitionTokens: 1000,
+          recommendationCount: 1,
+          toolCount: 3,
+        },
+      }),
+    ]);
+    const f2 = byId(report, "f2");
+    expect(f2.eventCount).toBe(2);
+    if (f2.summary.kind !== "f2") throw new Error("wrong kind");
+    expect(f2.summary.data.recoverableTokensPerWeek).toBe(1500);
+    expect(f2.summary.data.totalDefinitionTokens).toBe(6000);
+    expect(f2.summary.data.recommendationCount).toBe(3);
+    expect(f2.summary.data.toolsAudited).toBe(11);
+  });
+
+  it("leaves fields null (never 0) when no row carried a readable value", () => {
+    const report = aggregateFeatureTelemetry([
+      makeRow({ feature_id: "f2", quality_proof: { featureId: "f2" } }),
+    ]);
+    const f2 = byId(report, "f2");
+    if (f2.summary.kind !== "f2") throw new Error("wrong kind");
+    expect(f2.summary.data.recoverableTokensPerWeek).toBeNull();
+    expect(f2.summary.data.toolsAudited).toBeNull();
+    expect(f2.malformedProofCount).toBe(0); // proof IS an object, just sparse
+  });
+});
+
+describe("aggregateFeatureTelemetry — f4 qpdBench decoding", () => {
+  it("sums candidates/recommended and surfaces the most-recent savings %", () => {
+    const report = aggregateFeatureTelemetry([
+      // Newest-first (getRecentEvents order): latest savings % wins.
+      makeRow({
+        feature_id: "f4",
+        quality_proof: {
+          featureId: "f4",
+          candidateCount: 3,
+          recommendedCount: 1,
+          bestProjectedSavingsPct: 72.5,
+        },
+      }),
+      makeRow({
+        feature_id: "f4",
+        quality_proof: {
+          featureId: "f4",
+          candidateCount: 2,
+          recommendedCount: 0,
+          bestProjectedSavingsPct: null,
+        },
+      }),
+    ]);
+    const f4 = byId(report, "f4");
+    if (f4.summary.kind !== "f4") throw new Error("wrong kind");
+    expect(f4.summary.data.candidatesEvaluated).toBe(5);
+    expect(f4.summary.data.recommendedCount).toBe(1);
+    expect(f4.summary.data.latestBestProjectedSavingsPct).toBeCloseTo(72.5);
+  });
+
+  it("savings % is null when no row carried a readable value", () => {
+    const report = aggregateFeatureTelemetry([
+      makeRow({
+        feature_id: "f4",
+        quality_proof: { featureId: "f4", candidateCount: 1, recommendedCount: 0, bestProjectedSavingsPct: null },
+      }),
+    ]);
+    const f4 = byId(report, "f4");
+    if (f4.summary.kind !== "f4") throw new Error("wrong kind");
+    expect(f4.summary.data.latestBestProjectedSavingsPct).toBeNull();
+    expect(f4.summary.data.candidatesEvaluated).toBe(1);
+  });
+});
+
 describe("aggregateFeatureTelemetry — f9 cacheHabits decoding", () => {
   it("counts verdicts and sums totals", () => {
     const report = aggregateFeatureTelemetry([

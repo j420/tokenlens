@@ -48,6 +48,9 @@ import {
   handleCodeModeHarness,
   handleReplayCostPlan,
   handleMcpProxyTrim,
+  handleCacheHabits,
+  handleSubagentCostPredict,
+  handleReasoningEffortRoute,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -423,8 +426,8 @@ const TOOLS = [
       "Pre-prompt scan: detect API keys, private keys, connection " +
       "URLs, and high-entropy tokens in a payload BEFORE sending it " +
       "to a cloud model. Pattern-based (gitleaks/TruffleHog-style). " +
-      "Responds to GitGuardian's documented 3.2% AI-commit leak rate " +
-      "vs 1.5% human baseline (https://oecd.ai/en/incidents/2026-03-17-2273). " +
+      "Responds to GitGuardian's documented 3.2% Claude-Code-commit leak rate " +
+      "vs 1.5% baseline (https://blog.gitguardian.com/the-state-of-secrets-sprawl-2026/). " +
       "Returns a verdict (allow/warn/block), the per-finding location, " +
       "and a length-preserving redacted payload.",
     inputSchema: {
@@ -453,8 +456,9 @@ const TOOLS = [
       "external payload) for prompt-injection signatures. Categories: " +
       "SHADOWING, PATH_TRAVERSAL, ARGUMENT_INJECTION, HIDDEN_HTML, " +
       "INDIRECT_MARKUP. Pattern matches the documented Jan 20 2026 RCE " +
-      "in Anthropic's Git MCP server (arXiv 2601.17548). Default policy " +
-      "blocks the first three categories.",
+      "in Anthropic's Git MCP server (CVE-2025-68143/68144/68145; class " +
+      "surveyed in arXiv 2601.17548). Default policy blocks the first three " +
+      "categories.",
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -665,6 +669,54 @@ const TOOLS = [
         },
       },
       required: ["transcript_path"],
+    },
+  },
+  {
+    name: "subagent_cost_predict",
+    description:
+      "N6 pre-spawn subagent cost predictor. Complements subagent_status (which " +
+      "caps by COUNT) by projecting the DOLLAR cost of a proposed Task fan-out " +
+      "before it runs, from the observed cost of subagents already completed " +
+      "this session. The host supplies per-subagent usage samples (it alone can " +
+      "attribute tokens to a subagent); the predictor returns per-subagent and " +
+      "projected-total token/USD quantiles (p50/p90/mean). Strict pricing: an " +
+      "unpriced model yields null USD (priced:false), never a default rate; an " +
+      "empty history yields basis 'insufficient_data'. Caller-supplied numbers " +
+      "only — nothing is fabricated.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        history: {
+          type: "array" as const,
+          description:
+            "Observed costs of subagents completed this session. Each entry: " +
+            "{ tokensIn, tokensOut, tokensCached?, costUsd? }. costUsd, when " +
+            "present, is used verbatim (most faithful).",
+          items: {
+            type: "object" as const,
+            properties: {
+              tokensIn: { type: "number" as const },
+              tokensOut: { type: "number" as const },
+              tokensCached: { type: "number" as const },
+              costUsd: { type: "number" as const },
+            },
+          },
+        },
+        proposed_count: {
+          type: "number" as const,
+          description: "How many subagents are about to be spawned. Default 1.",
+          default: 1,
+        },
+        model: {
+          type: "string" as const,
+          description: "Model the proposed subagents will run on (for pricing the history).",
+        },
+        provider: {
+          type: "string" as const,
+          description: "Provider hint; inferred from the model name when omitted.",
+        },
+      },
+      required: ["model"],
     },
   },
   {
@@ -1108,6 +1160,103 @@ const TOOLS = [
         },
       },
       required: ["tools"],
+    },
+  },
+  {
+    name: "cache_habits",
+    description:
+      "F9 cache-habits linter (full rule set). Given the host's PROPOSED action " +
+      "diff and the prior SESSION snapshot, runs all 12 deterministic " +
+      "prompt-cache-killer rules (CH-001..CH-012: mid-session model switch, " +
+      "tool-list reorder, system-prompt mutation, large paste before the cached " +
+      "prefix, MCP server add/remove, TTL/reasoning-effort/temperature change, " +
+      "idle-TTL expiry, etc.) and returns the findings, per-rule estimated " +
+      "wasted USD/tokens, and an f9 quality_proof. This is the surface for the " +
+      "11 rules a transcript hook cannot reach (they need the proposed-vs-active " +
+      "diff only the editor/host has). No regex, no model call; verdict is " +
+      "advisory — the host decides whether to warn or block.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        action: {
+          type: "object" as const,
+          description:
+            "ProposedAction: { modelFamily, model, ttl, prompt:{text,pastedBlocks[]}, " +
+            "changes:{systemPromptTokens,toolListOrderHash,reasoningEffort,temperature," +
+            "mcpServersAdded[],mcpServersRemoved[]}, now }. All change fields null when unchanged.",
+        },
+        snapshot: {
+          type: "object" as const,
+          description:
+            "SessionSnapshot: { currentModel, currentTtl, lastTurnAt, turnsSoFar, " +
+            "cacheReadTokensSoFar, cacheCreationTokensSoFar, systemPromptTokens, " +
+            "toolListOrderHash, reasoningEffort?, temperature?, mcpServers[] }.",
+        },
+        suppress: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Rule ids to suppress (e.g. one that fires spuriously here).",
+        },
+        severity_overrides: {
+          type: "object" as const,
+          description: "Per-rule severity override, e.g. demote a block to warn in shadow.",
+        },
+      },
+      required: ["action", "snapshot"],
+    },
+  },
+  {
+    name: "reasoning_effort_route",
+    description:
+      "Reasoning-Effort Auto-Router. Recommends the LOWEST reasoning effort " +
+      "(standard<high<xhigh<max) that is statistically quality-non-inferior to " +
+      "the current dial on the caller's own task class — so the dial is set " +
+      "right up front and never needs a mid-session change (which would bust the " +
+      "prompt cache; this actuates the CH-009 warning). Down-route only (never " +
+      "spends more), respects a floor, and HOLDS on insufficient data or when no " +
+      "lower effort clears the AR/TPR/cost/sample-size gates. Caller supplies the " +
+      "per-effort acceptance/cost stats — nothing is fabricated. Reuses the " +
+      "qpd-bench non-inferiority gates.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        current_effort: {
+          type: "string" as const,
+          enum: ["standard", "high", "xhigh", "max"],
+          description: "The effort dial currently in use.",
+        },
+        outcomes: {
+          type: "array" as const,
+          description:
+            "Per-effort outcome stats on the user's task class. Each: " +
+            "{ effort, n, acceptedCount, testPassRate?, testN?, testPassedCount?, meanCostUsd }. " +
+            "meanCostUsd is caller-computed from real token usage × price.",
+          items: {
+            type: "object" as const,
+            properties: {
+              effort: { type: "string" as const, enum: ["standard", "high", "xhigh", "max"] },
+              n: { type: "number" as const },
+              acceptedCount: { type: "number" as const },
+              testPassRate: { type: ["number", "null"] as const },
+              testN: { type: "number" as const },
+              testPassedCount: { type: "number" as const },
+              meanCostUsd: { type: "number" as const },
+            },
+            required: ["effort", "n", "acceptedCount", "meanCostUsd"],
+          },
+        },
+        task_class: { type: "string" as const, description: "Task class id (cluster). Default 'default'." },
+        floor: {
+          type: "string" as const,
+          enum: ["standard", "high", "xhigh", "max"],
+          description: "Never recommend below this effort. Default 'standard'.",
+        },
+        ar_margin: { type: "number" as const, description: "AR non-inferiority margin (default 0.05)." },
+        tpr_margin: { type: "number" as const, description: "TPR non-inferiority margin (default 0.03)." },
+        cost_dominance_ratio: { type: "number" as const, description: "Max candidate/baseline cost ratio (default 0.7)." },
+        min_samples: { type: "number" as const, description: "Min samples per effort to trust (default 30)." },
+      },
+      required: ["current_effort", "outcomes"],
     },
   },
 ];
@@ -2435,6 +2584,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           max_subagent_minutes?: number;
         });
         break;
+      case "subagent_cost_predict":
+        result = handleSubagentCostPredict(
+          args as unknown as Parameters<typeof handleSubagentCostPredict>[0]
+        );
+        break;
+      case "reasoning_effort_route":
+        result = handleReasoningEffortRoute(
+          args as unknown as Parameters<typeof handleReasoningEffortRoute>[0]
+        );
+        break;
       case "tool_audit":
         result = handleToolAudit(
           args as unknown as Parameters<typeof handleToolAudit>[0]
@@ -2482,6 +2641,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "mcp_proxy_trim":
         result = handleMcpProxyTrim(
           args as unknown as Parameters<typeof handleMcpProxyTrim>[0]
+        );
+        break;
+      case "cache_habits":
+        result = handleCacheHabits(
+          args as unknown as Parameters<typeof handleCacheHabits>[0]
         );
         break;
       case "budget_status":

@@ -8,6 +8,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { execFile } from "child_process";
 import { analyzeContent, cleanup, formatTokens, countTokens } from "@prune/tokenizer";
 import { type PruneConfig, DEFAULT_CONFIG } from "@prune/shared";
 import { SemanticSqueezer, initParser, loadLanguage, setDebugMode } from "./squeezer";
@@ -218,7 +219,8 @@ export function activate(context: vscode.ExtensionContext) {
     // TCRP feature control
     vscode.commands.registerCommand("prune.disableFeature", disableFeatureCommand),
     vscode.commands.registerCommand("prune.enableFeature", enableFeatureCommand),
-    vscode.commands.registerCommand("prune.listFeatures", listFeaturesCommand)
+    vscode.commands.registerCommand("prune.listFeatures", listFeaturesCommand),
+    vscode.commands.registerCommand("prune.installHooks", () => installHooksCommand(context))
   );
 
   // Register URI handler for dashboard -> IDE interaction
@@ -1653,6 +1655,82 @@ async function listFeaturesCommand(): Promise<void> {
   outputChannel.appendLine(`Flag file: ${FLAG_PATH}`);
   for (const line of lines) outputChannel.appendLine(line);
   outputChannel.show(true);
+}
+
+async function installHooksCommand(context: vscode.ExtensionContext): Promise<void> {
+  const hooksDir = path.join(context.extensionPath, "hooks");
+  const installScript = path.join(hooksDir, "install.mjs");
+  if (!fs.existsSync(installScript)) {
+    vscode.window.showErrorMessage(
+      "Prune: hook installer not found. The hooks ship with the monorepo " +
+        "(apps/extension/hooks) and depend on the workspace packages; run the " +
+        "extension from the repo to install them."
+    );
+    return;
+  }
+
+  // Scope: user-wide (~/.claude/settings.json) or this workspace (.claude/…).
+  const scopePick = await vscode.window.showQuickPick(
+    [
+      { label: "User settings", description: "~/.claude/settings.json (all projects)", scope: "user" },
+      { label: "Project settings", description: ".claude/settings.json (this workspace)", scope: "project" },
+    ],
+    { placeHolder: "Install Prune hooks into which settings file?" }
+  );
+  if (!scopePick) return;
+
+  const args = [installScript, "--hooks-dir", hooksDir];
+  if (scopePick.scope === "project") {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) {
+      vscode.window.showErrorMessage("Prune: no workspace folder open for project-scoped install.");
+      return;
+    }
+    args.push("--settings", path.join(root, ".claude", "settings.json"));
+  } else {
+    args.push("--user");
+  }
+
+  // Preview first (dry-run), then confirm before writing.
+  const preview = await runNode([...args, "--dry-run"]);
+  if (preview.error) {
+    vscode.window.showErrorMessage(`Prune: hook install preview failed: ${preview.error}`);
+    return;
+  }
+  outputChannel.appendLine("=== Prune hook install (preview) ===");
+  outputChannel.appendLine(preview.stdout.trim());
+  outputChannel.show(true);
+
+  const confirm = await vscode.window.showInformationMessage(
+    "Prune: install hooks now? (A preview was written to the Prune output channel.)",
+    { modal: true },
+    "Install"
+  );
+  if (confirm !== "Install") return;
+
+  const result = await runNode(args);
+  if (result.error) {
+    vscode.window.showErrorMessage(`Prune: hook install failed: ${result.error}`);
+    return;
+  }
+  outputChannel.appendLine(result.stdout.trim());
+  vscode.window.showInformationMessage(result.stdout.split("\n")[0] || "Prune: hooks installed.");
+  log(`installHooks: ${result.stdout.split("\n")[0]}`);
+}
+
+/** Run `node <args>` and capture stdout; never throws (returns {error}). */
+function runNode(
+  args: string[]
+): Promise<{ stdout: string; stderr: string; error?: string }> {
+  return new Promise((resolve) => {
+    execFile("node", args, { timeout: 20_000 }, (err, stdout, stderr) => {
+      resolve({
+        stdout: stdout ?? "",
+        stderr: stderr ?? "",
+        error: err ? (stderr?.trim() || err.message) : undefined,
+      });
+    });
+  });
 }
 
 async function pickFeatureName(verb: string): Promise<string | undefined> {

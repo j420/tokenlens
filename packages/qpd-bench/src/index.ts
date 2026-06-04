@@ -19,6 +19,7 @@ export * from "./pareto.js";
 export * from "./scoring.js";
 export * from "./recommender.js";
 export * from "./runner.js";
+export * from "./effort-router.js";
 
 import { aggregateModel, scoreSample } from "./scoring.js";
 import type { BenchRunSummary } from "./runner.js";
