@@ -10,6 +10,7 @@ import {
   formatCost,
   formatTokens,
   getModelPricingByName,
+  isModelPricedByName,
 } from "@prune/shared";
 import { countTokens } from "@prune/tokenizer";
 
@@ -25,6 +26,13 @@ export interface HudComputation {
   severity: "green" | "yellow" | "red";
   displayText: string;
   tooltipText: string;
+  /**
+   * Whether the model is in the price table. When false, `cost` was computed
+   * from the back-compat DEFAULT fallback rate (not the model's real price), so
+   * the display marks it with "*" and the tooltip says so — we never present a
+   * fallback rate as fact.
+   */
+  priced: boolean;
 }
 
 /**
@@ -47,20 +55,28 @@ export function computeHud(
       severity: "green",
       displayText: "",
       tooltipText: "Prune HUD: type to see projected cost.",
+      priced: true,
     };
   }
   const counted = countTokens(text, model);
+  // priced: is the model genuinely in the price table? When not, getModelPricingByName
+  // returns the back-compat DEFAULT rate — we still show a number but mark it as a
+  // fallback estimate rather than presenting it as the model's real price.
+  const priced = isModelPricedByName(model);
   const pricing = getModelPricingByName(model);
   const inputCost = (counted.tokens / 1_000_000) * pricing.input;
   const severity = classifySeverity(inputCost, thresholds);
   const sourceMark = counted.source === "estimated" ? "~" : "";
-  const displayText = `$(symbol-misc) ${sourceMark}${formatTokens(counted.tokens)} · ${formatCost(inputCost)}`;
+  const priceMark = priced ? "" : "*"; // "*" = price is a default fallback, not real
+  const displayText = `$(symbol-misc) ${sourceMark}${formatTokens(counted.tokens)} · ${formatCost(inputCost)}${priceMark}`;
   const tooltipText = [
     "Prune HUD (F5)",
     `Model: ${model}`,
     `Tokens (input): ${formatTokens(counted.tokens)} (${counted.source})`,
-    `Projected input cost: ${formatCost(inputCost)}`,
-    `Pricing source: $${pricing.input.toFixed(2)} / 1M input tokens`,
+    `Projected input cost: ${formatCost(inputCost)}${priced ? "" : "  (* estimate)"}`,
+    priced
+      ? `Pricing source: $${pricing.input.toFixed(2)} / 1M input tokens`
+      : `Pricing: UNKNOWN model — default fallback $${pricing.input.toFixed(2)} / 1M input tokens (estimate only, shown with "*")`,
     "",
     "Display-only — never modifies the prompt or routes the request.",
   ].join("\n");
@@ -71,6 +87,7 @@ export function computeHud(
     severity,
     displayText,
     tooltipText,
+    priced,
   };
 }
 
@@ -132,7 +149,7 @@ export function detectSeverityTransition(
  */
 export function buildHudQualityProof(
   transition: SeverityTransition,
-  computation: Pick<HudComputation, "tokens" | "cost" | "source">,
+  computation: Pick<HudComputation, "tokens" | "cost" | "source"> & { priced?: boolean },
   thresholds: HudThresholds
 ): Record<string, unknown> {
   return {
@@ -144,6 +161,9 @@ export function buildHudQualityProof(
     tokens: computation.tokens,
     costUsd: computation.cost,
     costSource: computation.source,
+    // Honesty: when false, costUsd was computed from the DEFAULT fallback rate
+    // (the model isn't priced), not the model's real price. null when unknown.
+    pricedModel: computation.priced ?? null,
     thresholds: { greenUsd: thresholds.greenUsd, redUsd: thresholds.redUsd },
   };
 }

@@ -11,8 +11,36 @@ import {
   detectSeverityTransition,
   buildHudQualityProof,
   classifySeverity,
+  computeHud,
   F5_FEATURE_ID,
 } from "./hud-compute.js";
+
+describe("computeHud — unpriced-model honesty (no silent default-rate overclaim)", () => {
+  const thresholds = { greenUsd: 0.01, redUsd: 0.1 };
+
+  it("a PRICED model shows a clean cost with no fallback marker", () => {
+    const c = computeHud("hello world, some prompt text", "gpt-4o", thresholds);
+    expect(c.priced).toBe(true);
+    expect(c.displayText).not.toContain("*");
+    expect(c.tooltipText).toContain("Pricing source:");
+    expect(c.tooltipText).not.toContain("UNKNOWN model");
+  });
+
+  it("an UNKNOWN model marks the cost as a fallback estimate, not a real price", () => {
+    const c = computeHud("hello world, some prompt text", "made-up-model-x", thresholds);
+    expect(c.priced).toBe(false);
+    expect(c.displayText).toContain("*"); // visible fallback marker
+    expect(c.tooltipText).toContain("UNKNOWN model");
+    expect(c.tooltipText).toContain("estimate");
+  });
+
+  it("the f5 proof records pricedModel so telemetry never reports a fallback cost as fact", () => {
+    const c = computeHud("some text here", "made-up-model-x", thresholds);
+    const t = detectSeverityTransition("green", "red")!;
+    const proof = buildHudQualityProof(t, c, thresholds);
+    expect(proof.pricedModel).toBe(false);
+  });
+});
 
 describe("detectSeverityTransition", () => {
   it("returns null on the first render (no prior severity)", () => {
