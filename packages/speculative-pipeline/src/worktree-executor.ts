@@ -31,6 +31,7 @@
 
 import {
   existsSync,
+  lstatSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -153,9 +154,22 @@ export function createWorktreeExecutor(
     return sliced.toString("utf8") + truncated;
   }
 
-  /** Bounded recursive file walk (sorted, skip-dirs, depth-capped). */
+  /**
+   * Bounded recursive file walk (sorted, skip-dirs, depth-capped) used by Grep
+   * and Glob.
+   *
+   * SECURITY: this is the second confinement boundary. `confine()` guards the
+   * explicit caller path, but a recursive walk discovers entries the caller
+   * never named — so each entry is checked HERE. Every entry is `lstat`'d first
+   * (so a symlink is detected BEFORE it is followed); a symlink whose realpath
+   * escapes the root is skipped, never descended into or yielded. Regular
+   * entries cannot escape because their whole parent chain has already been
+   * confined. In-root symlinks are followed; a cycle through them is bounded by
+   * both `maxDepth` and a visited-realpath guard.
+   */
   function* walkFiles(start: string, signal?: AbortSignal): Generator<string> {
     let scanned = 0;
+    const seenLinkTargets = new Set<string>(); // realpath of in-root symlinked dirs
     const stack: Array<{ dir: string; depth: number }> = [{ dir: start, depth: 0 }];
     while (stack.length > 0) {
       checkAbort(signal);
@@ -170,16 +184,46 @@ export function createWorktreeExecutor(
       const subdirs: Array<{ dir: string; depth: number }> = [];
       for (const name of entries) {
         const abs = join(dir, name);
-        let st;
+        let lst;
         try {
-          st = statSync(abs);
+          lst = lstatSync(abs);
         } catch {
           continue;
         }
-        if (st.isDirectory()) {
+
+        if (lst.isSymbolicLink()) {
+          // Confine the link target. A symlink whose realpath leaves the root is
+          // skipped outright — this is the hole that let Grep/Glob read outside.
+          let target: string;
+          try {
+            target = realpathSync(abs);
+          } catch {
+            continue; // broken / dangling symlink
+          }
+          if (target !== realRoot && !isWithin(realRoot, target)) continue;
+          let tst;
+          try {
+            tst = statSync(target);
+          } catch {
+            continue;
+          }
+          if (tst.isDirectory()) {
+            if (skip.has(name) || depth >= opts.maxDepth) continue;
+            if (seenLinkTargets.has(target)) continue; // cycle / already-walked
+            seenLinkTargets.add(target);
+            subdirs.push({ dir: abs, depth: depth + 1 });
+          } else if (tst.isFile()) {
+            if (scanned++ >= opts.maxFilesScanned) return;
+            yield abs;
+          }
+          continue;
+        }
+
+        // Regular (non-symlink) entry — its parent chain is already confined.
+        if (lst.isDirectory()) {
           if (skip.has(name) || depth >= opts.maxDepth) continue;
           subdirs.push({ dir: abs, depth: depth + 1 });
-        } else if (st.isFile()) {
+        } else if (lst.isFile()) {
           if (scanned++ >= opts.maxFilesScanned) return;
           yield abs;
         }

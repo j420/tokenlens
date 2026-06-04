@@ -113,6 +113,28 @@ describe("predictSubagentCost — strict pricing", () => {
     expect(p.perSubagentTokens).toBeNull();
   });
 
+  it("a WRONG explicit provider does NOT fabricate a default rate (provider-aware strictness)", () => {
+    // gpt-4o is in the table under "openai"; passing provider "google" must NOT
+    // fall through to calculateCost's DEFAULT_PRICING and invent a rate.
+    const wrong = predictSubagentCost({
+      history: [sample(1_000_000, 1_000_000)],
+      proposedCount: 1,
+      model: "gpt-4o",
+      provider: "google",
+    });
+    expect(wrong.priced).toBe(false);
+    expect(wrong.perSubagentUsd).toBeNull();
+    // With the correct (auto-detected) provider it IS priced at the real rate.
+    const right = predictSubagentCost({
+      history: [sample(1_000_000, 1_000_000)],
+      proposedCount: 1,
+      model: "gpt-4o",
+    });
+    expect(right.priced).toBe(true);
+    const expected = calculateCost("openai", "gpt-4o", 1_000_000, 1_000_000, 0);
+    expect(right.perSubagentUsd!.mean).toBeCloseTo(expected);
+  });
+
   it("explicit costUsd takes precedence over the derived price", () => {
     const p = predictSubagentCost({
       history: [sample(1000, 500, { costUsd: 99 })],

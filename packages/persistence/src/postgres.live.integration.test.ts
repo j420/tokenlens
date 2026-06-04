@@ -243,7 +243,12 @@ live("PostgresSink against a LIVE Postgres server", () => {
     expect(out.find((e) => e.event_id === "ev-json")!.quality_proof).toEqual(proof);
   });
 
-  it("getBudgetSpend coerces the SQL SUM to a JS number (real driver string→number)", async () => {
+  it("getBudgetSpend returns a real JS number from the server-side SUM (driver result shaping)", async () => {
+    // Honest scope: the cost_usd column is `real`, which postgres-js already
+    // returns as a JS number — so this proves the driver returns a usable number
+    // (not a Buffer/string) and the SUM/window math is correct on a real server.
+    // It does NOT exercise getBudgetSpend's string→number branch (that path is
+    // for a `numeric` column, which this schema doesn't use).
     await sink.recordBudgetCharge(charge("c1", "2026-05-10T00:00:00.000Z", { cost_usd: 2.5 }));
     await sink.recordBudgetCharge(charge("c2", "2026-05-11T00:00:00.000Z", { cost_usd: 3.25 }));
     const total = await sink.getBudgetSpend("env-1", new Date("2026-05-01T00:00:00Z"));
@@ -262,7 +267,13 @@ live("PostgresSink against a LIVE Postgres server", () => {
 
   // -- the genuinely server-only behaviors PGlite (single-threaded) can't prove --
 
-  it("CONCURRENCY: many parallel charge writes all land (pooled connections)", async () => {
+  it("parallel charge writes over a pooled connection all land (load smoke — the unique-index race below is the real concurrency-correctness proof)", async () => {
+    // Honest scope: each charge is an independent autocommit INSERT on a distinct
+    // PK with no row contention, so this would also pass on a serialized pool.
+    // It proves the pooled driver handles many in-flight writes without dropping
+    // any (a load smoke test), NOT a concurrency-correctness property — that is
+    // the (session_id, sequence) UNIQUE-INDEX RACE test immediately below, which
+    // genuinely requires two writers colliding on one constraint.
     const N = 25;
     await Promise.all(
       Array.from({ length: N }, (_, i) =>

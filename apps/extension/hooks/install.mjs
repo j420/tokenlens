@@ -2,8 +2,10 @@
 /**
  * Prune hook installer (pending action 1.6).
  *
- * The 16+ Prune hooks were wired by hand into ~/.claude/settings.json. This
- * automates that: it merges the canonical hook→event(+matcher) mapping into a
+ * The Prune hooks (17 distinct scripts, 19 event bindings — loop-breaker and
+ * replay-recorder each fire on two events) were wired by hand into
+ * ~/.claude/settings.json. This automates that: it merges the canonical
+ * hook→event(+matcher) mapping (HOOK_REGISTRY below) into a
  * Claude Code settings.json, idempotently (re-running adds nothing) and
  * non-destructively (existing settings and unrelated hooks are preserved). The
  * planner is a PURE function (computeHooksInstall) so it is fully unit-tested;

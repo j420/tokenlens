@@ -116,6 +116,30 @@ describe("tool_audit MCP handler (F2)", () => {
     expect(r.quality_proof).toBeUndefined();
   });
 
+  it("never throws on a malformed element in `tools`; a throwing element → JSON error", () => {
+    const usage = {
+      windowDays: 30,
+      sessionsInWindow: 60,
+      invocations: {},
+      lastUsedAgeDays: {},
+      sessionsLoadingTool: {},
+    };
+    // Contract is "never throw across the wire". For any malformed element the
+    // handler returns parseable JSON (the core tolerates some shapes and emits a
+    // report; others throw and are converted to an error). Either way: no throw.
+    for (const bad of [[null], [5], [{}]]) {
+      let json = "";
+      expect(() => {
+        json = handleToolAudit({ tools: bad as never, usage: usage as never });
+      }).not.toThrow();
+      expect(() => JSON.parse(json)).not.toThrow();
+    }
+    // [null] specifically threw before the guard; now it's a clean error w/o proof.
+    const r = JSON.parse(handleToolAudit({ tools: [null] as never, usage: usage as never }));
+    expect(r.error).toBeTruthy();
+    expect(r.quality_proof).toBeUndefined();
+  });
+
   it("vendor=anthropic-claude-code short-circuits with the vendor-native notice", () => {
     const json = handleToolAudit({
       tools: [
@@ -237,6 +261,17 @@ describe("qpd_report MCP handler (F4)", () => {
     expect(r.quality_proof.recommendedCount).toBe(1);
     expect(r.quality_proof.bestProjectedSavingsPct).toBe(r.best.projectedSavingsPct);
     expect(r.quality_proof.paretoFrontierSize).toBeGreaterThanOrEqual(1);
+  });
+
+  it("a malformed element in `candidates` returns a JSON error, never a throw", () => {
+    const baseline = agg("opus", 500, 0.92, 0.1);
+    for (const bad of [[null], [5], [{}]]) {
+      const r = JSON.parse(
+        handleQpdReport({ baseline, candidates: bad as never })
+      );
+      expect(r.error).toBeTruthy();
+      expect(r.quality_proof).toBeUndefined();
+    }
   });
 
   it("a no-recommendation cluster still emits a proof with null bestProjectedSavingsPct", () => {

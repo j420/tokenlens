@@ -131,6 +131,50 @@ describe("SECURITY: confinement", () => {
     const out = await exec(call("Read", { file_path: "link-a.ts" }));
     expect(out.result).toContain("export const a = 1;");
   });
+
+  // Regression: the recursive Grep/Glob walk must ALSO confine symlinks, not
+  // just the explicit Read/LS path. A symlinked DIR pointing outside the root
+  // previously leaked outside file contents (Grep) and listings (Glob).
+  it("Grep does NOT follow a symlinked directory out of the worktree", async () => {
+    writeFileSync(join(outside, "id_rsa"), "-----BEGIN PRIVATE KEY-----\nLEAKED\n");
+    mkdirSync(join(outside, "sub"));
+    writeFileSync(join(outside, "sub", "creds.env"), "AWS_SECRET=hunter2\n");
+    symlinkSync(outside, join(root, "evil")); // symlinked dir → outside
+    const exec = createWorktreeExecutor(root);
+    const out = await exec(call("Grep", { pattern: "PRIVATE|SECRET" }));
+    expect(out.result).not.toContain("LEAKED");
+    expect(out.result).not.toContain("hunter2");
+    expect(out.result).not.toContain("evil/");
+  });
+
+  it("Glob does NOT enumerate files through a symlinked directory out of the worktree", async () => {
+    writeFileSync(join(outside, "id_rsa"), "secret\n");
+    symlinkSync(outside, join(root, "evil"));
+    const exec = createWorktreeExecutor(root);
+    const out = await exec(call("Glob", { pattern: "**/*" }));
+    expect(out.result.split("\n")).not.toContain("evil/id_rsa");
+    expect(out.result).not.toContain("evil/");
+  });
+
+  it("Grep/Glob STILL walk an in-tree symlinked directory (functionality preserved)", async () => {
+    mkdirSync(join(root, "real"));
+    writeFileSync(join(root, "real", "inside.ts"), "const INSIDE_MARKER = 1;\n");
+    symlinkSync(join(root, "real"), join(root, "linkdir")); // in-root symlinked dir
+    const exec = createWorktreeExecutor(root);
+    const grep = await exec(call("Grep", { pattern: "INSIDE_MARKER" }));
+    // The real path is found; the symlinked view may also appear but never escapes.
+    expect(grep.result).toContain("INSIDE_MARKER");
+    expect(grep.result).toContain("real/inside.ts");
+  });
+
+  it("a symlink CYCLE inside the worktree terminates (bounded, no hang)", async () => {
+    mkdirSync(join(root, "a"));
+    writeFileSync(join(root, "a", "f.ts"), "x\n");
+    symlinkSync(join(root, "a"), join(root, "a", "loop")); // a/loop -> a (cycle)
+    const exec = createWorktreeExecutor(root);
+    const out = await exec(call("Glob", { pattern: "**/*.ts" }));
+    expect(out.result).toContain("a/f.ts"); // returns; did not hang
+  });
 });
 
 describe("SECURITY: read-only — ineligible tools refused", () => {

@@ -101,6 +101,16 @@ export function handleToolAudit(args: ToolAuditArgs): string {
   if (!Array.isArray(args.tools) || !args.usage) {
     return JSON.stringify({ error: "tool_audit requires `tools` and `usage`." });
   }
+  try {
+    return runToolAudit(args);
+  } catch (e) {
+    // Honor the per-handler contract — a malformed element (e.g. a null in
+    // `tools`) returns a JSON error, never a throw across the MCP wire.
+    return JSON.stringify({ error: `tool_audit: ${(e as Error).message}` });
+  }
+}
+
+function runToolAudit(args: ToolAuditArgs): string {
   const report = auditToolDefinitions(args.tools, args.usage, {
     criticalAllowlist: args.critical_allowlist,
     vendor: args.vendor,
@@ -158,6 +168,16 @@ export function handleQpdReport(args: QpdReportArgs): string {
       error: "qpd_report requires `baseline` and `candidates` aggregates.",
     });
   }
+  try {
+    return runQpdReport(args);
+  } catch (e) {
+    // Per-handler contract: a malformed baseline/candidate element returns a
+    // JSON error rather than throwing across the MCP wire.
+    return JSON.stringify({ error: `qpd_report: ${(e as Error).message}` });
+  }
+}
+
+function runQpdReport(args: QpdReportArgs): string {
   const rec = recommendForCluster(args.baseline, args.candidates, {
     arMargin: args.ar_margin,
     costDominanceRatio: args.cost_dominance_ratio,

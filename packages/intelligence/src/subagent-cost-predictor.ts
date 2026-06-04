@@ -23,6 +23,8 @@
 import {
   calculateCost,
   detectProvider,
+  getModelPricing,
+  DEFAULT_PRICING,
   MODEL_PRICING,
   type Provider,
 } from "@prune/shared";
@@ -130,7 +132,13 @@ export function predictSubagentCost(
       ? Math.trunc(input.proposedCount)
       : 1;
   const provider: Provider = input?.provider ?? detectProvider(model);
-  const priced = isModelPriced(model);
+  // STRICT pricing is PROVIDER-AWARE: derive a cost only when the (provider,
+  // model) pair is genuinely in the price table. A flat-map-only check would let
+  // a caller-supplied WRONG provider (e.g. model "gpt-4o" with provider
+  // "google") fall through to calculateCost's DEFAULT_PRICING and fabricate a
+  // rate — exactly the "never a default rate" violation we forbid. Reference-
+  // compare against the singleton DEFAULT_PRICING returned on a miss.
+  const tablePriced = getModelPricing(provider, model) !== DEFAULT_PRICING;
 
   const history = Array.isArray(input?.history) ? input.history : [];
 
@@ -151,8 +159,8 @@ export function predictSubagentCost(
 
     if (hasExplicitCost) {
       usdSamples.push(nonNeg(s.costUsd as number));
-    } else if (priced && hasTokens) {
-      // Derive from the pricing table only when the model is actually priced.
+    } else if (tablePriced && hasTokens) {
+      // Derive only when the (provider, model) pair is genuinely priced.
       usdSamples.push(calculateCost(provider, model, tin, tout, tcached));
     }
     // else: unpriced model + no explicit cost ⇒ contributes tokens but no USD.
