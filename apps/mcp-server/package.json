@@ -4,6 +4,13 @@
   "description": "MCP server for AI self-regulation with Prune tools",
   "type": "module",
   "main": "dist/index.js",
+  "exports": {
+    ".": { "import": "./dist/index.js" },
+    "./tools": {
+      "types": "./dist/tcrp-tools.d.ts",
+      "import": "./dist/tcrp-tools.js"
+    }
+  },
   "bin": {
     "prune-mcp": "./dist/index.js"
   },

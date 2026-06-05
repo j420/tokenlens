@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true
+  },
+  "//": "build (tsc) compiles only the rootDir-safe, @prune-only subset. The files that import FOREIGN source (apps/extension/src, apps/dashboard route handlers) or run the demo are excluded here and executed via vitest/tsx (on-the-fly transpile), which is how the existing run-comprehensive-tests.ts harness already loads that source headlessly. Correctness of those files is proven by the vitest suites, not by this emit.",
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "src/demo.ts",
+    "src/build-ui.ts",
+    "src/scenarios/**",
+    "src/drivers/extension-driver.ts",
+    "src/drivers/dashboard-driver.ts"
+  ]
+}
