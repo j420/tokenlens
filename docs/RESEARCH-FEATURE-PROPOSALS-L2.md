@@ -9,12 +9,20 @@
 > equivalence/quality-gated, PII-safe, falsifiable+tested). Both apertures: reframed-cost AND
 > value/economics/security.
 
-> **Build status (in progress).** The autonomous-hook Cost-Security savers are landing first as the new
-> `@prune/cost-security` package (deterministic, fail-open, 25 tests): **F19 token/expansion-bomb
-> quarantine** + tool-output bounding (`guardToolResult`), **file-state thrash** (`detectThrash`), and
-> **F18 injection-cost attribution** (`attributeDownstreamCost`), wired as the always-on PostToolUse
-> `cost-guard.mjs` hook. Honest boundary: the hook detects/advises/meters autonomously; byte-exact
-> substitution of a result belongs to the request-assembly adapter (mode C).
+> **Build status.** The autonomous-hook savers are shipping in the new `@prune/cost-security` package
+> (deterministic, fail-open, **48 tests**) with **7 wired hooks**:
+> - **F19** token/expansion-bomb quarantine + tool-output bounding (`guardToolResult` → `cost-guard.mjs`, PostToolUse)
+> - **File-state thrash** (`detectThrash` → `thrash-detector.mjs`, PostToolUse)
+> - **F18** injection-cost attribution (`attributeDownstreamCost` → `injection-cost.mjs`, PostToolUse)
+> - **F4** pre-turn risk forecast (`forecastTurnRisk` → `preturn-forecast.mjs`, UserPromptSubmit)
+> - **Edit-payload amplification / U1** (`assessEditAmplification` over `diff-enforcer` → `edit-amplification.mjs`, PreToolUse/Write)
+> - **F20** fan-out cost-acceleration (`assessFanoutAcceleration` → `fanout-acceleration.mjs`, PreToolUse/Task)
+> - shared `_session-store.mjs` cross-turn accumulator (atomic, bounded, PII-safe).
+>
+> All deterministic, fail-open, env-configurable, registered in the installer (23 scripts / 25 bindings),
+> and verified E2E. Honest boundary: hooks detect/advise/meter autonomously; byte-exact request
+> substitution belongs to the request-assembly adapter (mode C), and the F4/injection-cost feature-extraction
+> uses transparent heuristics (never a fabricated probability).
 
 ## Why List2 is genuinely different from List1
 

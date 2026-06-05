@@ -43,3 +43,25 @@ export {
   type AttributionFinding,
   type AttributionReport,
 } from "./attribution.js";
+
+export {
+  forecastTurnRisk,
+  type TurnRiskInput,
+  type TurnRiskFactor,
+  type RiskBand,
+  type TurnRiskOptions,
+  type RiskWeights,
+  type TurnRiskReport,
+} from "./forecast.js";
+
+export {
+  assessEditAmplification,
+  type AmplificationOptions,
+  type AmplificationReport,
+} from "./amplification.js";
+
+export {
+  assessFanoutAcceleration,
+  type FanoutOptions,
+  type FanoutReport,
+} from "./fanout.js";

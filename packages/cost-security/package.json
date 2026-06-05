@@ -16,6 +16,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@prune/diff-enforcer": "0.1.0",
     "@prune/response-tuner": "0.1.0",
     "@prune/shared": "0.1.0",
     "@prune/tokenizer": "0.1.0"

@@ -26,6 +26,7 @@ const STORE_DIR = join(homedir(), ".prune", "session");
 const MAX_TIMELINE = 200;
 const MAX_SOURCES = 100;
 const MAX_ACTIONS = 500;
+const MAX_FANOUT = 50;
 
 /** Default, well-formed empty store. */
 export function emptyStore() {
@@ -37,6 +38,7 @@ export function emptyStore() {
     actions: [], // [{ sourceId, tokens }]
     lastUntrustedSourceId: null,
     downstreamCount: 0,
+    fanoutTurns: [], // [{ turn, count }] — subagent spawns bucketed per turn
   };
 }
 
@@ -96,6 +98,7 @@ function coerce(parsed) {
   base.lastUntrustedSourceId =
     typeof parsed.lastUntrustedSourceId === "string" ? parsed.lastUntrustedSourceId : null;
   base.downstreamCount = intOr(parsed.downstreamCount, 0);
+  base.fanoutTurns = Array.isArray(parsed.fanoutTurns) ? parsed.fanoutTurns.slice(-MAX_FANOUT) : [];
   return base;
 }
 
@@ -103,6 +106,7 @@ function trim(store) {
   if (store.fileTimeline.length > MAX_TIMELINE) store.fileTimeline = store.fileTimeline.slice(-MAX_TIMELINE);
   if (store.sources.length > MAX_SOURCES) store.sources = store.sources.slice(-MAX_SOURCES);
   if (store.actions.length > MAX_ACTIONS) store.actions = store.actions.slice(-MAX_ACTIONS);
+  if (store.fanoutTurns.length > MAX_FANOUT) store.fanoutTurns = store.fanoutTurns.slice(-MAX_FANOUT);
 }
 
 function intOr(v, dflt) {

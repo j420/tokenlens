@@ -2,7 +2,7 @@
 /**
  * Prune hook installer (pending action 1.6).
  *
- * The Prune hooks (20 distinct scripts, 22 event bindings — loop-breaker and
+ * The Prune hooks (23 distinct scripts, 25 event bindings — loop-breaker and
  * replay-recorder each fire on two events) were wired by hand into
  * ~/.claude/settings.json. This automates that: it merges the canonical
  * hook→event(+matcher) mapping (HOOK_REGISTRY below) into a
@@ -49,8 +49,11 @@ export const HOOK_REGISTRY = [
   { file: "skill-advisor.mjs", event: "UserPromptSubmit" },
   { file: "cache-habits-advisor.mjs", event: "UserPromptSubmit" },
   { file: "context-health-advisor.mjs", event: "UserPromptSubmit" },
+  { file: "preturn-forecast.mjs", event: "UserPromptSubmit" },
   // PreToolUse — pre-action guards.
   { file: "subagent-warden.mjs", event: "PreToolUse", matcher: "Task" },
+  { file: "fanout-acceleration.mjs", event: "PreToolUse", matcher: "Task" },
+  { file: "edit-amplification.mjs", event: "PreToolUse", matcher: "Write" },
   { file: "trajectory-diet.mjs", event: "PreToolUse" },
   { file: "speculative-prune.mjs", event: "PreToolUse" },
   // PostToolUse — post-action recorders / shields.
