@@ -2,7 +2,7 @@
 /**
  * Prune hook installer (pending action 1.6).
  *
- * The Prune hooks (18 distinct scripts, 20 event bindings — loop-breaker and
+ * The Prune hooks (20 distinct scripts, 22 event bindings — loop-breaker and
  * replay-recorder each fire on two events) were wired by hand into
  * ~/.claude/settings.json. This automates that: it merges the canonical
  * hook→event(+matcher) mapping (HOOK_REGISTRY below) into a
@@ -57,6 +57,8 @@ export const HOOK_REGISTRY = [
   { file: "speculative-record.mjs", event: "PostToolUse", matcher: "Read" },
   { file: "sentinel-mcp.mjs", event: "PostToolUse" },
   { file: "cost-guard.mjs", event: "PostToolUse" },
+  { file: "thrash-detector.mjs", event: "PostToolUse" },
+  { file: "injection-cost.mjs", event: "PostToolUse" },
   { file: "loop-breaker.mjs", event: "PostToolUse" },
   { file: "replay-recorder.mjs", event: "PostToolUse" },
   // Stop — end-of-turn. budget-gate BEFORE slo-breaker (charge then evaluate).
