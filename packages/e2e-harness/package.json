@@ -11,11 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx --import ./src/_vscode-register.mjs src/demo.ts",
-    "report": "vitest run --reporter=default --reporter=json --outputFile=vitest-results.json ; tsx --import ./src/_vscode-register.mjs src/build-report.ts"
+    "ui": "vitest run --reporter=default --reporter=json --outputFile=vitest-results.json ; tsx --import ./src/_vscode-register.mjs src/build-ui.ts"
   },
   "dependencies": {
     "@prune/mcp-server": "0.1.0",
     "@prune/squeezer": "0.1.0",
+    "@prune/equivalence": "0.1.0",
     "@prune/tokenizer": "0.1.0",
     "@prune/shared": "0.1.0",
     "@prune/persistence": "0.1.0",

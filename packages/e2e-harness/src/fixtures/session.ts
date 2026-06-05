@@ -281,7 +281,11 @@ export function buildSession(): SessionFixture {
     },
 
     largeToolResult,
-    outputSamples: [180, 220, 540, 200, 260, 310, 175, 480, 230, 290, 205, 250],
+    // ≥20 samples so the calibrator clears its default minSamples gate.
+    outputSamples: [
+      180, 220, 540, 200, 260, 310, 175, 480, 230, 290, 205, 250, 300, 195,
+      420, 240, 270, 330, 210, 360, 185, 455, 225, 285,
+    ],
 
     replaySegments: [
       { role: "system", payload: { sys: "You are a coding assistant." }, tokens_in: 1200, tokens_out: 0 },

@@ -1,3 +1,6 @@
-# generated report artifacts
-report.html
+# generated QA artifacts
+qa-ui.html
 vitest-results.json
+run.json
+health.json
+report.html

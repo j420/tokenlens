@@ -26,8 +26,27 @@ outputs.
 # from the repo root (builds deps first via turbo):
 npm run build
 npm test --workspace @prune/e2e-harness     # the assertions
-npm run demo --workspace @prune/e2e-harness  # the narrated "show outputs" report
+npm run demo --workspace @prune/e2e-harness  # the narrated terminal "show outputs" report
+npm run ui   --workspace @prune/e2e-harness  # the interactive QA explorer → qa-ui.html
 ```
+
+## The QA UI (`npm run ui` → `qa-ui.html`)
+
+A single self-contained HTML page (inline CSS, embedded run JSON, vanilla-JS
+controller — no server, no framework). It answers, per test/feature:
+- **what ran** — every step across all five flows, filterable + searchable;
+- **input → output** — expand any row to see the real input and output;
+- **did it do its job 100%** — an *efficacy meter* per step (checks passed / total);
+  a feature is "100%" iff every invariant check passed;
+- **code-quality degradation** — a quality badge from the feature's OWN gate
+  (`isValid`, `diffVerified`, strict-pricing) plus two INDEPENDENT
+  `@prune/equivalence` proofs (lossless-prune byte-equality, squeeze AST-equivalence);
+  the top bar shows the total degradation count (0 = none);
+- **repo health** — typecheck + monorepo build/test tiles (captured live, green =
+  no regression), and the dashboard /telemetry feature-card grid.
+
+Intentional, manifest-accounted reductions (e.g. pruning a repetitive log) are
+classified **n/a**, not "degraded" — only an unintended correctness loss counts.
 
 ## Design notes / honest scoping
 

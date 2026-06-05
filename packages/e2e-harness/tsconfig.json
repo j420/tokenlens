@@ -25,7 +25,7 @@
     "dist",
     "**/*.test.ts",
     "src/demo.ts",
-    "src/build-report.ts",
+    "src/build-ui.ts",
     "src/scenarios/**",
     "src/drivers/extension-driver.ts",
     "src/drivers/dashboard-driver.ts"

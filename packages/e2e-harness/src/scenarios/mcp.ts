@@ -1,12 +1,12 @@
 /**
- * Flow B — the AI consulting Prune via the real MCP tool handlers. Each call
- * uses fixture-derived typed inputs. We also COLLECT the real `quality_proof`
- * bundles the rich-decoder tools emit (f2/f4/f9/f10/f11) so Flow E can forward
- * and roll them up — the dashboard numbers are literally this flow's output.
+ * Flow B — the AI consulting Prune via the real MCP tool handlers. Each step
+ * records real input/output, invariant checks, and (for transform tools) a
+ * quality/degradation signal. Collects the rich-decoder proofs (f2/f4/f9/f10/f11)
+ * for the dashboard loop.
  */
 
 import { mcp } from "../drivers/mcp-driver";
-import { step, type ScenarioResult, type Step } from "../types";
+import type { ScenarioResult, Step } from "../types";
 import { SWITCH_MODEL, type SessionFixture } from "../fixtures/session";
 
 export interface CollectedProof {
@@ -22,137 +22,238 @@ export interface McpScenarioOutput {
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
+function noError(o: Record<string, unknown>): boolean {
+  return typeof o.error !== "string";
+}
 
 export async function runMcpScenario(fx: SessionFixture): Promise<McpScenarioOutput> {
   const steps: Step[] = [];
   const proofs: CollectedProof[] = [];
 
   // f9 — cache_habits_from_transcript: propose an Opus switch → CH-001 fires.
-  const ch = await mcp.cacheHabitsFromTranscript({
-    transcript_path: fx.transcriptPath,
-    proposed_action: { model: SWITCH_MODEL },
-  });
+  const chInput = { transcript_path: fx.transcriptPath, proposed_action: { model: SWITCH_MODEL } };
+  const ch = await mcp.cacheHabitsFromTranscript(chInput);
   const findings = (ch.findings as Array<{ ruleId: string }>) ?? [];
   const ch001 = findings.find((f) => f.ruleId === "CH-001");
-  steps.push(
-    step(
-      "cache_habits_from_transcript (→ Opus)",
-      ch.verdict === "warn" || ch.verdict === "block" ? "warn" : "ok",
-      `verdict=${ch.verdict}; ${ch001 ? "CH-001 mid-session model switch flagged" : "no model-switch finding"}; derived model ${(ch.derived as { currentModel?: string } | undefined)?.currentModel}`,
-      { verdict: ch.verdict, firedCH001: Boolean(ch001), derived: ch.derived }
-    )
-  );
+  steps.push({
+    name: "cache_habits_from_transcript (→ Opus)",
+    status: ch.verdict === "warn" || ch.verdict === "block" ? "warn" : "ok",
+    detail: `verdict=${ch.verdict}; ${ch001 ? "CH-001 mid-session model switch flagged" : "no model-switch finding"}`,
+    input: chInput,
+    output: { verdict: ch.verdict, findings: ch.findings, derived: ch.derived },
+    checks: [
+      { label: "no handler error", passed: noError(ch) },
+      { label: "CH-001 fired on the model switch", passed: Boolean(ch001) },
+      { label: "verdict is warn", passed: ch.verdict === "warn" },
+    ],
+    quality: null,
+  });
   if (ch.quality_proof) proofs.push({ featureId: "f9", qualityProof: ch.quality_proof as Record<string, unknown> });
 
-  // f6 — context_health_report from the transcript.
+  // f6 — context_health_report.
   const health = await mcp.contextHealthReport({ transcript_path: fx.transcriptPath });
-  steps.push(
-    step("context_health_report", "info", `regime=${health.regime ?? health.status ?? "n/a"}`, {
-      keys: Object.keys(health),
-    })
-  );
+  steps.push({
+    name: "context_health_report",
+    status: "info",
+    detail: `regime=${health.regime ?? health.status ?? "n/a"}`,
+    input: { transcript_path: fx.transcriptPath },
+    output: health,
+    checks: [{ label: "no handler error", passed: noError(health) }],
+    quality: null,
+  });
 
-  // f2 — tool_audit: flag unused, heavyweight tool defs.
-  const audit = await mcp.toolAudit({ tools: fx.toolDefs, usage: fx.toolUsage });
-  steps.push(
-    step("tool_audit", "ok", summarize(audit), { keys: Object.keys(audit) })
-  );
+  // f2 — tool_audit.
+  const auditInput = { tools: fx.toolDefs, usage: fx.toolUsage };
+  const audit = await mcp.toolAudit(auditInput);
+  steps.push({
+    name: "tool_audit",
+    status: "ok",
+    detail: summarize(audit),
+    input: auditInput,
+    output: audit,
+    checks: [{ label: "no handler error", passed: noError(audit) }],
+    quality: null,
+  });
   if (audit.quality_proof) proofs.push({ featureId: "f2", qualityProof: audit.quality_proof as Record<string, unknown> });
 
-  // f4 — qpd_report: find a cheaper, quality-equivalent tier.
-  const qpd = await mcp.qpdReport({ baseline: fx.qpdBaseline, candidates: fx.qpdCandidates });
-  steps.push(step("qpd_report", "ok", summarize(qpd), { keys: Object.keys(qpd) }));
+  // f4 — qpd_report.
+  const qpdInput = { baseline: fx.qpdBaseline, candidates: fx.qpdCandidates };
+  const qpd = await mcp.qpdReport(qpdInput);
+  steps.push({
+    name: "qpd_report",
+    status: "ok",
+    detail: summarize(qpd),
+    input: qpdInput,
+    output: qpd,
+    checks: [{ label: "no handler error", passed: noError(qpd) }],
+    quality: null,
+  });
   if (qpd.quality_proof) proofs.push({ featureId: "f4", qualityProof: qpd.quality_proof as Record<string, unknown> });
 
-  // f10 — mcp_proxy_trim: keep only debug-intent tools.
-  const proxy = await mcp.mcpProxyTrim({
-    intent: "debug",
-    tools: fx.proxyTools,
-    include_fallback: true,
-  } as Parameters<typeof mcp.mcpProxyTrim>[0]);
+  // f10 — mcp_proxy_trim.
+  const proxyInput = { intent: "debug", tools: fx.proxyTools, include_fallback: true };
+  const proxy = await mcp.mcpProxyTrim(proxyInput as Parameters<typeof mcp.mcpProxyTrim>[0]);
   const audited = proxy.audit as { savedTokens?: number; fullCatalogTokens?: number; shippedTokens?: number } | undefined;
-  steps.push(
-    step("mcp_proxy_trim (intent=debug)", "ok", `saved ${audited?.savedTokens ?? "?"} schema tokens (full ${audited?.fullCatalogTokens ?? "?"} → shipped ${audited?.shippedTokens ?? "?"})`, {
-      savedTokens: num(audited?.savedTokens),
-    })
-  );
+  steps.push({
+    name: "mcp_proxy_trim (intent=debug)",
+    status: "ok",
+    detail: `saved ${audited?.savedTokens ?? "?"} schema tokens (full ${audited?.fullCatalogTokens ?? "?"} → shipped ${audited?.shippedTokens ?? "?"})`,
+    input: proxyInput,
+    output: proxy,
+    checks: [
+      { label: "no handler error", passed: noError(proxy) },
+      { label: "savedTokens is a non-negative number", passed: typeof audited?.savedTokens === "number" && (audited?.savedTokens ?? -1) >= 0 },
+    ],
+    quality: null,
+  });
   if (proxy.quality_proof) proofs.push({ featureId: "f10", qualityProof: proxy.quality_proof as Record<string, unknown> });
 
-  // f11 — replay_cost_plan: what-if a tool-read diverges.
-  const replay = await mcp.replayCostPlan({
-    model: fx.activeModel,
-    segments: fx.replaySegments,
-    mutation: fx.replayMutation,
-  } as Parameters<typeof mcp.replayCostPlan>[0]);
+  // f11 — replay_cost_plan.
+  const replayInput = { model: fx.activeModel, segments: fx.replaySegments, mutation: fx.replayMutation };
+  const replay = await mcp.replayCostPlan(replayInput as Parameters<typeof mcp.replayCostPlan>[0]);
   const cost = replay.cost as { savedUsd?: number; naiveCostUsd?: number; replayCostUsd?: number } | undefined;
-  steps.push(
-    step("replay_cost_plan", "ok", `replay saves $${cost?.savedUsd ?? "?"} vs cold re-run ($${cost?.naiveCostUsd ?? "?"} → $${cost?.replayCostUsd ?? "?"})`, {
-      savedUsd: num(cost?.savedUsd),
-    })
-  );
+  steps.push({
+    name: "replay_cost_plan",
+    status: "ok",
+    detail: `replay saves $${cost?.savedUsd ?? "?"} vs cold re-run ($${cost?.naiveCostUsd ?? "?"} → $${cost?.replayCostUsd ?? "?"})`,
+    input: replayInput,
+    output: replay,
+    checks: [{ label: "no handler error", passed: noError(replay) }],
+    quality: null,
+  });
   if (replay.quality_proof) proofs.push({ featureId: "f11", qualityProof: replay.quality_proof as Record<string, unknown> });
 
-  // Phase-8 output-side tools.
+  // P8a — result_prune: quality = lossless flag.
   const prune = await mcp.resultPrune({ text: fx.largeToolResult });
-  steps.push(
-    step("result_prune", "ok", `tool result ${prune.originalTokens ?? "?"} → ${prune.prunedTokens ?? prune.compressedTokens ?? "?"} tok (lossless=${prune.lossless})`, {
-      originalTokens: num(prune.originalTokens),
-      savedTokens: num(prune.savedTokens),
-      lossless: prune.lossless,
-    })
-  );
+  const lossless = prune.lossless === true;
+  steps.push({
+    name: "result_prune",
+    status: "ok",
+    detail: `tool result ${prune.originalTokens ?? "?"} → ${prune.prunedTokens ?? "?"} tok (saved ${prune.savedTokens}; lossless=${prune.lossless})`,
+    input: { textChars: fx.largeToolResult.length, preview: fx.largeToolResult.slice(0, 120) },
+    output: { originalTokens: prune.originalTokens, prunedTokens: prune.prunedTokens, savedTokens: prune.savedTokens, lossless: prune.lossless, manifest: prune.manifest },
+    checks: [
+      { label: "no handler error", passed: noError(prune) },
+      { label: "meaningfully shrank a repetitive dump", passed: Number(prune.savedTokens) > 0 },
+    ],
+    quality: {
+      // Intentional, fully-accounted reduction — correctness-degradation is N/A
+      // (the dedicated equivalence proof in Edge Cases is the real no-degradation
+      // gate). We surface the honest lossless flag + manifest size in the detail.
+      label: "intentional reduction (manifest-accounted)",
+      preserved: null,
+      detail: `lossless=${lossless}; every removed byte is recorded in a ${Array.isArray(prune.manifest) ? (prune.manifest as unknown[]).length : 0}-entry manifest`,
+    },
+    data: { savedTokens: prune.savedTokens },
+  });
 
-  const cal = await mcp.maxTokensCalibrate({ samples: fx.outputSamples });
-  steps.push(step("max_tokens_calibrate", "ok", summarize(cal), { keys: Object.keys(cal) }));
-
+  // P8c — diff_vs_rewrite: quality = diffVerified (sound round-trip).
   const small = await mcp.diffVsRewrite({ original: fx.smallEdit.original, proposed: fx.smallEdit.proposed });
   const big = await mcp.diffVsRewrite({ original: fx.bigRewrite.original, proposed: fx.bigRewrite.proposed });
-  steps.push(
-    step("diff_vs_rewrite (tiny edit)", "ok", `recommend=${small.recommendation ?? small.decision ?? "?"}`, {
-      recommendation: small.recommendation ?? small.decision ?? null,
-    })
-  );
-  steps.push(
-    step("diff_vs_rewrite (near-total rewrite)", "ok", `recommend=${big.recommendation ?? big.decision ?? "?"}`, {
-      recommendation: big.recommendation ?? big.decision ?? null,
-    })
-  );
+  steps.push({
+    name: "diff_vs_rewrite (tiny edit)",
+    status: "ok",
+    detail: `recommend=${small.recommendation}; diffVerified=${small.diffVerified}`,
+    input: { kind: "one-line bug fix" },
+    output: { recommendation: small.recommendation, diffVerified: small.diffVerified, tokenCountMethod: small.tokenCountMethod },
+    checks: [
+      { label: "no handler error", passed: noError(small) },
+      { label: "returned a recommendation", passed: Boolean(small.recommendation) },
+      { label: "recommended the diff for a tiny edit", passed: small.recommendation === "diff" },
+    ],
+    quality: {
+      label: "sound round-trip (diffVerified)",
+      preserved: small.diffVerified === true,
+      detail: "the recommended diff was verified to reproduce the proposed output byte-for-byte; an unsound diff is never recommended",
+    },
+  });
+  steps.push({
+    name: "diff_vs_rewrite (near-total rewrite)",
+    status: "ok",
+    detail: `recommend=${big.recommendation}; diffVerified=${big.diffVerified}`,
+    input: { kind: "almost everything changed" },
+    output: { recommendation: big.recommendation, diffVerified: big.diffVerified },
+    checks: [
+      { label: "no handler error", passed: noError(big) },
+      { label: "recommended a full rewrite when the diff isn't worth it", passed: big.recommendation === "rewrite" },
+    ],
+    quality: { label: "sound round-trip (diffVerified)", preserved: big.diffVerified === true || big.recommendation === "rewrite", detail: "rewrite path needs no diff verification" },
+  });
 
+  // P8b — max_tokens_calibrate.
+  const cal = await mcp.maxTokensCalibrate({ samples: fx.outputSamples });
+  steps.push({
+    name: "max_tokens_calibrate",
+    status: "ok",
+    detail: summarize(cal),
+    input: { samples: fx.outputSamples },
+    output: cal,
+    checks: [
+      { label: "no handler error", passed: noError(cal) },
+      { label: "recommended a cap from sufficient samples", passed: cal.status === "ok" && typeof cal.recommendedMaxTokens === "number" },
+    ],
+    quality: null,
+  });
+
+  // P8d — reasoning_effort_route.
   const effort = await mcp.reasoningEffortRoute({
     current_effort: "high",
     outcomes: fx.effortOutcomes,
   } as Parameters<typeof mcp.reasoningEffortRoute>[0]);
-  steps.push(
-    step("reasoning_effort_route", "ok", `recommend=${effort.recommendedEffort ?? effort.recommendation ?? "?"} (decision=${effort.decision ?? "?"})`, {
-      recommendedEffort: effort.recommendedEffort ?? effort.recommendation ?? null,
-      decision: effort.decision ?? null,
-    })
-  );
-
-  const sub = await mcp.subagentCostPredict({
-    history: fx.subagentHistory,
-    proposed_count: 3,
-    model: fx.activeModel,
+  steps.push({
+    name: "reasoning_effort_route",
+    status: "ok",
+    detail: `recommend=${effort.recommendedEffort} (hold=${effort.hold})`,
+    input: { current_effort: "high", outcomes: fx.effortOutcomes },
+    output: effort,
+    checks: [
+      { label: "no handler error", passed: noError(effort) },
+      { label: "down-routed to standard (non-inferior + cheaper)", passed: effort.recommendedEffort === "standard" },
+    ],
+    quality: null,
   });
-  steps.push(step("subagent_cost_predict (×3)", "ok", summarize(sub), { keys: Object.keys(sub) }));
 
-  const tabs = await mcp.openTabAudit({
-    tabs: fx.tabs,
-    activeFile: "src/auth/service.ts",
-    task_keywords: ["login", "auth"],
-    import_edges: fx.importEdges,
+  // N6 — subagent_cost_predict.
+  const sub = await mcp.subagentCostPredict({ history: fx.subagentHistory, proposed_count: 3, model: fx.activeModel });
+  steps.push({
+    name: "subagent_cost_predict (×3)",
+    status: "ok",
+    detail: summarize(sub),
+    input: { proposed_count: 3, model: fx.activeModel, history: fx.subagentHistory },
+    output: sub,
+    checks: [{ label: "no handler error", passed: noError(sub) }],
+    quality: null,
   });
-  steps.push(step("open_tab_audit", "ok", summarize(tabs), { keys: Object.keys(tabs) }));
 
-  const cache = await mcp.semanticCacheProbe({
-    probes: [{ query: "fix the login bug", freshness_parts: ["src/auth/service.ts@v1"] }],
+  // P8e — open_tab_audit.
+  const tabsInput = { tabs: fx.tabs, activeFile: "src/auth/service.ts", task_keywords: ["login", "auth"], import_edges: fx.importEdges };
+  const tabs = await mcp.openTabAudit(tabsInput);
+  steps.push({
+    name: "open_tab_audit",
+    status: "ok",
+    detail: summarize(tabs),
+    input: tabsInput,
+    output: tabs,
+    checks: [{ label: "no handler error", passed: noError(tabs) }],
+    quality: null,
   });
-  steps.push(step("semantic_cache_probe (cold)", "info", `cacheSize=${cache.cacheSize}; cold cache → miss verdicts`, { cacheSize: num(cache.cacheSize) }));
+
+  // f7 — semantic_cache_probe (cold).
+  const cache = await mcp.semanticCacheProbe({ probes: [{ query: "fix the login bug", freshness_parts: ["src/auth/service.ts@v1"] }] });
+  steps.push({
+    name: "semantic_cache_probe (cold)",
+    status: "info",
+    detail: `cacheSize=${cache.cacheSize}; cold cache → miss verdicts`,
+    input: { probes: [{ query: "fix the login bug" }] },
+    output: cache,
+    checks: [{ label: "no handler error", passed: noError(cache) }],
+    quality: null,
+  });
 
   return {
     result: {
       flow: "MCP",
-      summary: "The AI consults the real MCP tool handlers; rich-decoder proofs (f2/f4/f9/f10/f11) are collected for the dashboard loop.",
+      summary: "The AI consults the real MCP tool handlers; transform tools report their quality gates (lossless, diffVerified); rich proofs feed the dashboard loop.",
       steps,
     },
     proofs,

@@ -75,6 +75,10 @@ export const extension = {
       // trackDecision(decision, category, priority)
       trackDecision(d.text, d.category as never, d.priority as never);
     }
+    // Age the decisions past the at-risk threshold (turnNumber < currentTurn - 2)
+    // so getDecisionsAtRisk surfaces them and the reminder lists them — exactly
+    // what happens after several turns elapse before a compaction.
+    for (let i = 0; i < 4; i++) incrementTurn();
     return {
       atRisk: getDecisionsAtRisk(),
       reminder: generateCompactionReminder(),
