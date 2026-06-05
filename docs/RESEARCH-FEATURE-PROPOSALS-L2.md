@@ -9,6 +9,13 @@
 > equivalence/quality-gated, PII-safe, falsifiable+tested). Both apertures: reframed-cost AND
 > value/economics/security.
 
+> **Build status (in progress).** The autonomous-hook Cost-Security savers are landing first as the new
+> `@prune/cost-security` package (deterministic, fail-open, 25 tests): **F19 token/expansion-bomb
+> quarantine** + tool-output bounding (`guardToolResult`), **file-state thrash** (`detectThrash`), and
+> **F18 injection-cost attribution** (`attributeDownstreamCost`), wired as the always-on PostToolUse
+> `cost-guard.mjs` hook. Honest boundary: the hook detects/advises/meters autonomously; byte-exact
+> substitution of a result belongs to the request-assembly adapter (mode C).
+
 ## Why List2 is genuinely different from List1
 
 List1 optimized **the request**, deterministically, on the existing cost equation and surfaces. List2
