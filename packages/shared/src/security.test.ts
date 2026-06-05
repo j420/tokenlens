@@ -213,17 +213,22 @@ describe("Security: Timing Considerations", () => {
     //
     // A single wall-clock sample of two tight loops is unreliable on a loaded
     // CI runner: one loop can be hit by a GC pause or a scheduler preemption
-    // while the other isn't, spiking the ratio (observed: 23×) with no real
-    // side-channel. So we measure robustly:
-    //   1. WARM UP both paths so neither pays a one-time JIT-compile cost
-    //      inside the measured region.
-    //   2. Repeat each measurement many times and compare the MEDIAN of each
-    //      path. The median rejects the one-off GC/scheduling outliers that
-    //      cause the spurious spike, while still surfacing a systematic gap.
-    //   3. Interleave/alternate which path runs first per repetition so neither
-    //      gets a consistent cache-warmth advantage.
+    // while the other isn't, spiking the ratio with no real side-channel. Even a
+    // MEDIAN of repeats still flakes (observed 23×, then 11×) because on a shared
+    // runner external interference can perturb a large fraction of samples.
+    //
+    // The robust statistic is the MINIMUM, not the median: noise can only ADD
+    // time, never subtract it, so the fastest observed run of each path is the
+    // one least disturbed by the scheduler — it reflects true compute cost. A
+    // genuine structural side-channel (an exception throw or a regex scan on the
+    // miss path) is present in EVERY run including the fastest, so it still shows
+    // up in the min; scheduler jitter does not. We therefore:
+    //   1. WARM UP both paths (discard one run each) so neither pays a one-time
+    //      JIT-compile cost inside the measured region.
+    //   2. Repeat many times and compare the MIN duration of each path.
+    //   3. Alternate ordering to cancel any first-mover cache-warmth bias.
     const iterations = 20_000;
-    const reps = 15;
+    const reps = 25;
 
     const runValid = (): number => {
       const start = performance.now();
@@ -255,29 +260,23 @@ describe("Security: Timing Considerations", () => {
       }
     }
 
-    const median = (xs: number[]): number => {
-      const s = [...xs].sort((a, b) => a - b);
-      const m = Math.floor(s.length / 2);
-      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
-    };
+    const minValid = Math.min(...valid);
+    const minInvalid = Math.min(...invalid);
 
-    const medValid = median(valid);
-    const medInvalid = median(invalid);
-
-    // If both medians are below the timer's effective resolution, the ratio is
+    // If both minima are below the timer's effective resolution, the ratio is
     // dominated by clock granularity, not by the code — the only honest claim is
     // that both paths are trivially fast (no side-channel possible at this
     // scale), so don't assert a meaningless ratio.
     const FLOOR_MS = 0.5;
-    if (Math.max(medValid, medInvalid) < FLOOR_MS) {
-      expect(medValid).toBeLessThan(FLOOR_MS);
-      expect(medInvalid).toBeLessThan(FLOOR_MS);
+    if (Math.max(minValid, minInvalid) < FLOOR_MS) {
+      expect(minValid).toBeLessThan(FLOOR_MS);
+      expect(minInvalid).toBeLessThan(FLOOR_MS);
       return;
     }
 
-    // Robust ratio: median-of-repeats is stable well under this bound in
-    // practice; a real side-channel would blow far past it.
-    const ratio = Math.max(medValid, medInvalid) / Math.min(medValid, medInvalid);
+    // Min-of-repeats reflects uninterrupted compute, so the ratio is ~1 in
+    // practice; a real side-channel would blow far past this bound.
+    const ratio = Math.max(minValid, minInvalid) / Math.min(minValid, minInvalid);
     expect(ratio).toBeLessThan(10);
   });
 });
