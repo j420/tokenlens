@@ -8,6 +8,8 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   handleToolAudit,
   handleQpdReport,
@@ -568,8 +570,12 @@ describe("Phase-8 Tier-1 MCP handlers (boundary)", () => {
 });
 
 describe("context_health_report MCP handler (F6)", () => {
-  const FIXTURE_PATH =
-    "/home/user/tokenlens/packages/telemetry/test/fixtures/session-basic.jsonl";
+  // Resolve relative to THIS test file so it works in CI (and any checkout
+  // location), not just a /home/user/tokenlens dev container.
+  const FIXTURE_PATH = join(
+    dirname(fileURLToPath(import.meta.url)),
+    "../../../packages/telemetry/test/fixtures/session-basic.jsonl"
+  );
 
   it("returns a parseable report pinned to the canonical fixture", async () => {
     const json = await handleContextHealthReport({
