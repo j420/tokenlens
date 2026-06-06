@@ -246,6 +246,14 @@ GROUNDING — {{COST_EQUATION}} · {{PRIOR_ART}} · {{CONSTRAINTS}}
 - Documented waste episodes (tokenlens.md): "simple edit eating 100,000 tokens"; agent loops
   re-running the same failing edit; MCP tool defs at ~22% of context; duplicate file-state/rule
   blocks; surprise bills from runaway sessions.
+- External waste-evidence (2026 research, Part F.3 — cite source+date in `credibility`, never a bare
+  number): reads = 76.1% of agent tokens (SWE-Pruner); repository navigation dominates patch-writing and
+  failed trajectories run 12–82% longer (Code Agent Behaviour); accuracy peaks at intermediate cost
+  (How Do AI Agents Spend Your Money?); input = 53.9% / verification = 59.4%, the "communication tax"
+  (Tokenomics); 60–80% of agent tokens are waste — repeated reads, failed iterations, verbose output
+  (practitioner). NOTE: the SWE-agent failure taxonomy (task-drift, reward-hacking, alignment-faking, …)
+  is mostly LLM-judge-only — drop those at the determinism screen; only degeneration-loop and host-tagged
+  tool-error-rate survive.
 
 DISCOVERY STRATEGY — autopsy then intervene
 For each documented episode AND additional plausible agentic-coding episodes you enumerate
@@ -306,6 +314,9 @@ f4/qpd-bench sweeps MODEL tier; P8d/effort-router sweeps REASONING effort. Ident
 dimensions NOT yet swept under the non-inferiority gate — e.g. context size, cache-TTL tier, tool-subset
 size, batch-vs-interactive, retrieval depth. Propose features that, holding output quality
 non-inferior, find the cheapest setting of one un-swept dimension and move the frontier left.
+The CONTEXT-SIZE / retrieval-depth dimension has cited headroom (Part F.3: reads = 76.1% of agent tokens;
+23–54% reduction at minimal quality impact, SWE-Pruner) — use those as an illustrative target, never as
+TokenLens's own measured result.
 
 REASONING SCAFFOLD
 - Every proposal names the quality metric held fixed and the non-inferiority margin. A cheaper config
@@ -328,6 +339,10 @@ GROUNDING — {{COST_EQUATION}} · {{PRIOR_ART}} · {{CONSTRAINTS}}
 - VERIFIED provider-mechanics catalog (Part F): prompt-cache read-tier % and write multipliers,
   5-min vs 1-hour TTL economics, minimum cacheable prefix size, Batch API discount, off-peak/priority
   tiers, token-counting endpoints, automatic vs explicit prefix caching.
+- UNVERIFIED (secondary source, Part F.3): a stateful/WebSocket transport (OpenAI Realtime/Responses,
+  ≈Feb 2026) that caches conversation history server-side so the growing context is not re-transmitted/
+  re-billed each turn. Treat as `unverified`; build only advisories, claim no saving on it until a primary
+  billing doc confirms.
 
 DISCOVERY STRATEGY — one mechanic at a time
 For each VERIFIED mechanic: "what deterministic client-side behavior maximally exploits this billing
@@ -494,6 +509,27 @@ cost *equation* (Part A) is rate-agnostic and stable.
 
 **Catalog discipline:** Tier-2 rows are recorded as research context, not as buildable sidecar features.
 Any technique a future run adds must arrive with an arXiv/source link or be marked `unverified`.
+
+### F.3 — External agentic-coding waste evidence (2026; for M4 / M6 / M7)
+
+Verified via live web search, June 2026 (arXiv abstracts + practitioner reporting). Seeds M4 episodes,
+quantifies M6's context-size frontier, and motivates (not prices) M7's transport lever. These are
+prevalence/headroom numbers — illustrative targets, never emitted as TokenLens's own measured saving.
+
+| Finding | Number | Source (date) | Confidence |
+|---------|--------|---------------|-----------|
+| Read ops dominate token spend | reads = **76.1%** of agent tokens; pruning **23–54%** on SWE-Bench Verified | [SWE-Pruner, arXiv 2601.16746](https://arxiv.org/abs/2601.16746) (Jan 2026) | high (arXiv) |
+| Failed trajectories over-explore | **12–82%** longer; navigation dominates patch-writing; localization usually fine (≥72%) | [Understanding Code Agent Behaviour, arXiv 2511.00197](https://arxiv.org/abs/2511.00197) (Nov 2025) | high (arXiv) |
+| Excess tokens ≠ accuracy | **30×** run-to-run variance; accuracy peaks at intermediate cost | [How Do AI Agents Spend Your Money?, arXiv 2604.22750](https://arxiv.org/abs/2604.22750) (Apr 2026) | high (arXiv) |
+| Where tokens go | input = **53.9%**; verification/review = **59.4%**; quantified "communication tax" | [Tokenomics, arXiv 2601.14470](https://arxiv.org/abs/2601.14470) (Jan 2026) | high (arXiv) |
+| Practitioner waste estimate | **60–80%** of agent tokens are waste (repeated reads, failed iterations, verbose output) | [Vantage](https://www.vantage.sh/blog/agentic-coding-costs) · [Sourcegraph](https://sourcegraph.com/blog/agentic-coding) (2026) | medium (vendor blog) |
+| Stateful transport (cost lever) | server-side history cache ends per-turn re-transmission (no primary billing doc) | InfoQ "Stateful Continuation for AI Agents" (2026) | **low / unverified** (secondary) |
+| Behavioral framing | pros "control" (review diffs); "vibe coding" = stop reviewing | [Don't Vibe, They Control, arXiv 2512.14012](https://arxiv.org/abs/2512.14012) (Dec 2025) | high (arXiv) |
+
+**Discipline:** the failure-taxonomy modes (task-drift, reward-hacking, alignment-faking, positional-bias,
+mode-collapse, version-drift) are LLM-judge-only → they FAIL M4's determinism screen and are not buildable
+as hooks. The stateful-transport mechanic is `unverified` (secondary source) → M7 may emit only advisories
+on it, with no claimed saving, until a primary OpenAI billing doc confirms.
 
 ---
 
