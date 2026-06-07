@@ -4,7 +4,7 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~37-workspace monorepo** (34 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~45-workspace monorepo** (42 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
@@ -131,12 +131,19 @@ fail-safe, and never fabricate a token/cost number.
 | **P8(c)** Diff-vs-Rewrite Enforcer | `diff-enforcer` | Decides diff vs full rewrite by real token cost (sound round-trip guarantee). |
 | **P8(d)** Reasoning-Effort Router | `qpd-bench` (`effort-router`) | Routes reasoning effort by task; actuates cache-habit CH-009. |
 | **P8(e)** Open-Tab Auditor | `tab-auditor` | Scores open editor tabs; recommends dropping low-relevance tabs from AI context. |
+| **f14** Reward-Integrity Interlock | `reward-integrity` | AST + content-hash detector for reward-hacking edits (assertion removal/tautologizing, test disabling, grader writes); PreToolUse breaker, fail-safe to `inconclusive`. |
+| **f15** Observation Masking + Belady | `observation-mask` | Sliding-window masking of stale tool results (reversible placeholders) capping context at O(n·window); Belady/LRU eviction under a token budget; monotone (cache-stable). |
+| **f16** Dedup-VoI Read Gate | `read-gate` | Denies a re-read only when content is provably still in context (content-SHA × compaction-epoch); information-lossless by construction. |
+| **f17** Program-Slice Selection | `program-slice` | Backward static slice (transitive dependency closure) over the symbol graph; sound reachability replacing heuristic relevance. |
+| **f18** Clearing-Price Controller | `clearing-price` | One PID-paced price λ every actuator bids against (`act iff qualityGain ≥ λ·tokenCost`); null quote ⇒ no-op. The coordinator the actuators bid into. |
+| **f19** WasteBench + Attestations | `wastebench` | Counterfactual net-savings accounting (overhead subtracted), reflexive overhead SLO, Ed25519-signed tamper-evident manifests. |
+| **(f12)** Cross-Session Prefix Warm | `prefix-warm` | TTL-aware prompt-cache prefix warming (keep-alive / prime decisions + read-discount savings); completes cross-session reuse alongside the skill library. |
 
 ---
 
 ## MCP Tool Surface
 
-`apps/mcp-server` registers ~30 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
+`apps/mcp-server` registers ~37 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
 including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
 `routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
@@ -145,7 +152,10 @@ including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `replay_list`, `subagent_status` / `subagent_cost_predict`, `budget_status` /
 `budget_configure`, `compaction_check`, `tool_audit`, `qpd_report`,
 `code_mode_generate_api` / `code_mode_harness`, `semantic_cache_probe`,
-`trajectory_replay_report`, `context_health_report`, `open_tab_audit`.
+`trajectory_replay_report`, `context_health_report`, `open_tab_audit`, and the
+ROUND-16 exponential set: `reward_integrity_check`, `observation_mask_plan`,
+`read_gate_check`, `program_slice`, `price_quote`, `prefix_warm_plan`,
+`wastebench_attest`.
 
 Some tools are **caller-fed**: they require typed inputs (e.g. a proposed-action
 diff) that a Claude Code hook payload doesn't carry; `@prune/host-adapters`
