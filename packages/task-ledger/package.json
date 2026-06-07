@@ -1,0 +1,26 @@
+{
+  "name": "@prune/task-ledger",
+  "version": "0.1.0",
+  "description": "F11 — cost-per-completed-task ledger. Makes the TASK (not the request) the accounting unit: aggregates caller-supplied per-request spend events into tasks, divides by an accepted-outcome signal, and surfaces the retry/dead-end spend that per-request rollups hide. Honest pricing (null on unpriced model); never fabricates a number. No regex, no model call.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

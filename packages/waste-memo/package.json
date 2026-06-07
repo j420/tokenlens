@@ -1,0 +1,23 @@
+{
+  "name": "@prune/waste-memo",
+  "version": "0.1.0",
+  "description": "F13 — cross-session recurring-waste memo. Mines a PII-safe, hashed longitudinal fingerprint store for a developer's RECURRING expensive patterns and produces a periodic digest (not a per-request nag). Deterministic grouping over caller-supplied opaque fingerprints + token/cost; ranks by cost when fully priced, else by tokens; never fabricates a number. Cross-session habit discovery — the delta vs in-session cache-habits. No regex, no model call.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

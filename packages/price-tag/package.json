@@ -1,0 +1,26 @@
+{
+  "name": "@prune/price-tag",
+  "version": "0.1.0",
+  "description": "F14 — decision-time dual price tag + default-flip. Prices the chosen path against a cheap-sufficient alternative and pre-selects the cheaper one ONLY when it is caller-proven equivalence-non-inferior, so the flipped default is never worse. Honest pricing (null on unpriced model ⇒ no flip, no saving claimed). Complements the clearing-price controller (f18): f18 sets a standing price λ; price-tag prices one concrete binary choice. No regex, no model call.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/shared": "0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
