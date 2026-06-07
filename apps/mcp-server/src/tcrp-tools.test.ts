@@ -1032,3 +1032,30 @@ describe("read_gate_check MCP handler (F16)", () => {
     expect(r.error).toBeDefined();
   });
 });
+
+describe("program_slice MCP handler (F17)", () => {
+  const graph = {
+    nodes: [{ id: "A", tokens: 100 }, { id: "B", tokens: 100 }, { id: "C", tokens: 100 }],
+    edges: [{ from: "A", to: "B" }, { from: "B", to: "C" }],
+  };
+
+  it("returns the sound backward dependency closure", async () => {
+    const { handleProgramSlice } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleProgramSlice({ ...graph, seeds: ["A"] }));
+    expect(r.included.map((m: { id: string }) => m.id).sort()).toEqual(["A", "B", "C"]);
+    expect(r.sound).toBe(true);
+  });
+
+  it("reports budget cuts as unsound", async () => {
+    const { handleProgramSlice } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleProgramSlice({ ...graph, seeds: ["A"], token_budget: 150 }));
+    expect(r.sound).toBe(false);
+    expect(r.cutByBudget.length).toBeGreaterThan(0);
+  });
+
+  it("errors cleanly on missing arrays", async () => {
+    const { handleProgramSlice } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleProgramSlice({ seeds: ["A"] } as never));
+    expect(r.error).toBeDefined();
+  });
+});

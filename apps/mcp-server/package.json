@@ -36,6 +36,7 @@
     "@prune/response-tuner": "0.1.0",
     "@prune/diff-enforcer": "0.1.0",
     "@prune/observation-mask": "0.1.0",
+    "@prune/program-slice": "0.1.0",
     "@prune/read-gate": "0.1.0",
     "@prune/reward-integrity": "0.1.0",
     "@prune/tab-auditor": "0.1.0",

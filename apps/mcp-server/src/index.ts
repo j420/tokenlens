@@ -59,6 +59,7 @@ import {
   handleRewardIntegrityCheck,
   handleObservationMaskPlan,
   handleReadGateCheck,
+  handleProgramSlice,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1575,6 +1576,63 @@ const TOOLS = [
       required: ["path", "content_hash", "turn", "tokens", "epoch"],
     },
   },
+  {
+    name: "program_slice",
+    description:
+      "F17 Program-Slice Context Selection. Given a symbol dependency graph " +
+      "(nodes + directed edges where `from` depends on `to`, e.g. from the " +
+      "repo_map tool) and seed symbols, returns the backward static slice — the " +
+      "transitive dependency closure the seeds need. Sound reachability, not a " +
+      "heuristic: with no token_budget the slice drops no dependency " +
+      "(`sound:true`). Forward direction yields the change-impact set. " +
+      "Budget cuts fall on the farthest symbols first and are reported. " +
+      "Deterministic graph traversal.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        nodes: {
+          type: "array" as const,
+          description: "Graph nodes: { id, tokens? }.",
+          items: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const },
+              tokens: { type: "number" as const },
+            },
+            required: ["id"],
+          },
+        },
+        edges: {
+          type: "array" as const,
+          description: "Dependency edges: { from, to } (`from` depends on `to`).",
+          items: {
+            type: "object" as const,
+            properties: {
+              from: { type: "string" as const },
+              to: { type: "string" as const },
+            },
+            required: ["from", "to"],
+          },
+        },
+        seeds: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Seed symbol ids (the task's targets).",
+        },
+        direction: {
+          type: "string" as const,
+          enum: ["backward", "forward"] as const,
+          description: "backward = dependencies (default); forward = impact.",
+        },
+        max_depth: { type: "number" as const, description: "Max hops from a seed." },
+        token_budget: {
+          type: ["number", "null"] as const,
+          description: "Optional cap; farthest symbols cut first, reported.",
+        },
+      },
+      required: ["nodes", "edges", "seeds"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -2943,6 +3001,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "read_gate_check":
         result = handleReadGateCheck(
           args as unknown as Parameters<typeof handleReadGateCheck>[0]
+        );
+        break;
+      case "program_slice":
+        result = handleProgramSlice(
+          args as unknown as Parameters<typeof handleProgramSlice>[0]
         );
         break;
       case "tool_audit":

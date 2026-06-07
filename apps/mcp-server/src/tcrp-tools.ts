@@ -90,6 +90,11 @@ import {
   type ResidentSet,
 } from "@prune/read-gate";
 import {
+  computeSlice,
+  type SliceGraphInput,
+  type SliceDirection,
+} from "@prune/program-slice";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1288,4 +1293,46 @@ export function handleReadGateCheck(args: ReadGateArgs): string {
   };
   const { verdict, set: nextSet } = stepReadGate(set, req);
   return JSON.stringify({ verdict, resident_set: nextSet }, null, 2);
+}
+
+export interface ProgramSliceArgs {
+  /** Dependency graph nodes: { id, tokens? }. */
+  nodes: Array<{ id: string; tokens?: number }>;
+  /** Directed dependency edges: { from, to } meaning `from` depends on `to`. */
+  edges: Array<{ from: string; to: string }>;
+  /** Seed symbol ids (the task's targets). */
+  seeds: string[];
+  direction?: SliceDirection;
+  max_depth?: number;
+  token_budget?: number | null;
+}
+
+/**
+ * F17 — Program-slice context selection. Returns the backward static slice
+ * (transitive dependency closure) of the seed symbols over the dependency graph
+ * — the sound context set. With no token_budget the slice drops nothing
+ * (`sound: true`); forward direction gives the change-impact set. Deterministic.
+ */
+export function handleProgramSlice(args: ProgramSliceArgs): string {
+  if (
+    !args ||
+    !Array.isArray(args.nodes) ||
+    !Array.isArray(args.edges) ||
+    !Array.isArray(args.seeds)
+  ) {
+    return JSON.stringify({
+      error: "program_slice requires `nodes`, `edges`, and `seeds` arrays.",
+    });
+  }
+  const graph: SliceGraphInput = { nodes: args.nodes, edges: args.edges };
+  return JSON.stringify(
+    computeSlice(graph, {
+      seeds: args.seeds,
+      direction: args.direction,
+      maxDepth: args.max_depth,
+      tokenBudget: args.token_budget ?? null,
+    }),
+    null,
+    2
+  );
 }
