@@ -163,7 +163,7 @@ fail-safe, and never fabricate a token/cost number.
 
 ## MCP Tool Surface
 
-`apps/mcp-server` registers ~41 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
+`apps/mcp-server` registers ~59 tools (names from `src/index.ts` / `src/tcrp-tools.ts` / `src/value-tools.ts`),
 including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
 `routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
@@ -177,6 +177,14 @@ ROUND-16 exponential set: `reward_integrity_check`, `observation_mask_plan`,
 `read_gate_check`, `program_slice`, `price_quote`, `prefix_warm_plan`,
 `wastebench_attest`, and the value/economics levers: `task_ledger_rollup` (F11),
 `waterbed_check` (F12), `price_tag` (F14), `context_utility_query` (F1).
+
+The full List1/List2/List3 value/economics/paradigm lever set is also MCP-exposed
+(`apps/mcp-server/src/value-tools.ts`) so no package is library-only: `known_knowledge_negotiate`
+(F2), `pull_context_resolve` (F3), `churn_pin_plan` (F9), `waste_memo` (F13), `lsp_graph` (F10),
+`allowance_market` (F15), `futures_desk` (F16), `bounty_evaluate` (F17), `batch_route`,
+`prefix_align`, `ttl_regression_check`, `retry_reframe_advise` (F5), `ci_fix_context` (F6),
+`fleet_cache` (F7), `marginal_value` (F8), `cache_poison_check` (F21), `anti_synergy_check`
+(G1/G2/G3), `cache_reconcile` (U3).
 
 Some tools are **caller-fed**: they require typed inputs (e.g. a proposed-action
 diff) that a Claude Code hook payload doesn't carry; `@prune/host-adapters`

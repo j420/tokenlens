@@ -68,6 +68,26 @@ import {
   handlePriceTag,
   handleContextUtility,
 } from "./tcrp-tools.js";
+import {
+  handleKnownKnowledge,
+  handlePullContext,
+  handleChurnPin,
+  handleWasteMemo,
+  handleLspGraph,
+  handleAllowanceMarket,
+  handleFuturesDesk,
+  handleBounty,
+  handleBatchRoute,
+  handlePrefixAlign,
+  handleTtlRegression,
+  handleRetryReframe,
+  handleCiFixContext,
+  handleFleetCache,
+  handleMarginalValue,
+  handleCachePoison,
+  handleAntiSynergy,
+  handleCacheReconcile,
+} from "./value-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
 // ============================================================================
@@ -1882,6 +1902,301 @@ const TOOLS = [
       required: [],
     },
   },
+  // --- Deterministic value / economics / paradigm levers (List1/List2/List3) ---
+  {
+    name: "known_knowledge_negotiate",
+    description:
+      "F2 Known-Knowledge Negotiation. Replaces spans the model PROVABLY already " +
+      "knows (caller-fed, content-SHA-keyed equivalence-probe verdict) with a stub; " +
+      "folds probes/fetch-backs into the store first, then negotiates. Defaults to " +
+      "send-full on any unprobed/edited/unknown span; self-corrects on a fetch-back.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        store: { type: ["object", "null"] as const, description: "Prior KnownStore (omit for fresh)." },
+        probes: { type: "array" as const, description: "Offline probe verdicts {sha,modelId,known,atIso}." },
+        fetchBacks: { type: "array" as const, description: "Fetch-back demotions {sha,modelId,atIso}." },
+        spans: { type: "array" as const, description: "Spans to negotiate {id,sha,tokens}." },
+        modelId: { type: "string" as const, description: "Active model id (verdicts are per-model)." },
+        stubTokens: { type: "number" as const },
+        minKnownMargin: { type: "number" as const },
+      },
+      required: ["spans", "modelId"],
+    },
+  },
+  {
+    name: "pull_context_resolve",
+    description:
+      "F3 Negotiated Pull-Context. Given available symbols and the model's FETCH " +
+      "request, builds the manifest and resolves which bodies to inject — DAG-closure " +
+      "auto-include of mandatory deps, coverage-floor candidate for omitted criticals, " +
+      "and a retry-economics gate that declines to push when the margin is too thin.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        symbols: { type: "array" as const, description: "{id,signatureTokens,bodyTokens,deps?,critical?}." },
+        requestedIds: { type: "array" as const, items: { type: "string" as const } },
+        reFetchBufferTokens: { type: "number" as const },
+      },
+      required: ["symbols"],
+    },
+  },
+  {
+    name: "churn_pin_plan",
+    description:
+      "F9 git-churn cache-pin planner. Pins low-churn files into the cacheable prefix " +
+      "and keeps high-churn ones out, by caller-supplied recent-commit frequency.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        files: { type: "array" as const, description: "{path,recentCommits,tokens}." },
+        maxRecentCommits: { type: "number" as const },
+        maxPinnedTokens: { type: "number" as const },
+      },
+      required: ["files"],
+    },
+  },
+  {
+    name: "waste_memo",
+    description:
+      "F13 cross-session recurring-waste memo. Groups a PII-safe hashed-fingerprint " +
+      "store; keeps patterns recurring across enough distinct days; ranks worst-first.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        records: { type: "array" as const, description: "{fingerprint,tokens,costUsd?,atIso,label?}." },
+        minOccurrences: { type: "number" as const },
+        minDistinctDays: { type: "number" as const },
+        topN: { type: "number" as const },
+      },
+      required: ["records"],
+    },
+  },
+  {
+    name: "lsp_graph",
+    description:
+      "F10 LSP symbol-graph substitution. Builds a budget-selected signatures+edges " +
+      "payload from the language server's authoritative index (by reference in-degree).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        index: { type: "object" as const, description: "{ symbols:[...], references:[...] }." },
+        maxTokens: { type: "number" as const },
+        fullContextTokens: { type: "number" as const },
+      },
+      required: ["index"],
+    },
+  },
+  {
+    name: "allowance_market",
+    description:
+      "F15 personal tradeable allowance market. op-dispatched: allocate (split an " +
+      "envelope), spend (draw down, rejected on overdraw), transfer (Coasean trade), " +
+      "balance/balances (query). Deterministic; the cap is real.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        op: { type: "string" as const, description: "allocate | spend | transfer | balance | balances." },
+        state: { type: "object" as const },
+        envelope: { type: "number" as const },
+        actors: { type: "array" as const },
+        actorId: { type: "string" as const },
+        from: { type: "string" as const },
+        to: { type: "string" as const },
+        amount: { type: "number" as const },
+      },
+      required: ["op"],
+    },
+  },
+  {
+    name: "futures_desk",
+    description:
+      "F16 token futures desk. Prices non-urgent reservations on the discounted slow " +
+      "lane vs interactive (caller-supplied published Batch discount); honest null on " +
+      "unpriced model.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        reservations: { type: "array" as const, description: "{id,model,inputTokens,outputTokens,deadlineIso}." },
+        batchDiscount: { type: "number" as const, description: "Published discount in [0,1]." },
+        minLeadMs: { type: "number" as const },
+        nowIso: { type: "string" as const },
+      },
+      required: ["reservations", "batchDiscount"],
+    },
+  },
+  {
+    name: "bounty_evaluate",
+    description:
+      "F17 cheapest-context bounty. Among submissions that pass a caller-fed frozen " +
+      "quality gate, picks the deterministic minimum-cost winner (USD when all priced, " +
+      "else tokens); savings vs a caller-supplied incumbent.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        submissions: { type: "array" as const, description: "{id,submitter,costTokens,costUsd?,passedGate}." },
+        incumbentCostUsd: { type: "number" as const },
+        incumbentCostTokens: { type: "number" as const },
+      },
+      required: ["submissions"],
+    },
+  },
+  {
+    name: "batch_route",
+    description:
+      "batch-tier router. Classifies a request batch vs interactive over caller-declared " +
+      "signals (interactive? latency slack? batch lane available?) and quotes the discount.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        request: { type: "object" as const, description: "{interactive,batchLaneAvailable?,latencySlackMs?,interactiveCostUsd?}." },
+        batchDiscount: { type: "number" as const },
+        minSlackMs: { type: "number" as const },
+      },
+      required: ["request"],
+    },
+  },
+  {
+    name: "prefix_align",
+    description:
+      "increment prefix aligner. Aligns a stable prefix to the provider cache boundary " +
+      "(default OpenAI 1024 + 128k): cacheable portion, wasted tail, pad-to-next.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        prefixTokens: { type: "number" as const },
+        minCacheableTokens: { type: "number" as const },
+        incrementTokens: { type: "number" as const },
+      },
+      required: ["prefixTokens"],
+    },
+  },
+  {
+    name: "ttl_regression_check",
+    description:
+      "silent TTL-regression detector. Flags a silent provider cache-TTL downgrade by " +
+      "comparing configured vs host-observed effective TTL; insufficient_signal when unknown.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        configuredTtlSeconds: { type: "number" as const },
+        observedTtlSeconds: { type: ["number", "null"] as const },
+        tolerance: { type: "number" as const },
+      },
+      required: ["configuredTtlSeconds"],
+    },
+  },
+  {
+    name: "retry_reframe_advise",
+    description:
+      "F5 retry-vs-reframe advisor. At a rejection, advises retry vs reframe by expected " +
+      "cost-per-success (cost / P(success)); caller-fed priors; defaults to retry on missing data.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        retry: { type: "object" as const, description: "{costUsd:number|null, successProb:number|null}." },
+        reframe: { type: "object" as const, description: "{costUsd:number|null, successProb:number|null}." },
+        margin: { type: "number" as const },
+      },
+      required: ["retry", "reframe"],
+    },
+  },
+  {
+    name: "ci_fix_context",
+    description:
+      "F6 CI fix-context validator. Folds caller-fed CI red->green episodes then ranks " +
+      "candidate context atoms by their Beta-Binomial fix-association for a failure class.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        state: { type: "object" as const },
+        episodes: { type: "array" as const, description: "{failureClass,atoms,fixed}." },
+        failureClass: { type: "string" as const },
+        candidates: { type: "array" as const, items: { type: "string" as const } },
+        minObservations: { type: "number" as const },
+      },
+      required: ["failureClass"],
+    },
+  },
+  {
+    name: "fleet_cache",
+    description:
+      "F7 fleet resolved-context cache. op-dispatched: put a resolved answer (with dep " +
+      "SHAs) / get it (served only when every dep SHA is unchanged; drift evicts).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        op: { type: "string" as const, description: "put | get." },
+        cache: { type: "object" as const },
+        key: { type: "string" as const },
+        entry: { type: "object" as const, description: "{answerRef,depShas,resolver,resolvedAtIso}." },
+        currentDepShas: { type: "object" as const, description: "{ depId: sha }." },
+      },
+      required: ["op", "key"],
+    },
+  },
+  {
+    name: "marginal_value",
+    description:
+      "F8 marginal-value probe. Turns caller-fed counterfactual equivalence verdicts " +
+      "(output equivalent when a chunk is withheld) into a zero-value-chunk waste " +
+      "accounting AND F1-shaped contribution observations.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        chunks: { type: "array" as const, description: "{id,tokens,outputEquivalentWithout:boolean|null}." },
+        atIso: { type: "string" as const },
+      },
+      required: ["chunks"],
+    },
+  },
+  {
+    name: "cache_poison_check",
+    description:
+      "F21 cache-poisoning economics. Attributes harm to a WRITER identity (equivalence-" +
+      "rejection + near-key-collision rates) and recommends per-writer quarantine = revalidate.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        events: { type: "array" as const, description: "{writerId,equivalenceRejected,nearKeyCollision?}." },
+        minWrites: { type: "number" as const },
+        rejectionThreshold: { type: "number" as const },
+        collisionThreshold: { type: "number" as const },
+      },
+      required: ["events"],
+    },
+  },
+  {
+    name: "anti_synergy_check",
+    description:
+      "G1/G2/G3 anti-synergy guardrails. guard-dispatched: G1 pruner-vs-cache-bust, " +
+      "G2 skip-retrieval-starves-skill-capture, G3 re-squeeze-prefix-bust. Returns a " +
+      "safe/blocked verdict + reason (never blocks the agent).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        guard: { type: "string" as const, description: "G1 | G2 | G3." },
+        input: { type: "object" as const, description: "The guard-specific input object." },
+      },
+      required: ["guard", "input"],
+    },
+  },
+  {
+    name: "cache_reconcile",
+    description:
+      "U3 cache-hit reconciliation. Compares predicted vs realized (usage.cache_read_" +
+      "input_tokens) cache reads and flags an under-performing/stranded cache write.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        predictedCacheReadTokens: { type: ["number", "null"] as const },
+        realizedCacheReadTokens: { type: ["number", "null"] as const },
+        cacheWriteTokens: { type: "number" as const },
+        tolerance: { type: "number" as const },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ============================================================================
@@ -3291,6 +3606,60 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         result = handleContextUtility(
           args as unknown as Parameters<typeof handleContextUtility>[0]
         );
+        break;
+      case "known_knowledge_negotiate":
+        result = handleKnownKnowledge(args);
+        break;
+      case "pull_context_resolve":
+        result = handlePullContext(args);
+        break;
+      case "churn_pin_plan":
+        result = handleChurnPin(args);
+        break;
+      case "waste_memo":
+        result = handleWasteMemo(args);
+        break;
+      case "lsp_graph":
+        result = handleLspGraph(args);
+        break;
+      case "allowance_market":
+        result = handleAllowanceMarket(args);
+        break;
+      case "futures_desk":
+        result = handleFuturesDesk(args);
+        break;
+      case "bounty_evaluate":
+        result = handleBounty(args);
+        break;
+      case "batch_route":
+        result = handleBatchRoute(args);
+        break;
+      case "prefix_align":
+        result = handlePrefixAlign(args);
+        break;
+      case "ttl_regression_check":
+        result = handleTtlRegression(args);
+        break;
+      case "retry_reframe_advise":
+        result = handleRetryReframe(args);
+        break;
+      case "ci_fix_context":
+        result = handleCiFixContext(args);
+        break;
+      case "fleet_cache":
+        result = handleFleetCache(args);
+        break;
+      case "marginal_value":
+        result = handleMarginalValue(args);
+        break;
+      case "cache_poison_check":
+        result = handleCachePoison(args);
+        break;
+      case "anti_synergy_check":
+        result = handleAntiSynergy(args);
+        break;
+      case "cache_reconcile":
+        result = handleCacheReconcile(args);
         break;
       case "tool_audit":
         result = handleToolAudit(
