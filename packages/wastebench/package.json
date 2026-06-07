@@ -1,0 +1,23 @@
+{
+  "name": "@prune/wastebench",
+  "version": "0.1.0",
+  "description": "F19 — WasteBench + Signed Attestations. Counterfactual savings accounting that nets out the observer's OWN overhead (net savings can be negative and is reported honestly), a reflexive overhead SLO (the tool must cost less than a bounded fraction of what it saves), and Ed25519-signed, tamper-evident savings manifests over a deterministic canonical serialization (real PKI via node:crypto). Makes savings auditable for enterprise trust. No regex, no model call, no fabricated numbers — all magnitudes are caller-measured.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

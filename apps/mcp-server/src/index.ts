@@ -62,6 +62,7 @@ import {
   handleProgramSlice,
   handlePriceQuote,
   handlePrefixWarmPlan,
+  handleWastebenchAttest,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1711,6 +1712,52 @@ const TOOLS = [
       required: ["now", "ttl_ms", "refresh_threshold_ms", "reuse_expected"],
     },
   },
+  {
+    name: "wastebench_attest",
+    description:
+      "F19 WasteBench + Signed Attestations. Rolls up counterfactual net " +
+      "savings from measured records (gross savings minus the observer's OWN " +
+      "overhead — net can be negative and is reported honestly), evaluates the " +
+      "reflexive overhead SLO (the tool must cost less than a bounded fraction " +
+      "of what it saves), and signs the manifest with Ed25519 over a " +
+      "deterministic canonical form (tamper-evident). Omit private_key_pem to " +
+      "mint an ephemeral keypair; the returned attestation embeds the public " +
+      "key for verification. Deterministic given issued_at + key.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        records: {
+          type: "array" as const,
+          description:
+            "Savings records: { feature, baselineTokens, optimizedTokens, overheadTokens }.",
+          items: {
+            type: "object" as const,
+            properties: {
+              feature: { type: "string" as const },
+              baselineTokens: { type: "number" as const },
+              optimizedTokens: { type: "number" as const },
+              overheadTokens: { type: "number" as const },
+            },
+            required: ["feature", "baselineTokens", "optimizedTokens", "overheadTokens"],
+          },
+        },
+        max_overhead_ratio: {
+          type: "number" as const,
+          description: "Reflexive SLO budget (overhead/gross), default 0.1.",
+        },
+        issued_at: { type: "string" as const, description: "ISO timestamp (default now)." },
+        window: {
+          type: ["object", "null"] as const,
+          description: "Optional { from, to } window covered.",
+        },
+        private_key_pem: {
+          type: "string" as const,
+          description: "Ed25519 signing key PEM; omit for an ephemeral keypair.",
+        },
+      },
+      required: ["records"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -3094,6 +3141,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "prefix_warm_plan":
         result = handlePrefixWarmPlan(
           args as unknown as Parameters<typeof handlePrefixWarmPlan>[0]
+        );
+        break;
+      case "wastebench_attest":
+        result = handleWastebenchAttest(
+          args as unknown as Parameters<typeof handleWastebenchAttest>[0]
         );
         break;
       case "tool_audit":

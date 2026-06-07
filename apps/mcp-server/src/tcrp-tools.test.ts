@@ -1133,3 +1133,36 @@ describe("prefix_warm_plan MCP handler (cross-session reuse)", () => {
     expect(r.error).toBeDefined();
   });
 });
+
+describe("wastebench_attest MCP handler (F19)", () => {
+  const records = [
+    { feature: "f15", baselineTokens: 1000, optimizedTokens: 200, overheadTokens: 50 },
+  ];
+
+  it("produces a verifiable signed attestation", async () => {
+    const { handleWastebenchAttest } = await import("./tcrp-tools.js");
+    const { verifyAttestation } = await import("@prune/wastebench");
+    const r = JSON.parse(
+      handleWastebenchAttest({ records, issued_at: "2026-06-07T00:00:00.000Z" })
+    );
+    expect(r.manifest.rollup.netSaved).toBe(800 - 50);
+    expect(verifyAttestation(r.attestation).valid).toBe(true);
+  });
+
+  it("reports SLO failure honestly when overhead is high", async () => {
+    const { handleWastebenchAttest } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleWastebenchAttest({
+        records: [{ feature: "x", baselineTokens: 100, optimizedTokens: 90, overheadTokens: 50 }],
+        issued_at: "2026-06-07T00:00:00.000Z",
+      })
+    );
+    expect(r.manifest.slo.ok).toBe(false);
+  });
+
+  it("errors cleanly without records", async () => {
+    const { handleWastebenchAttest } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleWastebenchAttest({} as never));
+    expect(r.error).toBeDefined();
+  });
+});

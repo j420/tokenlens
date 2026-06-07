@@ -109,6 +109,12 @@ import {
   type PrefixEntry,
 } from "@prune/prefix-warm";
 import {
+  buildManifest,
+  signManifest,
+  generateKeypair,
+  type SavingsRecord,
+} from "@prune/wastebench";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1446,4 +1452,45 @@ export function handlePrefixWarmPlan(args: PrefixWarmArgs): string {
     );
   }
   return JSON.stringify(out, null, 2);
+}
+
+export interface WastebenchAttestArgs {
+  /** Measured savings records: { feature, baselineTokens, optimizedTokens, overheadTokens }. */
+  records: SavingsRecord[];
+  /** Reflexive SLO budget: max overhead/gross ratio (default 0.1). */
+  max_overhead_ratio?: number;
+  /** ISO timestamp to stamp (default: now). */
+  issued_at?: string;
+  window?: { from: string; to: string } | null;
+  /** Signing key PEM; omit to mint an ephemeral keypair (public key returned). */
+  private_key_pem?: string;
+}
+
+/**
+ * F19 — Build and sign a savings attestation. Rolls up counterfactual net
+ * savings (overhead subtracted), evaluates the reflexive overhead SLO, and signs
+ * the manifest with Ed25519 — tamper-evident over a deterministic canonical
+ * form. Honest: net savings can be negative and the SLO can fail. Deterministic
+ * given `issued_at` + key.
+ */
+export function handleWastebenchAttest(args: WastebenchAttestArgs): string {
+  if (!args || !Array.isArray(args.records)) {
+    return JSON.stringify({
+      error: "wastebench_attest requires a `records` array.",
+    });
+  }
+  const manifest = buildManifest(
+    args.records,
+    { maxOverheadRatio: args.max_overhead_ratio ?? 0.1 },
+    {
+      issuedAt: args.issued_at ?? new Date().toISOString(),
+      window: args.window ?? null,
+    }
+  );
+  const privateKeyPem =
+    typeof args.private_key_pem === "string" && args.private_key_pem.length > 0
+      ? args.private_key_pem
+      : generateKeypair().privateKeyPem;
+  const attestation = signManifest(manifest, privateKeyPem);
+  return JSON.stringify({ manifest, attestation }, null, 2);
 }

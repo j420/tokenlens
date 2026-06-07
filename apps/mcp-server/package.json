@@ -42,6 +42,7 @@
     "@prune/read-gate": "0.1.0",
     "@prune/reward-integrity": "0.1.0",
     "@prune/tab-auditor": "0.1.0",
+    "@prune/wastebench": "0.1.0",
     "@prune/context-health": "0.1.0",
     "@prune/trajectory-diet": "0.1.0",
     "@prune/quality": "0.1.0",
