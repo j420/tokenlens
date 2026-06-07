@@ -27,11 +27,19 @@ import {
   cacheInvestmentLossUsd,
   cacheReadSavingsPerReadUsd,
   cacheWriteCostUsd,
+  freshInputCostUsd,
   minCacheablePrefix,
   minutesBetween,
   ttlSeconds,
   TTL_BREAK_EVEN_READS_PER_HOUR,
 } from "./cache-econ.js";
+
+/**
+ * Minimum completed turns before CH-014 advises a stateless→stateful transport
+ * migration. Below this, the re-communication tax has not yet accumulated
+ * enough for the latency-for-price trade to be worth raising.
+ */
+const TRANSPORT_ADVICE_MIN_TURNS = 8;
 
 // ---------------------------------------------------------------------------
 // Helpers shared by multiple rules.
@@ -627,6 +635,123 @@ const CH_012: Rule = {
 };
 
 // ---------------------------------------------------------------------------
+// CH-013 — Transport regression: a stateful→stateless silent fallback.
+// (List3 M7-2 "transport-regression-sentinel".)
+// ---------------------------------------------------------------------------
+
+const CH_013: Rule = {
+  id: "CH-013",
+  name: "transport_regression",
+  description:
+    "A stateful (server-side/WebSocket) transport silently fell back to stateless HTTP " +
+    "(reconnect / SDK retry), so the whole conversation history is re-transmitted and " +
+    "re-billed at full input rate — the transport-tier analogue of the 1h→5m TTL regression.",
+  defaultSeverity: "warn",
+  citation:
+    "List3 M7-2. Prices ONLY the VERIFIED stateless fallback (full input rate × " +
+    "caller-supplied re-billed history tokens), so the warning is sound even if the " +
+    "stateful-transport billing mechanic (List3 M7-1, `unverified`) never confirms. " +
+    "Complementary to CH-014 (opposite trigger direction).",
+  run(action, snapshot): LintFinding | null {
+    // Fire only on a CONFIRMED stateful→stateless transition the host declared.
+    if (snapshot.transport !== "stateful") return null;
+    if (action.changes.transport !== "stateless") return null;
+
+    // History size is caller-supplied; null ⇒ we know it regressed but cannot
+    // size it, and we never fabricate a token/cost number.
+    const historyTokens =
+      typeof snapshot.historyTokens === "number" && snapshot.historyTokens > 0
+        ? snapshot.historyTokens
+        : null;
+    const reBillUsd =
+      historyTokens === null ? null : freshInputCostUsd(historyTokens, action.model);
+
+    const sizeClause =
+      historyTokens === null
+        ? `The conversation history will now be re-sent every turn (size unknown — ` +
+          `host did not supply a history token count).`
+        : `~${formatTokens(historyTokens)} tokens of history will be re-sent every turn at ` +
+          `full input rate (~${formatUsd(reBillUsd)} per turn).`;
+
+    return {
+      ruleId: "CH-013",
+      ruleName: "transport_regression",
+      severity: "warn",
+      message:
+        `Transport regressed stateful → stateless. ${sizeClause} A stateful transport had been ` +
+        `retaining this history server-side; the fallback resumes the per-turn "communication tax".`,
+      suggestion:
+        `Re-establish the stateful/WebSocket transport (reconnect with session resume) so history ` +
+        `stops being re-transmitted, or accept the per-turn re-billing for the rest of the session.`,
+      estimatedWasteUsd: reBillUsd,
+      estimatedWasteTokens: historyTokens,
+      signal: {
+        previousTransport: snapshot.transport,
+        newTransport: action.changes.transport,
+        historyTokens,
+      },
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
+// CH-014 — Stateful-transport advisor on a long stateless session.
+// (List3 M7-1 "stateful-transport-advisor"; saving is UNVERIFIED ⇒ contingent.)
+// ---------------------------------------------------------------------------
+
+const CH_014: Rule = {
+  id: "CH-014",
+  name: "stateful_transport_advisor",
+  description:
+    "On a long stateless session the growing stable prefix is re-sent and re-billed every turn. " +
+    "Advises migrating to a stateful/WebSocket transport so history stops being re-transmitted.",
+  defaultSeverity: "info",
+  citation:
+    "List3 M7-1. The stateful-transport billing benefit is `unverified` (needs a primary " +
+    "OpenAI Realtime/Responses billing doc), so this reports the OBSERVED re-communicated " +
+    "tokens as a fact and emits NO dollar saving — `estimatedWasteUsd` stays null and " +
+    "`signal.contingent` is true until the caller supplies the stateful per-turn rate.",
+  run(action, snapshot): LintFinding | null {
+    // The session is (and stays) stateless — not a regression this turn (that's
+    // CH-013's job; a stateful→stateless transition leaves snapshot.transport
+    // = "stateful", so this short-circuits and the two never double-fire).
+    if (snapshot.transport !== "stateless") return null;
+    if (snapshot.turnsSoFar < TRANSPORT_ADVICE_MIN_TURNS) return null;
+
+    const historyTokens =
+      typeof snapshot.historyTokens === "number" && snapshot.historyTokens > 0
+        ? snapshot.historyTokens
+        : null;
+    if (historyTokens === null) return null; // need a real re-communicated volume
+    const minPrefix = minCacheablePrefix(action.modelFamily);
+    if (historyTokens < minPrefix) return null;
+
+    return {
+      ruleId: "CH-014",
+      ruleName: "stateful_transport_advisor",
+      severity: "info",
+      message:
+        `Long stateless session (${snapshot.turnsSoFar} turns) is re-communicating ` +
+        `~${formatTokens(historyTokens)} tokens of stable history every turn. A stateful/` +
+        `WebSocket transport would retain it server-side. (Dollar saving is contingent on the ` +
+        `provider's stateful per-turn billing, which is unverified — not estimated here.)`,
+      suggestion:
+        `If this provider/SDK offers a stateful transport, consider it for long sessions to drop ` +
+        `the per-turn re-transmission; confirm the stateful billing rate before relying on a saving.`,
+      estimatedWasteUsd: null, // never a saving on an unverified mechanic
+      estimatedWasteTokens: historyTokens, // observed re-communicated volume (a fact)
+      signal: {
+        transport: snapshot.transport,
+        turnsSoFar: snapshot.turnsSoFar,
+        reCommunicatedTokens: historyTokens,
+        minPrefix,
+        contingent: true,
+      },
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Public registry. Stable order; ids are the source of truth.
 // ---------------------------------------------------------------------------
 
@@ -643,6 +768,8 @@ export const CACHE_HABIT_RULES: readonly Rule[] = [
   CH_010,
   CH_011,
   CH_012,
+  CH_013,
+  CH_014,
 ] as const;
 
 /** Lookup by id. Returns undefined for unknown ids. */
@@ -664,6 +791,8 @@ export const _RULES = {
   CH_010,
   CH_011,
   CH_012,
+  CH_013,
+  CH_014,
 };
 
 // Tiny re-export for the formatter helpers that the test suite uses to pin

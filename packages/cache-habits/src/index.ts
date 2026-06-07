@@ -3,7 +3,7 @@
  *
  * Pre-action cache-habits linter. Inspects a typed `ProposedAction` (what the
  * user is about to send) against the prior `SessionSnapshot` and emits stable
- * deterministic `LintFinding`s for any of 12 documented prompt-cache-killer
+ * deterministic `LintFinding`s for any of 14 documented prompt-cache-killer
  * patterns. Composes with `@prune/intelligence` reactive analyzers
  * (`diagnoseCacheBust`, `analyzeCacheCoPilot`) which operate post-hoc.
  *

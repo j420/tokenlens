@@ -121,7 +121,7 @@ fail-safe, and never fabricate a token/cost number.
 | **f6** Context Health | `context-health` | Effective Context Fullness + CUSUM change-point inflection warnings. |
 | **f7** Semantic Cache | `semantic-cache` | In-process char-n-gram + IDF cosine cache; equivalence-gated; content-SHA poisoning defense. |
 | **f8** Code-Mode MCP | `code-mode-mcp` | JSON-schema → typed TS API; vm sandbox; equivalence-proof harness. |
-| **f9 / E3** Cache-Habits Linter | `cache-habits` | Pre-action warnings before a documented prompt-cache-killer pattern fires. |
+| **f9 / E3** Cache-Habits Linter | `cache-habits` | Pre-action warnings before a documented prompt-cache-killer pattern fires (CH-001..CH-014, incl. CH-013 stateful→stateless transport regression + CH-014 long-stateless transport advisor). |
 | **f10 / E1** MCP Proxy | `mcp-proxy` | Lazy-schema cross-vendor proxy; returns only intent-matching tools. |
 | **f11 / E2** Replay-Cost | `replay-cost` | What-if deterministic replay: shared-prefix re-serve vs cold re-run cost. |
 | **f12 / E4** Skill Library | `skill-library` | Captures influential trajectory subset; replays typed skill on matching tasks. |

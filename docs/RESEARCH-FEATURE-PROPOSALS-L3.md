@@ -36,8 +36,21 @@
 >
 > All three are env-configurable (`PRUNE_NAV_RATIO_*`, `PRUNE_TOOL_ERROR_*`, `PRUNE_IDENTICAL_ACTION_*`),
 > registered in the installer (30 bindings), and carry the cost-security non-negotiables (no regex, no model,
-> no fabricated numbers, PII-safe SHAs only). Still HELD pending verification: `stateful-transport-advisor`
-> (M7-1, unverified mechanic) and `CH-013` (cache-habits transport-tier extension) — see sequencing #3.
+> no fabricated numbers, PII-safe SHAs only).
+>
+> **Provider-mechanic pair — SHIPPED (June 2026).** Both M7 items are now built as `@prune/cache-habits`
+> rules, after fixing the pre-req (a caller-declared **transport tier** + re-communicated-history token count
+> wired through `types.ts`, `@prune/host-adapters`, and the `cache_habits` MCP tool):
+> - **`CH-013` transport-regression-sentinel (M7-2)** — fires on a host-declared stateful→stateless fallback
+>   and prices the re-send at the **verified** full input rate (`freshInputCostUsd`), so it is sound even if
+>   the stateful mechanic never verifies. Severity `warn`.
+> - **`CH-014` stateful-transport-advisor (M7-1)** — on a long stateless session, reports the **observed**
+>   re-communicated history as a fact and emits **no dollar saving** (`estimatedWasteUsd: null`,
+>   `signal.contingent: true`) — honoring "no saving on an unverified mechanic." Severity `info`.
+>
+> Both are **dormant until a host supplies the transport tier** (absent ⇒ `unknown` ⇒ never fires), so they
+> add zero behaviour for current transcript-only hosts and activate for a caller (e.g. an OpenAI Realtime/
+> Responses host) that knows its transport. 13 rule tests incl. a no-double-fire guard between CH-013/CH-014.
 
 ## Summary
 

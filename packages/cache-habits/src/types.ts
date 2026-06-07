@@ -26,6 +26,21 @@ export type ModelFamily = "sonnet" | "opus" | "haiku" | "gpt-4o" | "gpt-4o-mini"
 export type CacheTtl = "5m" | "1h" | "none";
 
 /**
+ * Transport tier the session is using, caller-DECLARED (never sniffed).
+ *
+ *   - "stateful"   — a server-side / WebSocket transport that retains
+ *                    conversation history server-side, so history is NOT
+ *                    re-transmitted (and re-billed) each turn.
+ *   - "stateless"  — a plain HTTP transport that re-sends the growing stable
+ *                    prefix every turn (the "communication tax").
+ *   - "unknown"    — the host does not (or cannot) report the transport tier.
+ *                    The transport rules treat this as "do not fire" — they are
+ *                    dormant until a host supplies a concrete tier, so they can
+ *                    never act on a guess.
+ */
+export type TransportTier = "stateful" | "stateless" | "unknown";
+
+/**
  * Snapshot of the session's *prior* state as the user composes the next
  * action. All counts are caller-supplied; the linter does not introspect a
  * transcript here — that's `cache-stabilize.mjs`'s job. The linter's role
@@ -67,6 +82,19 @@ export interface SessionSnapshot {
    * CH-010 to detect mid-session server adds/removes.
    */
   mcpServers: readonly string[];
+  /**
+   * Transport tier the session is currently on. Caller-declared; absent /
+   * "unknown" means the transport rules (CH-013, CH-014) stay dormant.
+   */
+  transport?: TransportTier;
+  /**
+   * Tokens of conversation history a STATELESS transport re-transmits each
+   * turn (the stable prefix that would be retained server-side on a stateful
+   * transport). Caller-supplied via the tokenizer; null when unknown. Used by
+   * CH-013 (re-billed on a stateful→stateless fallback) and CH-014 (the
+   * per-turn communication tax on a long stateless session). Never guessed.
+   */
+  historyTokens?: number | null;
 }
 
 /**
@@ -117,6 +145,12 @@ export interface ProposedAction {
     mcpServersAdded: readonly string[];
     /** MCP servers being removed in this turn. */
     mcpServersRemoved: readonly string[];
+    /**
+     * New transport tier, if it is changing this turn (e.g. a silent
+     * stateful→stateless fallback after a reconnect). null when unchanged.
+     * Caller-declared; CH-013 fires on a stateful→stateless transition.
+     */
+    transport: TransportTier | null;
   };
   /**
    * Caller-supplied wall-clock timestamp when the action will fire. The

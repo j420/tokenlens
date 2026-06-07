@@ -7,7 +7,13 @@
  * (the ones rule #9 governs) live in `test/fixtures/` and are real captures.
  */
 
-import type { CacheTtl, ModelFamily, ProposedAction, SessionSnapshot } from "./types.js";
+import type {
+  CacheTtl,
+  ModelFamily,
+  ProposedAction,
+  SessionSnapshot,
+  TransportTier,
+} from "./types.js";
 
 export interface ActionOverrides {
   model?: string;
@@ -22,6 +28,7 @@ export interface ActionOverrides {
   changeTemperature?: number | null;
   mcpServersAdded?: readonly string[];
   mcpServersRemoved?: readonly string[];
+  changeTransport?: TransportTier | null;
 }
 
 export interface SnapshotOverrides {
@@ -36,6 +43,8 @@ export interface SnapshotOverrides {
   reasoningEffort?: SessionSnapshot["reasoningEffort"];
   temperature?: number;
   mcpServers?: readonly string[];
+  transport?: TransportTier;
+  historyTokens?: number | null;
 }
 
 export function buildAction(o: ActionOverrides = {}): ProposedAction {
@@ -54,6 +63,7 @@ export function buildAction(o: ActionOverrides = {}): ProposedAction {
       temperature: o.changeTemperature ?? null,
       mcpServersAdded: o.mcpServersAdded ?? [],
       mcpServersRemoved: o.mcpServersRemoved ?? [],
+      transport: o.changeTransport ?? null,
     },
     now: o.now ?? "2026-06-03T12:00:00.000Z",
   };
@@ -77,5 +87,7 @@ export function buildSnapshot(o: SnapshotOverrides = {}): SessionSnapshot {
     reasoningEffort: o.reasoningEffort,
     temperature: o.temperature,
     mcpServers: def(o.mcpServers, ["postgres", "linear"]),
+    transport: o.transport,
+    historyTokens: def(o.historyTokens, null),
   };
 }

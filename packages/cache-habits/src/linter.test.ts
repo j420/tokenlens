@@ -91,7 +91,7 @@ describe("lint() runner", () => {
 });
 
 describe("listRules()", () => {
-  it("exposes all 12 stable IDs in order", () => {
+  it("exposes all 14 stable IDs in order", () => {
     const ids = listRules().map((r) => r.id);
     expect(ids).toEqual([
       "CH-001",
@@ -106,6 +106,8 @@ describe("listRules()", () => {
       "CH-010",
       "CH-011",
       "CH-012",
+      "CH-013",
+      "CH-014",
     ]);
   });
 

@@ -1178,11 +1178,12 @@ const TOOLS = [
     name: "cache_habits",
     description:
       "F9 cache-habits linter (full rule set). Given the host's PROPOSED action " +
-      "diff and the prior SESSION snapshot, runs all 12 deterministic " +
-      "prompt-cache-killer rules (CH-001..CH-012: mid-session model switch, " +
+      "diff and the prior SESSION snapshot, runs all 14 deterministic " +
+      "prompt-cache-killer rules (CH-001..CH-014: mid-session model switch, " +
       "tool-list reorder, system-prompt mutation, large paste before the cached " +
       "prefix, MCP server add/remove, TTL/reasoning-effort/temperature change, " +
-      "idle-TTL expiry, etc.) and returns the findings, per-rule estimated " +
+      "idle-TTL expiry, stateful→stateless transport regression (CH-013) + " +
+      "long-stateless-session transport advisor (CH-014), etc.) and returns the findings, per-rule estimated " +
       "wasted USD/tokens, and an f9 quality_proof. This is the surface for the " +
       "11 rules a transcript hook cannot reach (they need the proposed-vs-active " +
       "diff only the editor/host has). No regex, no model call; verdict is " +
@@ -1195,14 +1196,16 @@ const TOOLS = [
           description:
             "ProposedAction: { modelFamily, model, ttl, prompt:{text,pastedBlocks[]}, " +
             "changes:{systemPromptTokens,toolListOrderHash,reasoningEffort,temperature," +
-            "mcpServersAdded[],mcpServersRemoved[]}, now }. All change fields null when unchanged.",
+            "mcpServersAdded[],mcpServersRemoved[],transport}, now }. All change fields null " +
+            "when unchanged. transport ∈ {stateful,stateless,unknown} drives CH-013.",
         },
         snapshot: {
           type: "object" as const,
           description:
             "SessionSnapshot: { currentModel, currentTtl, lastTurnAt, turnsSoFar, " +
             "cacheReadTokensSoFar, cacheCreationTokensSoFar, systemPromptTokens, " +
-            "toolListOrderHash, reasoningEffort?, temperature?, mcpServers[] }.",
+            "toolListOrderHash, reasoningEffort?, temperature?, mcpServers[], " +
+            "transport?, historyTokens? }. transport+historyTokens drive CH-013/CH-014.",
         },
         suppress: {
           type: "array" as const,
@@ -1220,7 +1223,7 @@ const TOOLS = [
   {
     name: "cache_habits_from_transcript",
     description:
-      "F9 cache-habits linter, driven from a REAL transcript. Same 12 rules as " +
+      "F9 cache-habits linter, driven from a REAL transcript. Same 14 rules as " +
       "`cache_habits`, but instead of requiring a hand-built SessionSnapshot it " +
       "DERIVES the snapshot from the live Claude Code transcript (active model, " +
       "idle gap since the last turn, cumulative cache-read/creation tokens, turn " +

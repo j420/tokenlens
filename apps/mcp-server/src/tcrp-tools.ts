@@ -69,6 +69,7 @@ import {
   type SessionSnapshot,
   type CacheTtl,
   type ModelFamily,
+  type TransportTier,
 } from "@prune/cache-habits";
 import { pruneResult, calibrateMaxTokens } from "@prune/response-tuner";
 import { diffEnforce } from "@prune/diff-enforcer";
@@ -662,6 +663,14 @@ export function handleMcpProxyTrim(args: McpProxyTrimArgs): string {
 // ===========================================================================
 
 const VALID_TTL = new Set<CacheTtl>(["5m", "1h", "none"]);
+const VALID_TRANSPORT = new Set<TransportTier>(["stateful", "stateless", "unknown"]);
+
+/** Coerce a caller-supplied transport tier, or null/undefined when invalid. */
+function transportOrNull(v: unknown): TransportTier | null {
+  return typeof v === "string" && VALID_TRANSPORT.has(v as TransportTier)
+    ? (v as TransportTier)
+    : null;
+}
 const VALID_FAMILY = new Set<ModelFamily>([
   "sonnet", "opus", "haiku", "gpt-4o", "gpt-4o-mini", "other",
 ]);
@@ -723,6 +732,7 @@ function coerceProposedAction(raw: Record<string, unknown>): ProposedAction {
       temperature: numOrNull(changes.temperature),
       mcpServersAdded: strArray(changes.mcpServersAdded),
       mcpServersRemoved: strArray(changes.mcpServersRemoved),
+      transport: transportOrNull(changes.transport),
     },
     now: str(raw.now, new Date().toISOString()),
   };
@@ -745,10 +755,13 @@ function coerceSnapshot(
     systemPromptTokens: numOrNull(raw.systemPromptTokens),
     toolListOrderHash: strOrNull(raw.toolListOrderHash),
     mcpServers: strArray(raw.mcpServers),
+    historyTokens: numOrNull(raw.historyTokens),
   };
   if (effort) snap.reasoningEffort = effort;
   const temp = numOrNull(raw.temperature);
   if (temp !== null) snap.temperature = temp;
+  const transport = transportOrNull(raw.transport);
+  if (transport) snap.transport = transport;
   return snap;
 }
 
@@ -764,7 +777,7 @@ export interface CacheHabitsArgs {
 }
 
 /**
- * F9 — run the FULL cache-habits linter (all 12 rules CH-001..CH-012) over a
+ * F9 — run the FULL cache-habits linter (all 14 rules CH-001..CH-014) over a
  * caller-supplied proposed-action diff. This is the runtime surface for the 11
  * rules a transcript hook can't reach: those need the host's proposed-action vs
  * session-snapshot diff (model switch, tool-list reorder, system-prompt
