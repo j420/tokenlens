@@ -7,6 +7,8 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { useToast, toast } from "@/components/toast";
 import { cn } from "@/lib/utils";
 import { FeatureSimulation } from "@/components/feature-simulation";
+import { TcrpCatalog } from "@/components/tcrp-catalog";
+import { TCRP_COUNT } from "@/lib/tcrp-catalog";
 
 type OnboardStep = 1 | 2 | 3;
 
@@ -267,6 +269,7 @@ export default function Home() {
           <nav className="flex items-center gap-4 text-sm">
             <a href="#get-started" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Get Started</a>
             <a href="#features" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Features</a>
+            <a href="#program" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Program</a>
             <a href="#setup" className="rounded-md px-2 py-1.5 text-secondary transition hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1">Setup</a>
             <IDESelector value={preferredIDE} onChange={setPreferredIDE} compact />
             <ThemeToggle compact />
@@ -306,6 +309,10 @@ export default function Home() {
                   <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
                   <span>Works with Cursor, Claude Code, OpenAI Codex</span>
                 </div>
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-block h-1.5 w-1.5 rounded-full bg-prune-green"></span>
+                  <span>{TCRP_COUNT} deterministic cost-reduction levers (MCP tools + hooks)</span>
+                </div>
               </div>
             </div>
 
@@ -338,6 +345,13 @@ export default function Home() {
               <FeatureCard key={feature.id} feature={feature} ide={preferredIDE} />
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Token-Cost Reduction Program Section */}
+      <section id="program" className="border-b border-border py-16">
+        <div className="mx-auto max-w-5xl px-4">
+          <TcrpCatalog />
         </div>
       </section>
 

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { usePreferredIDE, getIDEUri, type IDEType } from "@/components/ide-selector";
+import { TcrpCatalog } from "@/components/tcrp-catalog";
 
 interface Feature {
   id: string;
@@ -298,6 +299,11 @@ export default function FeaturesPage() {
         {filteredFeatures.map((feature) => (
           <FeatureCard key={feature.id} feature={feature} ide={preferredIDE} />
         ))}
+      </div>
+
+      {/* Token-Cost Reduction Program — backend levers (MCP tools + hooks) */}
+      <div className="border-t border-border pt-8">
+        <TcrpCatalog />
       </div>
 
       {/* Quick actions */}
