@@ -128,6 +128,14 @@ describe("rollupTaskLedger", () => {
     expect(rollupTaskLedger(undefined).costUsd).toBe(0); // no tasks → complete, zero
   });
 
+  it("treats an overflowing cost as unpriced (poisons costComplete, no Infinity)", () => {
+    const r = rollupTaskLedger([
+      ev({ taskId: "T", outcome: "accepted", inputTokens: 1e308, outputTokens: 1e308 }),
+    ]);
+    expect(r.tasks[0]!.costComplete).toBe(false);
+    expect(r.tasks[0]!.costUsd).toBeNull();
+  });
+
   it("is deterministic", () => {
     const events: SpendEvent[] = [
       ev({ taskId: "A", outcome: "accepted" }),

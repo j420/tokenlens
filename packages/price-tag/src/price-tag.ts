@@ -153,7 +153,9 @@ export function pathCostUsd(p: DecisionPath): number | null {
       nonNeg(p.cacheReadTokens) * cachedRate +
       nonNeg(p.cacheWriteTokens) * pricing.input) /
     1_000_000;
-  return round(usd);
+  // Never leak a non-finite cost (overflow at astronomical token counts) as a
+  // number — treat it as unpriced.
+  return Number.isFinite(usd) ? round(usd) : null;
 }
 
 function pathTokens(p: DecisionPath): number {

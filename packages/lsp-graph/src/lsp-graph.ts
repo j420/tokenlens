@@ -15,9 +15,12 @@
  * (the most-depended-on symbols first), keeps the edges among the selected set,
  * and accounts the token cost against the full-context alternative.
  *
- * EQUIVALENCE: by construction. The graph IS the language server's canonical
- * resolution, not a model inference — so substituting it for "send the files and
- * let the model figure out the structure" cannot change the structural facts.
+ * AUTHORITATIVE (not equivalence-preserving). For the symbols it INCLUDES, the
+ * graph is the language server's canonical resolution, not a model inference —
+ * so those structural facts are exact, not guessed. It is NOT an equivalence-
+ * preserving transform of the full context: budget truncation deliberately
+ * DROPS low-in-degree symbols, so it is a lossy (sound-but-incomplete) reduction
+ * — the included sub-graph is trustworthy; coverage is bounded by the budget.
  *
  * DISCIPLINE:
  *   - Deterministic & total. Same index => same payload. Malformed entries skipped.

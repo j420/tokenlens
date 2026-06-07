@@ -247,7 +247,9 @@ export function eventCostUsd(e: SpendEvent): number | null {
       cacheRead * cachedRate +
       cacheWrite * p.input) /
     1_000_000;
-  return usd;
+  // Non-finite (overflow at astronomical token counts) is not a cost ⇒ null,
+  // which poisons the task's costComplete flag honestly.
+  return Number.isFinite(usd) ? usd : null;
 }
 
 function eventTokens(e: SpendEvent): number {

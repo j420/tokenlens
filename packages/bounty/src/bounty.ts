@@ -81,9 +81,10 @@ export function evaluateBounty(submissions: unknown, options: BountyOptions = {}
     return { winner: null, ranked: [], rejected, basis: "none", savings: null, skipped };
   }
 
-  // USD basis only when EVERY passer carries a real price (else honesty demands
-  // we rank on tokens, the dimension we fully observe).
-  const allPriced = passers.every((s) => typeof s.costUsd === "number" && s.costUsd !== null);
+  // USD basis only when EVERY passer carries a real, FINITE price (a NaN /
+  // Infinity cost is not a price — it must not poison the comparator or let a
+  // garbage-cost submission win; else honesty demands we rank on tokens).
+  const allPriced = passers.every((s) => typeof s.costUsd === "number" && Number.isFinite(s.costUsd));
   const basis: "usd" | "tokens" = allPriced ? "usd" : "tokens";
 
   const ranked = passers
@@ -120,7 +121,7 @@ function toRanked(s: BountySubmission): RankedSubmission {
     id: s.id,
     submitter: s.submitter,
     costTokens: s.costTokens,
-    costUsd: typeof s.costUsd === "number" ? s.costUsd : null,
+    costUsd: typeof s.costUsd === "number" && Number.isFinite(s.costUsd) ? s.costUsd : null,
   };
 }
 

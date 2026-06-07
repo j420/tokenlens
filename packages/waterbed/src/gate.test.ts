@@ -105,6 +105,17 @@ describe("evaluateWaterbed", () => {
     }
   });
 
+  it("never leaks Infinity: an overflowing induced cost ⇒ insufficient_data", () => {
+    const r = evaluateWaterbed({
+      grossSavingUsd: 1,
+      induced: [{ kind: "overflow", expectedOccurrences: 1e200, perOccurrenceUsd: 1e200 }],
+    });
+    expect(r.verdict).toBe("insufficient_data");
+    expect(r.inducedCostUsd).toBeNull();
+    expect(r.netSavingUsd).toBeNull();
+    expect(r.approved).toBe(false);
+  });
+
   it("is deterministic", () => {
     const t: TransformEffect = {
       grossSavingUsd: 0.2,

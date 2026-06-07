@@ -116,6 +116,17 @@ tokenlens/
 
 ## TCRP Feature Map
 
+> **Two feature-ID namespaces (read this — they are case-sensitive and would
+> otherwise collide).** Lowercase **`f1`–`f19`** are the **shipped TCRP feature
+> IDs** in the table below (the original program + the ROUND-16 set). Uppercase
+> **`F1`–`F21`** are the **List1/List2/List3 research-proposal IDs** (see
+> `docs/RESEARCH-*`) for the deterministic value/economics/paradigm levers built
+> later — a SEPARATE numbering from the lowercase set (`F11` task-ledger is not
+> `f11` replay-cost, etc.). The uppercase **F18–F20** are the cost-security suite
+> (injection-cost / cost-guard / fan-out), already shipped as hooks, which is why
+> the uppercase value-lever sequence jumps F17→F21. When mapping for an audit,
+> always carry the case.
+
 The Token-Cost Reduction Program features. Each is a standalone, tested package;
 most are also surfaced as an MCP tool and/or a Claude Code hook. All are
 deterministic (no model calls in decision logic, no regex parsing/classification),

@@ -125,6 +125,13 @@ export function evaluateWaterbed(
       continue;
     }
     const cost = ic.expectedOccurrences * ic.perOccurrenceUsd;
+    // A product/sum that overflows to a non-finite value is not a real cost —
+    // poison to insufficient_data rather than leak Infinity as a number.
+    if (!Number.isFinite(cost)) {
+      inducedComplete = false;
+      breakdown.push({ kind: ic.kind, occurrences: ic.expectedOccurrences, perOccurrenceUsd: ic.perOccurrenceUsd, costUsd: null });
+      continue;
+    }
     inducedTotal += cost;
     breakdown.push({
       kind: ic.kind,
@@ -134,7 +141,7 @@ export function evaluateWaterbed(
     });
   }
 
-  const inducedCostUsd = inducedComplete ? round(inducedTotal) : null;
+  const inducedCostUsd = inducedComplete && Number.isFinite(inducedTotal) ? round(inducedTotal) : null;
 
   // Insufficient data ⇒ never approve.
   if (gross === null || inducedCostUsd === null) {

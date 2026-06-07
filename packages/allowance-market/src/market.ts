@@ -56,7 +56,10 @@ export function emptyMarket(): MarketState {
  * sorted-id order, one unit each, so the split is exact and reproducible.
  */
 export function allocate(envelope: unknown, actors: unknown): MarketState {
-  const env = nonNegNum(envelope);
+  // Floor to an integer unit so the remainder distribution below is EXACT. A
+  // fractional envelope (a non-integer USD figure) would make the unit-by-unit
+  // remainder loop overshoot and leak the cap; allowances are whole units.
+  const env = Math.floor(nonNegNum(envelope));
   const list: AllocateActor[] = Array.isArray(actors)
     ? (actors.filter(isAllocateActor) as AllocateActor[])
     : [];

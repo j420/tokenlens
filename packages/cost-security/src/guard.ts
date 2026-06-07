@@ -215,7 +215,7 @@ function buildStub(args: {
 }): string {
   const tool = args.toolName ? `tool "${args.toolName}"` : "a tool";
   const approx = args.method === "estimated" ? "~" : "";
-  const preview = args.head.replace(/ /g, "").slice(0, 600);
+  const preview = args.head.replace(/\u0000/g, "").slice(0, 600);
   return [
     `[cost-security: result from ${tool} withheld — suspected bill attack]`,
     `  signals: ${args.signals.join(", ")}`,

@@ -18,6 +18,13 @@ describe("allocate", () => {
     expect(balance(s, "b")!.granted).toBe(25);
   });
 
+  it("never over-allocates a fractional envelope (the cap is real)", () => {
+    const s = allocate(100.5, [{ actorId: "a" }, { actorId: "b" }, { actorId: "c" }]);
+    const total = balances(s).reduce((sum, b) => sum + b.granted, 0);
+    expect(total).toBe(100); // floored to whole units; never 101
+    expect(total).toBeLessThanOrEqual(100);
+  });
+
   it("is total on garbage", () => {
     expect(allocate(0, [{ actorId: "a" }]).actors).toEqual({});
     expect(allocate(100, null).actors).toEqual({});

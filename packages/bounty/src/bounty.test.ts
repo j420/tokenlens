@@ -80,6 +80,21 @@ describe("evaluateBounty", () => {
     expect(evaluateBounty(null).winner).toBeNull();
   });
 
+  it("treats a NaN cost as unpriced (no nondeterministic winner from garbage)", () => {
+    const subs = [
+      sub("x", "a", 100, true, NaN), // garbage cost
+      sub("y", "b", 50, true, 0.5),
+      sub("z", "c", 20, true, 0.2),
+    ];
+    const fwd = evaluateBounty(subs);
+    const rev = evaluateBounty([...subs].reverse());
+    // any NaN price ⇒ token basis ⇒ deterministic, and the NaN submission
+    // (100 tok) never wins on tokens.
+    expect(fwd.basis).toBe("tokens");
+    expect(fwd.winner!.id).toBe(rev.winner!.id); // deterministic regardless of order
+    expect(fwd.winner!.id).toBe("z"); // fewest tokens
+  });
+
   it("is deterministic", () => {
     const subs = [sub("s1", "a", 600, true, 0.03), sub("s2", "b", 400, true, 0.02)];
     expect(evaluateBounty(subs)).toEqual(evaluateBounty(subs));

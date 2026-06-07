@@ -70,6 +70,10 @@ describe("priceDecision", () => {
     expect(r.chosen.costUsd).toBeNull(); // empty model → unpriced
   });
 
+  it("returns null (not Infinity) for an overflowing astronomical token count", () => {
+    expect(pathCostUsd({ label: "x", model: SONNET, inputTokens: 1e308, outputTokens: 1e308 })).toBeNull();
+  });
+
   it("is deterministic", () => {
     const a = priceDecision(opusPath, sonnetPath, { equivalenceProven: true });
     const b = priceDecision(opusPath, sonnetPath, { equivalenceProven: true });

@@ -9,10 +9,13 @@
  * verdicts both quantify the waste and feed the Context-Utility Model (F1) as
  * ground-truth contribution labels.
  *
- * `assessMarginalValue(chunks, options?)` is a PURE function over caller-fed
- * verdicts: each chunk carries `outputEquivalentWithout` — the equivalence
- * gate's boolean (the host ran the replay; this package never calls a model).
- * Deterministic set arithmetic, no regex.
+ * `assessMarginalValue(chunks, options?)` is a deterministic function over
+ * caller-fed verdicts: each chunk carries `outputEquivalentWithout` — the
+ * equivalence gate's boolean (the host ran the replay; this package never calls
+ * a model). Deterministic set arithmetic, no regex. (Determinism is over the
+ * inputs INCLUDING `options.atIso`; when `atIso` is omitted the emitted
+ * observations are stamped with the wall clock, so always pass `atIso` for a
+ * fully reproducible result.)
  */
 
 // ============================================================================
