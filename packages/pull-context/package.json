@@ -1,0 +1,11 @@
+{
+  "name": "@prune/pull-context",
+  "version": "0.1.0",
+  "description": "F3 — Negotiated Pull-Context. Flips context selection from push to pull: a manifest turn sends only signatures + stable symbol-ids, the model emits a FETCH request, and the host injects only the requested bodies. The killer risk (under-request → failed turn → expensive retry) is gated three deterministic ways: DAG-closure auto-include of a requested symbol's mandatory deps, a coverage-floor candidate for any omitted push-critical symbol, and a retry-economics gate that only pulls when the predicted manifest+fetch cost beats push by enough to absorb one re-fetch. Deterministic graph closure + arithmetic; the FETCH request is caller-fed; no model call, no regex.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

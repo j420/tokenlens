@@ -135,6 +135,24 @@ export function minCacheablePrefix(modelFamily: string): number {
 }
 
 /**
+ * USD cost to send `tokens` at the model's FULL (uncached, un-multiplied)
+ * input rate. This is what a stateless transport re-bills when it
+ * re-transmits conversation history every turn — no cache discount, no write
+ * multiplier, just `tokens × input_rate`. Returns null when the model is
+ * unpriced (never fabricates a rate) and 0 for a non-positive token count.
+ *
+ * Used by CH-013 (transport-regression) to price the VERIFIED stateless
+ * re-send — a number that is sound even if the unverified stateful-transport
+ * mechanic never confirms.
+ */
+export function freshInputCostUsd(tokens: number, model: string): number | null {
+  if (tokens <= 0) return 0;
+  const pricing = strictPricing(model);
+  if (!pricing || typeof pricing.input !== "number") return null;
+  return (tokens * pricing.input) / 1_000_000;
+}
+
+/**
  * TTL of the active session in seconds. Used by CH-004 to compare against
  * idle gap.
  */

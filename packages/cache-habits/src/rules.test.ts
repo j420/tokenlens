@@ -444,3 +444,117 @@ describe("CH-012 compound_cache_loss", () => {
     ).toBeNull();
   });
 });
+
+describe("CH-013 transport_regression", () => {
+  const rule = _RULES.CH_013;
+
+  it("fires on a stateful→stateless transition and prices the re-send at input rate", () => {
+    const f = rule.run(
+      buildAction({ model: "claude-sonnet-4-5-20250929", changeTransport: "stateless" }),
+      buildSnapshot({ transport: "stateful", historyTokens: 20_000 })
+    );
+    expect(f).not.toBeNull();
+    expect(f!.ruleId).toBe("CH-013");
+    expect(f!.severity).toBe("warn");
+    expect(f!.estimatedWasteTokens).toBe(20_000);
+    // 20_000 tokens × $3 / 1M input rate = $0.06 (verified stateless rate).
+    expect(f!.estimatedWasteUsd).toBeCloseTo(0.06);
+    expect(f!.signal["previousTransport"]).toBe("stateful");
+    expect(f!.signal["newTransport"]).toBe("stateless");
+  });
+
+  it("fires but reports null cost when history size is unknown (never fabricates)", () => {
+    const f = rule.run(
+      buildAction({ model: "claude-sonnet-4-5-20250929", changeTransport: "stateless" }),
+      buildSnapshot({ transport: "stateful", historyTokens: null })
+    );
+    expect(f).not.toBeNull();
+    expect(f!.estimatedWasteUsd).toBeNull();
+    expect(f!.estimatedWasteTokens).toBeNull();
+    expect(f!.message).toContain("size unknown");
+  });
+
+  it("does not fire without a stateful→stateless transition", () => {
+    // already stateless, no change
+    expect(
+      rule.run(
+        buildAction({ changeTransport: null }),
+        buildSnapshot({ transport: "stateless", historyTokens: 20_000 })
+      )
+    ).toBeNull();
+    // stateful staying stateful
+    expect(
+      rule.run(
+        buildAction({ changeTransport: null }),
+        buildSnapshot({ transport: "stateful", historyTokens: 20_000 })
+      )
+    ).toBeNull();
+    // transport unknown (host never declared it) → dormant
+    expect(
+      rule.run(
+        buildAction({ changeTransport: "stateless" }),
+        buildSnapshot({ transport: undefined, historyTokens: 20_000 })
+      )
+    ).toBeNull();
+  });
+});
+
+describe("CH-014 stateful_transport_advisor", () => {
+  const rule = _RULES.CH_014;
+
+  it("advises on a long stateless session and emits NO dollar saving (contingent)", () => {
+    const f = rule.run(
+      buildAction({ model: "claude-sonnet-4-5-20250929", modelFamily: "sonnet" }),
+      buildSnapshot({ transport: "stateless", turnsSoFar: 10, historyTokens: 20_000 })
+    );
+    expect(f).not.toBeNull();
+    expect(f!.ruleId).toBe("CH-014");
+    expect(f!.severity).toBe("info");
+    expect(f!.estimatedWasteUsd).toBeNull(); // never a saving on an unverified mechanic
+    expect(f!.estimatedWasteTokens).toBe(20_000); // observed re-communicated volume (fact)
+    expect(f!.signal["contingent"]).toBe(true);
+    expect(f!.signal["reCommunicatedTokens"]).toBe(20_000);
+  });
+
+  it("does not fire below the turn floor", () => {
+    expect(
+      rule.run(
+        buildAction({ modelFamily: "sonnet" }),
+        buildSnapshot({ transport: "stateless", turnsSoFar: 3, historyTokens: 20_000 })
+      )
+    ).toBeNull();
+  });
+
+  it("does not fire when re-communicated history is below the min cacheable prefix", () => {
+    expect(
+      rule.run(
+        buildAction({ modelFamily: "sonnet" }),
+        buildSnapshot({ transport: "stateless", turnsSoFar: 20, historyTokens: 500 })
+      )
+    ).toBeNull();
+  });
+
+  it("does not fire when history size is unknown, or transport isn't stateless", () => {
+    expect(
+      rule.run(
+        buildAction({ modelFamily: "sonnet" }),
+        buildSnapshot({ transport: "stateless", turnsSoFar: 20, historyTokens: null })
+      )
+    ).toBeNull();
+    expect(
+      rule.run(
+        buildAction({ modelFamily: "sonnet" }),
+        buildSnapshot({ transport: "stateful", turnsSoFar: 20, historyTokens: 20_000 })
+      )
+    ).toBeNull();
+  });
+
+  it("CH-013 and CH-014 never double-fire on the same transition turn", () => {
+    // On the regression turn snapshot.transport is still 'stateful', so CH-014
+    // short-circuits while CH-013 fires.
+    const action = buildAction({ model: "claude-sonnet-4-5-20250929", changeTransport: "stateless" });
+    const snapshot = buildSnapshot({ transport: "stateful", turnsSoFar: 20, historyTokens: 20_000 });
+    expect(_RULES.CH_013.run(action, snapshot)).not.toBeNull();
+    expect(_RULES.CH_014.run(action, snapshot)).toBeNull();
+  });
+});

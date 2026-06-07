@@ -166,11 +166,12 @@ describe("edge — runner contract", () => {
       { suppress: [
         "CH-001", "CH-002", "CH-003", "CH-004", "CH-005", "CH-006",
         "CH-007", "CH-008", "CH-009", "CH-010", "CH-011", "CH-012",
+        "CH-013", "CH-014",
       ] }
     );
     expect(r.findings).toEqual([]);
     expect(r.verdict).toBe("info");
-    expect(r.skipped.length).toBe(12);
+    expect(r.skipped.length).toBe(14);
   });
 
   it("multiple rules firing produces ordered, non-overlapping findings", () => {

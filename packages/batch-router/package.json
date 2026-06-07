@@ -1,0 +1,11 @@
+{
+  "name": "@prune/batch-router",
+  "version": "0.1.0",
+  "description": "List1 batch-tier-router — route non-interactive work to the Batch API lane (provider rates ~0.5x). A mechanical per-request classifier: given caller-DECLARED signals (is the turn interactive? is there latency headroom? does the provider offer a batch lane?), decide batch vs interactive and quote the discounted cost. Deterministic; the demand-side commitment contract lives in @prune/futures-desk. No fabricated numbers, no regex, no model.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

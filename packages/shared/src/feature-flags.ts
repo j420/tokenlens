@@ -1,12 +1,17 @@
 /**
  * TCRP (Token-Cost Reduction Program) feature flags.
  *
- * Shared schema for the five TCRP features. Every feature entry-point must
- * read its flag as its first non-import statement (enforced by lint).
+ * Shared schema for the TCRP features. Every feature entry-point must read its
+ * flag as its first non-import statement (enforced by lint).
  *
  * The flag file lives at ~/.prune/feature-flags.json. The reader and watcher
  * are Node-only and live with their consumer (extension/MCP). This module
  * only contains the schema, pure helpers, and defaults.
+ *
+ * f1–f13 are the original program. f14–f19 are the ROUND-16 "exponential set":
+ * deterministic actuators (reward-integrity, observation-mask, read-gate,
+ * program-slice, wastebench) coordinated by the clearing-price controller.
+ * Cross-session reuse (#6) reuses f12 (skillLibrary) rather than adding an id.
  */
 
 export type TcrpFeatureId =
@@ -22,7 +27,13 @@ export type TcrpFeatureId =
   | "f10"
   | "f11"
   | "f12"
-  | "f13";
+  | "f13"
+  | "f14"
+  | "f15"
+  | "f16"
+  | "f17"
+  | "f18"
+  | "f19";
 
 export type TcrpFeatureMode =
   | "shadow" // runs in parallel, never affects user
@@ -63,6 +74,12 @@ export const TCRP_FEATURE_IDS: readonly TcrpFeatureId[] = [
   "f11",
   "f12",
   "f13",
+  "f14",
+  "f15",
+  "f16",
+  "f17",
+  "f18",
+  "f19",
 ] as const;
 
 export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
@@ -81,6 +98,14 @@ export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
   f11: "replayCost",
   f12: "skillLibrary",
   f13: "speculativePipeline",
+  // ROUND-16 exponential set. f18 (clearingPrice) is the coordinator the
+  // actuators bid against; the rest are deterministic actuators / measurement.
+  f14: "rewardIntegrity",
+  f15: "observationMask",
+  f16: "readGate",
+  f17: "programSlice",
+  f18: "clearingPrice",
+  f19: "wasteBench",
 } as const;
 
 export const TCRP_FEATURE_BY_NAME: Record<string, TcrpFeatureId> = Object.entries(
@@ -114,6 +139,12 @@ export const DEFAULT_TCRP_FLAGS: TcrpFeatureFlags = {
     f11: { enabled: false, mode: "shadow" },
     f12: { enabled: false, mode: "shadow" },
     f13: { enabled: false, mode: "shadow" },
+    f14: { enabled: false, mode: "shadow" },
+    f15: { enabled: false, mode: "shadow" },
+    f16: { enabled: false, mode: "shadow" },
+    f17: { enabled: false, mode: "shadow" },
+    f18: { enabled: false, mode: "shadow" },
+    f19: { enabled: false, mode: "shadow" },
   },
   policySource: "default",
 };

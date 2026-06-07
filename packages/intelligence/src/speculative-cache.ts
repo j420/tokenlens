@@ -442,7 +442,7 @@ export function fileListStatToken(
   entries: Array<{ path: string; mtimeMs: number; size: number }>
 ): FreshnessToken {
   const canonical = entries
-    .map((e) => `${e.path} ${Math.trunc(e.mtimeMs)} ${e.size}`)
+    .map((e) => `${e.path}\u0000${Math.trunc(e.mtimeMs)}\u0000${e.size}`)
     .sort()
     .join("");
   return { kind: "filelist-stat", value: sha256Hex(canonical) };

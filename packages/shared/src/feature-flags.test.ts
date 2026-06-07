@@ -15,10 +15,11 @@ describe("TCRP feature flags", () => {
       expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, "f5")).toBe(true);
     });
 
-    it("keeps F1-F4, F6, and the F7-F13 features in shadow (not user-visible)", () => {
+    it("keeps F1-F4, F6, and the F7-F19 features in shadow (not user-visible)", () => {
       for (const id of [
         "f1", "f2", "f3", "f4", "f6",
         "f7", "f8", "f9", "f10", "f11", "f12", "f13",
+        "f14", "f15", "f16", "f17", "f18", "f19",
       ] as const) {
         expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, id)).toBe(false);
         expect(isFeatureInShadow(DEFAULT_TCRP_FLAGS, id)).toBe(true);
@@ -29,6 +30,7 @@ describe("TCRP feature flags", () => {
       for (const id of [
         "f1", "f2", "f3", "f4", "f5", "f6", "f7",
         "f8", "f9", "f10", "f11", "f12", "f13",
+        "f14", "f15", "f16", "f17", "f18", "f19",
       ] as const) {
         expect(DEFAULT_TCRP_FLAGS.features[id]).toBeDefined();
       }
@@ -56,6 +58,12 @@ describe("TCRP feature flags", () => {
       expect(resolveFeatureId("replayCost")).toBe("f11");
       expect(resolveFeatureId("skillLibrary")).toBe("f12");
       expect(resolveFeatureId("speculativePipeline")).toBe("f13");
+      expect(resolveFeatureId("rewardIntegrity")).toBe("f14");
+      expect(resolveFeatureId("observationMask")).toBe("f15");
+      expect(resolveFeatureId("readGate")).toBe("f16");
+      expect(resolveFeatureId("programSlice")).toBe("f17");
+      expect(resolveFeatureId("clearingPrice")).toBe("f18");
+      expect(resolveFeatureId("wasteBench")).toBe("f19");
     });
 
     it("returns undefined for unknown ids", () => {

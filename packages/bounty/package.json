@@ -1,0 +1,11 @@
+{
+  "name": "@prune/bounty",
+  "version": "0.1.0",
+  "description": "F17 — cheapest-context bounty. A contest for the lowest-cost prompt+context that PASSES a frozen quality gate for a recurring task: min-cost subject to quality. Only gate-passing submissions are eligible; the cheapest passing one wins and becomes the default. The quality verdict (passedGate) is caller-fed (the frozen @prune/quality gate); selection is deterministic min-cost with stable tie-breaks. Honest pricing (rank by USD when all priced, else tokens); savings vs a caller-supplied incumbent. No regex, no model.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@prune/anti-synergy",
+  "version": "0.1.0",
+  "description": "G1/G2/G3 anti-synergy guardrails — deterministic gates that stop one optimization from sabotaging another. G1 pruner-vs-cache-bust: don't prune a result that anchors a cache/delta baseline when busting it costs more than the prune saves. G2 skip-retrieval-starves-skill-capture: don't skip a retrieval step the skill-library is mid-capture on. G3 re-squeeze-prefix-bust: don't re-compress content already anchored in the cached prefix. Pure set/arithmetic predicates over caller-supplied facts; no regex, no model.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

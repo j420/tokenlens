@@ -1,0 +1,11 @@
+{
+  "name": "@prune/context-utility",
+  "version": "0.1.0",
+  "description": "F1 — Context-Utility Model (CUM). A standing, outcome-learned per-atom utility store: tracks each context atom's realized contribution to ACCEPTED output as a decayed Beta-Binomial empirical-Bayes posterior, queried by every selector for a prior. The learning is caller-fed (the host supplies the accept/reject/cite-back verdict); the estimation and serving are pure deterministic counting — no model call, no regex. Cold-start and unknown atoms return null (selectors run unchanged); advisory-only, floor-safe.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

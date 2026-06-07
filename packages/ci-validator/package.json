@@ -1,0 +1,11 @@
+{
+  "name": "@prune/ci-validator",
+  "version": "0.1.0",
+  "description": "F6 — CI-outcome fix-context validator. Uses red->green test transitions as ground truth for WHICH context atoms actually fix a failure class: per (failureClass, atom) it tracks how often the atom was present on a fix vs a non-fix, and ranks candidate context for a NEW failure of that class by its fix-association. The CI transition is caller-fed (external build outcome); the estimator is a pure Beta-Binomial counter; inert (null) with no CI signal. No model call, no regex.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

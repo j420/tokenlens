@@ -924,3 +924,251 @@ describe("mcp_proxy_trim MCP handler (F10)", () => {
     expect(kept).toContain("ambiguous_tool_xyz");
   });
 });
+
+describe("reward_integrity_check MCP handler (F14)", () => {
+  it("flags a tautology-introducing test edit as a violation", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleRewardIntegrityCheck({
+        path: "src/auth.test.ts",
+        before: "expect(login()).toBe(true);",
+        after: "expect(true).toBe(true);",
+      })
+    );
+    expect(r.severity).toBe("violation");
+    expect(r.isTestFile).toBe(true);
+  });
+
+  it("flags a write to a designated grader", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleRewardIntegrityCheck({
+        path: "eval/grader.ts",
+        before: "a",
+        after: "b",
+        grader_paths: ["eval/grader.ts"],
+      })
+    );
+    expect(r.severity).toBe("violation");
+    expect(r.isGrader).toBe(true);
+  });
+
+  it("returns ok for an ordinary source write", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleRewardIntegrityCheck({
+        path: "src/auth.ts",
+        before: "const x = 1;",
+        after: "const x = 2;",
+      })
+    );
+    expect(r.severity).toBe("ok");
+  });
+
+  it("errors cleanly without a path", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleRewardIntegrityCheck({} as never));
+    expect(r.error).toBeDefined();
+  });
+});
+
+describe("observation_mask_plan MCP handler (F15)", () => {
+  it("masks stale observations and reports reclaimed tokens", async () => {
+    const { handleObservationMaskPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleObservationMaskPlan({
+        observations: [
+          { id: "a", turn: 0, tokens: 1000, contentHash: "h-a" },
+          { id: "b", turn: 10, tokens: 1000, contentHash: "h-b" },
+        ],
+        current_turn: 10,
+        window_turns: 2,
+        placeholder_tokens: 16,
+      })
+    );
+    expect(r.masked.map((m: { id: string }) => m.id)).toEqual(["a"]);
+    expect(r.reclaimedTokens).toBe(1000 - 16);
+  });
+
+  it("errors cleanly without observations", async () => {
+    const { handleObservationMaskPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleObservationMaskPlan({} as never));
+    expect(r.error).toBeDefined();
+  });
+});
+
+describe("read_gate_check MCP handler (F16)", () => {
+  it("allows a first read and records residency", async () => {
+    const { handleReadGateCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleReadGateCheck({
+        path: "src/a.ts",
+        content_hash: "h1",
+        turn: 1,
+        tokens: 2400,
+        epoch: 0,
+      })
+    );
+    expect(r.verdict.decision).toBe("allow");
+    expect(r.resident_set.entries["src/a.ts"]).toBeDefined();
+  });
+
+  it("denies an exact re-read against a prior resident set", async () => {
+    const { handleReadGateCheck } = await import("./tcrp-tools.js");
+    const first = JSON.parse(
+      handleReadGateCheck({ path: "src/a.ts", content_hash: "h1", turn: 1, tokens: 2400, epoch: 0 })
+    );
+    const second = JSON.parse(
+      handleReadGateCheck({
+        path: "src/a.ts",
+        content_hash: "h1",
+        turn: 5,
+        tokens: 2400,
+        epoch: 0,
+        resident_set: first.resident_set,
+      })
+    );
+    expect(second.verdict.decision).toBe("deny");
+    expect(second.verdict.reclaimedTokens).toBe(2400);
+  });
+
+  it("errors cleanly on missing fields", async () => {
+    const { handleReadGateCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleReadGateCheck({ path: "x" } as never));
+    expect(r.error).toBeDefined();
+  });
+});
+
+describe("program_slice MCP handler (F17)", () => {
+  const graph = {
+    nodes: [{ id: "A", tokens: 100 }, { id: "B", tokens: 100 }, { id: "C", tokens: 100 }],
+    edges: [{ from: "A", to: "B" }, { from: "B", to: "C" }],
+  };
+
+  it("returns the sound backward dependency closure", async () => {
+    const { handleProgramSlice } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleProgramSlice({ ...graph, seeds: ["A"] }));
+    expect(r.included.map((m: { id: string }) => m.id).sort()).toEqual(["A", "B", "C"]);
+    expect(r.sound).toBe(true);
+  });
+
+  it("reports budget cuts as unsound", async () => {
+    const { handleProgramSlice } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleProgramSlice({ ...graph, seeds: ["A"], token_budget: 150 }));
+    expect(r.sound).toBe(false);
+    expect(r.cutByBudget.length).toBeGreaterThan(0);
+  });
+
+  it("errors cleanly on missing arrays", async () => {
+    const { handleProgramSlice } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleProgramSlice({ seeds: ["A"] } as never));
+    expect(r.error).toBeDefined();
+  });
+});
+
+describe("price_quote MCP handler (F18)", () => {
+  it("returns a lambda and advances state from a budget reading", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handlePriceQuote({ spent: 2000, budget: 1000 }));
+    expect(typeof r.lambda).toBe("number");
+    expect(r.state).toBeDefined();
+    expect(r.lambda).toBeGreaterThan(0.5); // over budget pushes price up
+  });
+
+  it("evaluates a bid against the fresh price", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePriceQuote({ spent: 100, budget: 1000, bid: { quality_gain: 100, token_cost: 1 } })
+    );
+    expect(["spend", "skip"]).toContain(r.decision.action);
+  });
+
+  it("abstains on a bid with unknown quality", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePriceQuote({ spent: 100, budget: 1000, bid: { quality_gain: null, token_cost: 5 } })
+    );
+    expect(r.decision.action).toBe("abstain");
+  });
+
+  it("errors cleanly without numeric budget fields", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handlePriceQuote({} as never));
+    expect(r.error).toBeDefined();
+  });
+});
+
+describe("prefix_warm_plan MCP handler (cross-session reuse)", () => {
+  const entry = { prefixHash: "h", tokens: 5000, lastUsedAt: 0 };
+
+  it("assesses a warm prefix and projects savings", async () => {
+    const { handlePrefixWarmPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePrefixWarmPlan({
+        entry,
+        now: 100_000,
+        ttl_ms: 300_000,
+        refresh_threshold_ms: 60_000,
+        reuse_expected: true,
+        cache_read_discount: 0.1,
+        expected_hits: 2,
+      })
+    );
+    expect(r.assessment.status).toBe("warm");
+    expect(r.projectedSavings).toBeCloseTo(5000 * 0.9 * 2);
+  });
+
+  it("recommends priming an absent prefix when reuse is expected", async () => {
+    const { handlePrefixWarmPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePrefixWarmPlan({
+        entry: null,
+        now: 1000,
+        ttl_ms: 300_000,
+        refresh_threshold_ms: 60_000,
+        reuse_expected: true,
+      })
+    );
+    expect(r.assessment.status).toBe("absent");
+    expect(r.decision.warm).toBe(true);
+  });
+
+  it("errors cleanly without required numeric fields", async () => {
+    const { handlePrefixWarmPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handlePrefixWarmPlan({ reuse_expected: true } as never));
+    expect(r.error).toBeDefined();
+  });
+});
+
+describe("wastebench_attest MCP handler (F19)", () => {
+  const records = [
+    { feature: "f15", baselineTokens: 1000, optimizedTokens: 200, overheadTokens: 50 },
+  ];
+
+  it("produces a verifiable signed attestation", async () => {
+    const { handleWastebenchAttest } = await import("./tcrp-tools.js");
+    const { verifyAttestation } = await import("@prune/wastebench");
+    const r = JSON.parse(
+      handleWastebenchAttest({ records, issued_at: "2026-06-07T00:00:00.000Z" })
+    );
+    expect(r.manifest.rollup.netSaved).toBe(800 - 50);
+    expect(verifyAttestation(r.attestation).valid).toBe(true);
+  });
+
+  it("reports SLO failure honestly when overhead is high", async () => {
+    const { handleWastebenchAttest } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleWastebenchAttest({
+        records: [{ feature: "x", baselineTokens: 100, optimizedTokens: 90, overheadTokens: 50 }],
+        issued_at: "2026-06-07T00:00:00.000Z",
+      })
+    );
+    expect(r.manifest.slo.ok).toBe(false);
+  });
+
+  it("errors cleanly without records", async () => {
+    const { handleWastebenchAttest } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleWastebenchAttest({} as never));
+    expect(r.error).toBeDefined();
+  });
+});

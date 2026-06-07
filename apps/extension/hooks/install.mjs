@@ -2,7 +2,7 @@
 /**
  * Prune hook installer (pending action 1.6).
  *
- * The Prune hooks (17 distinct scripts, 19 event bindings — loop-breaker and
+ * The Prune hooks (28 distinct scripts, 30 event bindings — loop-breaker and
  * replay-recorder each fire on two events) were wired by hand into
  * ~/.claude/settings.json. This automates that: it merges the canonical
  * hook→event(+matcher) mapping (HOOK_REGISTRY below) into a
@@ -49,13 +49,24 @@ export const HOOK_REGISTRY = [
   { file: "skill-advisor.mjs", event: "UserPromptSubmit" },
   { file: "cache-habits-advisor.mjs", event: "UserPromptSubmit" },
   { file: "context-health-advisor.mjs", event: "UserPromptSubmit" },
+  { file: "observation-mask.mjs", event: "UserPromptSubmit" },
+  { file: "preturn-forecast.mjs", event: "UserPromptSubmit" },
   // PreToolUse — pre-action guards.
   { file: "subagent-warden.mjs", event: "PreToolUse", matcher: "Task" },
+  { file: "fanout-acceleration.mjs", event: "PreToolUse", matcher: "Task" },
+  { file: "edit-amplification.mjs", event: "PreToolUse", matcher: "Write" },
+  { file: "reward-integrity.mjs", event: "PreToolUse", matcher: "Write|Edit|MultiEdit" },
+  { file: "read-gate.mjs", event: "PreToolUse", matcher: "Read" },
   { file: "trajectory-diet.mjs", event: "PreToolUse" },
   { file: "speculative-prune.mjs", event: "PreToolUse" },
   // PostToolUse — post-action recorders / shields.
   { file: "speculative-record.mjs", event: "PostToolUse", matcher: "Read" },
   { file: "sentinel-mcp.mjs", event: "PostToolUse" },
+  { file: "cost-guard.mjs", event: "PostToolUse" },
+  { file: "thrash-detector.mjs", event: "PostToolUse" },
+  { file: "injection-cost.mjs", event: "PostToolUse" },
+  { file: "navigation-ratio.mjs", event: "PostToolUse" },
+  { file: "tool-error-rate.mjs", event: "PostToolUse" },
   { file: "loop-breaker.mjs", event: "PostToolUse" },
   { file: "replay-recorder.mjs", event: "PostToolUse" },
   // Stop — end-of-turn. budget-gate BEFORE slo-breaker (charge then evaluate).

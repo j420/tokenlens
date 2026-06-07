@@ -1,0 +1,23 @@
+{
+  "name": "@prune/lsp-graph",
+  "version": "0.1.0",
+  "description": "F10 — LSP symbol-graph substitution. Instead of spending tokens for the model to re-derive a repo's symbol/call graph from full file bodies, inject the IDE language server's OWN index (free, authoritative): signatures + call edges, budget-selected by reference in-degree. Deterministic over a caller-supplied LSP index (the host queries the language server; this package never does). Equivalence is by construction — the graph is the language server's canonical resolution, not a model guess. No regex, no model call.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

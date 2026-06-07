@@ -1,0 +1,11 @@
+{
+  "name": "@prune/ttl-regression",
+  "version": "0.1.0",
+  "description": "List1 silent-ttl-regression-detector — flag a silent provider cache-TTL downgrade (e.g. a configured 1h tier that effectively behaves like 5m), which expires the prefix sooner than budgeted and re-bills the rewrite at the write multiplier. Deterministic comparison of the caller's CONFIGURED ttl vs the OBSERVED ttl (inferred by the host from cache-hit timing); insufficient_signal when either is unknown. Never fabricates a number, no regex, no model.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

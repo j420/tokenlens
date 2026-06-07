@@ -4,7 +4,7 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~37-workspace monorepo** (34 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~67-workspace monorepo** (64 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
@@ -14,6 +14,7 @@ TokenLens (internally: Prune) started as an extension for AI coding assistants (
 - **MCP tool surface (~30 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
 - **Hooks system:** `apps/extension/hooks/*.mjs` — Claude Code lifecycle hooks (advisors, recorders, breakers, forwarders) with a flag system and an auto-installer.
 - **Persistence + telemetry:** local SQLite + a real Postgres sink (`@prune/persistence`), with open-standard exporters (OpenTelemetry GenAI + FOCUS FinOps).
+  - **Known limitation (tracked follow-up #1):** the event schema's `estimated_cost_usd` column is `number` (non-nullable), and two hooks coerce an unknown cost with `?? 0` (`cache-habits-advisor.mjs`, `cost-guard.mjs`). So an UNPRICED-model event is persisted as `$0`, indistinguishable from a genuinely-free one — a dashboard `SUM(estimated_cost)` under-counts true spend. The package-level discipline is honest (unknown model ⇒ `null`); the masking is only at the telemetry boundary. Fix = make `estimatedCostUsd` `number | null` end-to-end (`feature-event.ts` + `EventRow` + SQLite/Postgres bindings + the two hook masks + persistence tests) so the dashboards never show a fabricated `$0`. Deferred as its own focused change (touches ~141 persistence tests).
 - **Strict, honest pricing:** unknown model → `null`, never a fabricated default rate (`@prune/shared`).
 
 ---
@@ -86,6 +87,15 @@ tokenlens/
 │   ├── export/                 # OpenTelemetry GenAI + FOCUS FinOps exporters
 │   ├── agent-sdk-adapter/      # Provider-neutral Agent SDK control plane
 │   ├── host-adapters/          # Real Claude Code session data → typed tool inputs
+│   # --- Outcome-learning substrate (Phase-2) ---
+│   ├── context-utility/        # F1  — Context-Utility Model (decayed empirical-Bayes per-atom utility)
+│   # --- Deterministic value / economics levers (List1/List2) ---
+│   ├── task-ledger/            # F11 — cost-per-completed-task ledger (the value denominator)
+│   ├── waterbed/               # F12 — general induced-cost net-effect gate (veto phantom savings)
+│   ├── price-tag/              # F14 — decision-time dual price tag + equivalence-gated default-flip
+│   ├── churn-pin/              # F9  — git-churn cache-pin planner (forward-looking invalidation)
+│   ├── waste-memo/             # F13 — cross-session recurring-waste memo (PII-safe fingerprints)
+│   ├── lsp-graph/              # F10 — authoritative LSP symbol-graph substitution
 │   # --- Code intelligence ---
 │   ├── squeezer/               # TS Compiler API code compression
 │   ├── squeezer-py/            # Python code compression
@@ -107,6 +117,17 @@ tokenlens/
 
 ## TCRP Feature Map
 
+> **Two feature-ID namespaces (read this — they are case-sensitive and would
+> otherwise collide).** Lowercase **`f1`–`f19`** are the **shipped TCRP feature
+> IDs** in the table below (the original program + the ROUND-16 set). Uppercase
+> **`F1`–`F21`** are the **List1/List2/List3 research-proposal IDs** (see
+> `docs/RESEARCH-*`) for the deterministic value/economics/paradigm levers built
+> later — a SEPARATE numbering from the lowercase set (`F11` task-ledger is not
+> `f11` replay-cost, etc.). The uppercase **F18–F20** are the cost-security suite
+> (injection-cost / cost-guard / fan-out), already shipped as hooks, which is why
+> the uppercase value-lever sequence jumps F17→F21. When mapping for an audit,
+> always carry the case.
+
 The Token-Cost Reduction Program features. Each is a standalone, tested package;
 most are also surfaced as an MCP tool and/or a Claude Code hook. All are
 deterministic (no model calls in decision logic, no regex parsing/classification),
@@ -121,7 +142,7 @@ fail-safe, and never fabricate a token/cost number.
 | **f6** Context Health | `context-health` | Effective Context Fullness + CUSUM change-point inflection warnings. |
 | **f7** Semantic Cache | `semantic-cache` | In-process char-n-gram + IDF cosine cache; equivalence-gated; content-SHA poisoning defense. |
 | **f8** Code-Mode MCP | `code-mode-mcp` | JSON-schema → typed TS API; vm sandbox; equivalence-proof harness. |
-| **f9 / E3** Cache-Habits Linter | `cache-habits` | Pre-action warnings before a documented prompt-cache-killer pattern fires. |
+| **f9 / E3** Cache-Habits Linter | `cache-habits` | Pre-action warnings before a documented prompt-cache-killer pattern fires (CH-001..CH-014, incl. CH-013 stateful→stateless transport regression + CH-014 long-stateless transport advisor). |
 | **f10 / E1** MCP Proxy | `mcp-proxy` | Lazy-schema cross-vendor proxy; returns only intent-matching tools. |
 | **f11 / E2** Replay-Cost | `replay-cost` | What-if deterministic replay: shared-prefix re-serve vs cold re-run cost. |
 | **f12 / E4** Skill Library | `skill-library` | Captures influential trajectory subset; replays typed skill on matching tasks. |
@@ -131,12 +152,19 @@ fail-safe, and never fabricate a token/cost number.
 | **P8(c)** Diff-vs-Rewrite Enforcer | `diff-enforcer` | Decides diff vs full rewrite by real token cost (sound round-trip guarantee). |
 | **P8(d)** Reasoning-Effort Router | `qpd-bench` (`effort-router`) | Routes reasoning effort by task; actuates cache-habit CH-009. |
 | **P8(e)** Open-Tab Auditor | `tab-auditor` | Scores open editor tabs; recommends dropping low-relevance tabs from AI context. |
+| **f14** Reward-Integrity Interlock | `reward-integrity` | AST + content-hash detector for reward-hacking edits (assertion removal/tautologizing, test disabling, grader writes); PreToolUse breaker, fail-safe to `inconclusive`. |
+| **f15** Observation Masking + Belady | `observation-mask` | Sliding-window masking of stale tool results (reversible placeholders) capping context at O(n·window); Belady/LRU eviction under a token budget; monotone (cache-stable). |
+| **f16** Dedup-VoI Read Gate | `read-gate` | Denies a re-read only when content is provably still in context (content-SHA × compaction-epoch); information-lossless by construction. |
+| **f17** Program-Slice Selection | `program-slice` | Backward static slice (transitive dependency closure) over the symbol graph; sound reachability replacing heuristic relevance. |
+| **f18** Clearing-Price Controller | `clearing-price` | One PID-paced price λ every actuator bids against (`act iff qualityGain ≥ λ·tokenCost`); null quote ⇒ no-op. The coordinator the actuators bid into. |
+| **f19** WasteBench + Attestations | `wastebench` | Counterfactual net-savings accounting (overhead subtracted), reflexive overhead SLO, Ed25519-signed tamper-evident manifests. |
+| **(f12)** Cross-Session Prefix Warm | `prefix-warm` | TTL-aware prompt-cache prefix warming (keep-alive / prime decisions + read-discount savings); completes cross-session reuse alongside the skill library. |
 
 ---
 
 ## MCP Tool Surface
 
-`apps/mcp-server` registers ~30 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
+`apps/mcp-server` registers ~59 tools (names from `src/index.ts` / `src/tcrp-tools.ts` / `src/value-tools.ts`),
 including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
 `routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
@@ -145,7 +173,19 @@ including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `replay_list`, `subagent_status` / `subagent_cost_predict`, `budget_status` /
 `budget_configure`, `compaction_check`, `tool_audit`, `qpd_report`,
 `code_mode_generate_api` / `code_mode_harness`, `semantic_cache_probe`,
-`trajectory_replay_report`, `context_health_report`, `open_tab_audit`.
+`trajectory_replay_report`, `context_health_report`, `open_tab_audit`, and the
+ROUND-16 exponential set: `reward_integrity_check`, `observation_mask_plan`,
+`read_gate_check`, `program_slice`, `price_quote`, `prefix_warm_plan`,
+`wastebench_attest`, and the value/economics levers: `task_ledger_rollup` (F11),
+`waterbed_check` (F12), `price_tag` (F14), `context_utility_query` (F1).
+
+The full List1/List2/List3 value/economics/paradigm lever set is also MCP-exposed
+(`apps/mcp-server/src/value-tools.ts`) so no package is library-only: `known_knowledge_negotiate`
+(F2), `pull_context_resolve` (F3), `churn_pin_plan` (F9), `waste_memo` (F13), `lsp_graph` (F10),
+`allowance_market` (F15), `futures_desk` (F16), `bounty_evaluate` (F17), `batch_route`,
+`prefix_align`, `ttl_regression_check`, `retry_reframe_advise` (F5), `ci_fix_context` (F6),
+`fleet_cache` (F7), `marginal_value` (F8), `cache_poison_check` (F21), `anti_synergy_check`
+(G1/G2/G3), `cache_reconcile` (U3).
 
 Some tools are **caller-fed**: they require typed inputs (e.g. a proposed-action
 diff) that a Claude Code hook payload doesn't carry; `@prune/host-adapters`
@@ -164,8 +204,25 @@ advisors (`cache-habits-advisor`, `context-health-advisor`, `skill-advisor`,
 `speculative-record`), breakers (`loop-breaker`, `slo-breaker`,
 `subagent-warden`), safety (`sentinel-prompt`, `sentinel-mcp`), cache
 (`cache-stabilize`, `speculative-prune`), recovery (`compaction-recover`), budget
-(`budget-gate`), and the telemetry forwarder (`telemetry-forward`). Hooks are
-fail-safe: they must never hang, throw uncaught, or block the agent.
+(`budget-gate`), cost-security (`cost-guard`, `thrash-detector`, `injection-cost`,
+`fanout-acceleration`, `edit-amplification`, `preturn-forecast`, plus the List3
+runtime-neutral detectors `navigation-ratio` and `tool-error-rate`), and the
+telemetry forwarder (`telemetry-forward`). Hooks are fail-safe: they must never
+hang, throw uncaught, or block the agent.
+
+**Cost-Security detectors (List2 + List3, `@prune/cost-security` + `@prune/intelligence`).**
+Deterministic, fail-open, env-gated (not TCRP-flagged), surfaced as autonomous hooks
+(no MCP tool). Runtime-neutral — tool classification uses a cross-runtime default
+vocabulary (Claude Code / Cursor / Codex) and is overridable per host:
+
+| Detector | Function (pkg) | Hook (event) | Fires when |
+|----------|----------------|--------------|------------|
+| Navigation-to-edit ratio | `assessNavigationRatio` (cost-security) | `navigation-ratio.mjs` (PostToolUse) | a window of read-only turns re-visits a file with zero edits (post-localization over-exploration) |
+| Tool-error-rate breaker | `assessToolErrorRate` (cost-security) | `tool-error-rate.mjs` (PostToolUse) | host-tagged `is_error` rate ≥ threshold over enough tagged calls; `insufficient_signal` no-op when absent |
+| Identical-action loop | `evaluateIdenticalActionLoop` (intelligence) | `loop-breaker.mjs` (2nd trip) | same tool + canonical input returns an identical result-SHA ≥ N times (provable no-progress) |
+
+Config: `PRUNE_NAV_RATIO_*`, `PRUNE_TOOL_ERROR_*`, `PRUNE_IDENTICAL_ACTION_*`,
+`PRUNE_NAV_TOOLS` / `PRUNE_MUT_TOOLS` (per-runtime vocabulary overrides).
 
 ---
 

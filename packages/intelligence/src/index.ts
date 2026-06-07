@@ -70,6 +70,15 @@ export {
   type LoopBlockOptions,
 } from "./session-tracker.js";
 
+// Identical-action loop (degeneration-loop fold into loop-breaker)
+export {
+  evaluateIdenticalActionLoop,
+  canonicalKey,
+  type ActionObservation,
+  type IdenticalActionOptions,
+  type IdenticalActionDecision,
+} from "./identical-action.js";
+
 // Cache Analyzer
 export {
   computeCacheMetrics,

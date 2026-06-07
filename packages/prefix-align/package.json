@@ -1,0 +1,11 @@
+{
+  "name": "@prune/prefix-align",
+  "version": "0.1.0",
+  "description": "List1 openai-increment-prefix-aligner — align a stable prompt prefix to the provider's cache-increment boundary (OpenAI: caching starts at 1024 tokens, then 128-token increments). Computes the cacheable portion, the wasted tail beyond the last boundary, and the pad-to-next-boundary advice that captures the most prefix as cacheable. Pure arithmetic over caller-supplied token counts; no regex, no model.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}

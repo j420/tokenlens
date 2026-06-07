@@ -82,7 +82,12 @@ safeRun(async () => {
   if (view.turns.length < 1) return emitNoop();
 
   const last = view.turns[view.turns.length - 1];
-  const currentModel = last.model ?? "claude-sonnet-4-5-20250929";
+  // U6 — never fabricate the model. When the transcript doesn't declare one we
+  // genuinely don't know it; the unpriced-sentinel "" makes @prune/cache-habits
+  // return a NULL cost (honest "unknown cost") instead of pricing the idle-gap
+  // waste against a guessed model. CH-001 (model switch) is already suppressed.
+  const currentModel =
+    typeof last.model === "string" && last.model.length > 0 ? last.model : "";
   const ttl = ttlFromEnv();
 
   let cacheCreate = 0;

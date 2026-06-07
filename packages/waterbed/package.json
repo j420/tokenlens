@@ -1,0 +1,23 @@
+{
+  "name": "@prune/waterbed",
+  "version": "0.1.0",
+  "description": "F12 — waterbed-aware net-effect gate. Wraps any cost-transform with a GENERAL induced-cost check so a 'saving' that merely reappears elsewhere (re-ask, retry, recompute, cache-write) is netted out and vetoed. Generalizes the diff-enforcer's single-transform round-trip check. Deterministic; insufficient_data (never approve) on any missing/null input; never fabricates a number. No regex, no model call.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

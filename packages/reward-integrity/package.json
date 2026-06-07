@@ -1,0 +1,25 @@
+{
+  "name": "@prune/reward-integrity",
+  "version": "0.1.0",
+  "description": "F14 — Reward-Integrity Interlock. Deterministically detects reward-hacking edits — an agent weakening, disabling, or tautologizing the tests/grader it is judged against — via TypeScript AST analysis plus content-hash baselining. Structural only: no regex, no model call, no fabricated token/cost. Fail-safe: an unparseable or ambiguous edit returns `inconclusive`, never a false violation.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "typescript": "^5.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "vitest": "^2.1.0"
+  }
+}

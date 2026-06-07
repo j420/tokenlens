@@ -69,10 +69,63 @@ import {
   type SessionSnapshot,
   type CacheTtl,
   type ModelFamily,
+  type TransportTier,
 } from "@prune/cache-habits";
 import { pruneResult, calibrateMaxTokens } from "@prune/response-tuner";
 import { diffEnforce } from "@prune/diff-enforcer";
 import { auditOpenTabs } from "@prune/tab-auditor";
+import {
+  evaluateRewardIntegrity,
+  type ProposedWrite,
+  type RewardIntegrityConfig,
+} from "@prune/reward-integrity";
+import {
+  planMask,
+  type MaskConfig,
+  type Observation,
+} from "@prune/observation-mask";
+import {
+  stepReadGate,
+  emptyResidentSet,
+  type ReadRequest,
+  type ResidentSet,
+} from "@prune/read-gate";
+import {
+  computeSlice,
+  type SliceGraphInput,
+  type SliceDirection,
+} from "@prune/program-slice";
+import {
+  updatePrice,
+  initialState as initialPriceState,
+  shouldSpend,
+  DEFAULT_CONFIG as DEFAULT_PRICE_CONFIG,
+  type ControllerState,
+  type ControllerConfig,
+} from "@prune/clearing-price";
+import {
+  assessCache,
+  shouldWarm,
+  cacheHitSavings,
+  type PrefixEntry,
+} from "@prune/prefix-warm";
+import {
+  buildManifest,
+  signManifest,
+  generateKeypair,
+  type SavingsRecord,
+} from "@prune/wastebench";
+import { rollupTaskLedger, type SpendEvent, type TaskOutcome } from "@prune/task-ledger";
+import { evaluateWaterbed, type TransformEffect } from "@prune/waterbed";
+import { priceDecision, type DecisionPath } from "@prune/price-tag";
+import {
+  updateUtility,
+  queryUtility,
+  rankAtoms,
+  emptyCumState,
+  type UtilityObservation,
+  type CumState,
+} from "@prune/context-utility";
 import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
@@ -621,6 +674,14 @@ export function handleMcpProxyTrim(args: McpProxyTrimArgs): string {
 // ===========================================================================
 
 const VALID_TTL = new Set<CacheTtl>(["5m", "1h", "none"]);
+const VALID_TRANSPORT = new Set<TransportTier>(["stateful", "stateless", "unknown"]);
+
+/** Coerce a caller-supplied transport tier, or null/undefined when invalid. */
+function transportOrNull(v: unknown): TransportTier | null {
+  return typeof v === "string" && VALID_TRANSPORT.has(v as TransportTier)
+    ? (v as TransportTier)
+    : null;
+}
 const VALID_FAMILY = new Set<ModelFamily>([
   "sonnet", "opus", "haiku", "gpt-4o", "gpt-4o-mini", "other",
 ]);
@@ -682,6 +743,7 @@ function coerceProposedAction(raw: Record<string, unknown>): ProposedAction {
       temperature: numOrNull(changes.temperature),
       mcpServersAdded: strArray(changes.mcpServersAdded),
       mcpServersRemoved: strArray(changes.mcpServersRemoved),
+      transport: transportOrNull(changes.transport),
     },
     now: str(raw.now, new Date().toISOString()),
   };
@@ -704,10 +766,13 @@ function coerceSnapshot(
     systemPromptTokens: numOrNull(raw.systemPromptTokens),
     toolListOrderHash: strOrNull(raw.toolListOrderHash),
     mcpServers: strArray(raw.mcpServers),
+    historyTokens: numOrNull(raw.historyTokens),
   };
   if (effort) snap.reasoningEffort = effort;
   const temp = numOrNull(raw.temperature);
   if (temp !== null) snap.temperature = temp;
+  const transport = transportOrNull(raw.transport);
+  if (transport) snap.transport = transport;
   return snap;
 }
 
@@ -723,7 +788,7 @@ export interface CacheHabitsArgs {
 }
 
 /**
- * F9 — run the FULL cache-habits linter (all 12 rules CH-001..CH-012) over a
+ * F9 — run the FULL cache-habits linter (all 14 rules CH-001..CH-014) over a
  * caller-supplied proposed-action diff. This is the runtime surface for the 11
  * rules a transcript hook can't reach: those need the host's proposed-action vs
  * session-snapshot diff (model switch, tool-list reorder, system-prompt
@@ -1149,4 +1214,416 @@ export function handleOpenTabAudit(args: OpenTabAuditArgs): string {
     null,
     2
   );
+}
+
+export interface RewardIntegrityArgs {
+  /** The file path the write targets. */
+  path: string;
+  /** On-disk content before the write (null on file creation). */
+  before?: string | null;
+  /** Proposed content after the write (null on deletion). */
+  after?: string | null;
+  /** Designated grader/oracle path suffixes the agent must not write. */
+  grader_paths?: string[];
+  /** Extra repo-specific test-file suffixes. */
+  extra_test_suffixes?: string[];
+}
+
+/**
+ * F14 — Reward-Integrity check. Given a proposed write, returns the structural
+ * verdict (ok | suspicious | violation | inconclusive) for whether the edit
+ * weakens the tests/grader the agent is judged against. AST + content-hash;
+ * deterministic; never blocks here (the hook decides) — this surfaces the
+ * verdict for AI self-regulation.
+ */
+export function handleRewardIntegrityCheck(args: RewardIntegrityArgs): string {
+  if (!args || typeof args.path !== "string") {
+    return JSON.stringify({
+      error: "reward_integrity_check requires a `path` string.",
+    });
+  }
+  const write: ProposedWrite = {
+    path: args.path,
+    before: args.before ?? null,
+    after: args.after ?? null,
+  };
+  const config: RewardIntegrityConfig = {
+    graderPaths: args.grader_paths ?? [],
+    extraTestSuffixes: args.extra_test_suffixes ?? [],
+  };
+  return JSON.stringify(evaluateRewardIntegrity(write, config), null, 2);
+}
+
+export interface ObservationMaskArgs {
+  /** The observation buffer: { id, turn, tokens, contentHash, pinned?, nextUseTurn? }. */
+  observations: Observation[];
+  current_turn: number;
+  window_turns: number;
+  placeholder_tokens?: number;
+  token_budget?: number | null;
+  previously_masked_ids?: string[];
+}
+
+/**
+ * F15 — Observation-mask plan. Given the observation buffer and a window,
+ * returns which observations to replace with placeholders (and the reclaimed
+ * tokens), capping retained context at O(window). Deterministic; reclaim is
+ * computed from caller-measured token counts (never fabricated).
+ */
+export function handleObservationMaskPlan(args: ObservationMaskArgs): string {
+  if (!args || !Array.isArray(args.observations)) {
+    return JSON.stringify({
+      error: "observation_mask_plan requires an `observations` array.",
+    });
+  }
+  if (typeof args.current_turn !== "number" || typeof args.window_turns !== "number") {
+    return JSON.stringify({
+      error: "observation_mask_plan requires numeric `current_turn` and `window_turns`.",
+    });
+  }
+  const config: MaskConfig = {
+    currentTurn: args.current_turn,
+    windowTurns: args.window_turns,
+    placeholderTokens: args.placeholder_tokens,
+    tokenBudget: args.token_budget ?? null,
+    previouslyMaskedIds: args.previously_masked_ids ?? [],
+  };
+  return JSON.stringify(planMask(args.observations, config), null, 2);
+}
+
+export interface ReadGateArgs {
+  /** The file read being proposed. */
+  path: string;
+  /** SHA of the file's current content. */
+  content_hash: string;
+  turn: number;
+  tokens: number;
+  epoch: number;
+  /** Prior resident set to evaluate against (omit for a fresh set). */
+  resident_set?: ResidentSet;
+}
+
+/**
+ * F16 — Read-gate check. Given a proposed read and the prior resident set,
+ * returns the verdict (allow | deny) and the updated resident set. A `deny`
+ * means the identical content is provably still in context (same hash + epoch),
+ * so it is information-lossless. Deterministic; reclaim from caller-measured
+ * tokens.
+ */
+export function handleReadGateCheck(args: ReadGateArgs): string {
+  if (
+    !args ||
+    typeof args.path !== "string" ||
+    typeof args.content_hash !== "string" ||
+    typeof args.turn !== "number" ||
+    typeof args.tokens !== "number" ||
+    typeof args.epoch !== "number"
+  ) {
+    return JSON.stringify({
+      error:
+        "read_gate_check requires `path`, `content_hash`, `turn`, `tokens`, `epoch`.",
+    });
+  }
+  const set: ResidentSet =
+    args.resident_set && typeof args.resident_set === "object"
+      ? args.resident_set
+      : emptyResidentSet(args.epoch);
+  const req: ReadRequest = {
+    path: args.path,
+    contentHash: args.content_hash,
+    turn: args.turn,
+    tokens: args.tokens,
+    epoch: args.epoch,
+  };
+  const { verdict, set: nextSet } = stepReadGate(set, req);
+  return JSON.stringify({ verdict, resident_set: nextSet }, null, 2);
+}
+
+export interface ProgramSliceArgs {
+  /** Dependency graph nodes: { id, tokens? }. */
+  nodes: Array<{ id: string; tokens?: number }>;
+  /** Directed dependency edges: { from, to } meaning `from` depends on `to`. */
+  edges: Array<{ from: string; to: string }>;
+  /** Seed symbol ids (the task's targets). */
+  seeds: string[];
+  direction?: SliceDirection;
+  max_depth?: number;
+  token_budget?: number | null;
+}
+
+/**
+ * F17 — Program-slice context selection. Returns the backward static slice
+ * (transitive dependency closure) of the seed symbols over the dependency graph
+ * — the sound context set. With no token_budget the slice drops nothing
+ * (`sound: true`); forward direction gives the change-impact set. Deterministic.
+ */
+export function handleProgramSlice(args: ProgramSliceArgs): string {
+  if (
+    !args ||
+    !Array.isArray(args.nodes) ||
+    !Array.isArray(args.edges) ||
+    !Array.isArray(args.seeds)
+  ) {
+    return JSON.stringify({
+      error: "program_slice requires `nodes`, `edges`, and `seeds` arrays.",
+    });
+  }
+  const graph: SliceGraphInput = { nodes: args.nodes, edges: args.edges };
+  return JSON.stringify(
+    computeSlice(graph, {
+      seeds: args.seeds,
+      direction: args.direction,
+      maxDepth: args.max_depth,
+      tokenBudget: args.token_budget ?? null,
+    }),
+    null,
+    2
+  );
+}
+
+export interface PriceQuoteArgs {
+  /** Current budget reading. */
+  spent: number;
+  budget: number;
+  /** Prior controller state (omit to start from the neutral midpoint). */
+  state?: ControllerState;
+  /** Optional PID/bounds config override. */
+  config?: Partial<ControllerConfig>;
+  /** Optional bid to evaluate against the freshly-updated price. */
+  bid?: { quality_gain: number | null; token_cost: number };
+}
+
+/**
+ * F18 — Clearing-price quote. Advances the PID price loop with a budget reading
+ * and returns the updated controller state and lambda. If a `bid` is supplied,
+ * also returns the act/skip/abstain decision for it. Functional: the caller
+ * persists `state` between calls. Deterministic; abstains (never forces) when a
+ * bid's quality is unknown.
+ */
+export function handlePriceQuote(args: PriceQuoteArgs): string {
+  if (!args || typeof args.spent !== "number" || typeof args.budget !== "number") {
+    return JSON.stringify({
+      error: "price_quote requires numeric `spent` and `budget`.",
+    });
+  }
+  const config: ControllerConfig = { ...DEFAULT_PRICE_CONFIG, ...(args.config ?? {}) };
+  const prior: ControllerState =
+    args.state && typeof args.state === "object"
+      ? args.state
+      : initialPriceState(config);
+  const next = updatePrice(prior, { spent: args.spent, budget: args.budget }, config);
+
+  const out: Record<string, unknown> = { lambda: next.lambda, state: next };
+  if (args.bid && typeof args.bid.token_cost === "number") {
+    out.decision = shouldSpend(args.bid.quality_gain, args.bid.token_cost, next.lambda);
+  }
+  return JSON.stringify(out, null, 2);
+}
+
+export interface PrefixWarmArgs {
+  /** The tracked prefix; omit `entry` for an absent (never-seen) prefix. */
+  entry?: PrefixEntry | null;
+  /** Current epoch ms. */
+  now: number;
+  /** Provider cache TTL in ms. */
+  ttl_ms: number;
+  /** Send a keep-alive when a warm prefix expires within this window (ms). */
+  refresh_threshold_ms: number;
+  /** Whether the prefix is expected to be reused (gates speculative priming). */
+  reuse_expected: boolean;
+  /** Optional savings projection: cache-read discount in [0,1] and hit count. */
+  cache_read_discount?: number;
+  expected_hits?: number;
+}
+
+/**
+ * Cross-session prefix warming. Returns the cache assessment (warm | expired |
+ * absent + expiry), the keep-alive decision, and — when discount/hits are
+ * given — the read-discount savings of reusing the warm prefix. Deterministic
+ * TTL arithmetic; all magnitudes caller-supplied.
+ */
+export function handlePrefixWarmPlan(args: PrefixWarmArgs): string {
+  if (
+    !args ||
+    typeof args.now !== "number" ||
+    typeof args.ttl_ms !== "number" ||
+    typeof args.refresh_threshold_ms !== "number"
+  ) {
+    return JSON.stringify({
+      error: "prefix_warm_plan requires numeric `now`, `ttl_ms`, `refresh_threshold_ms`.",
+    });
+  }
+  const entry = args.entry && typeof args.entry === "object" ? args.entry : null;
+  const decision = shouldWarm(
+    entry,
+    args.now,
+    { ttlMs: args.ttl_ms, refreshThresholdMs: args.refresh_threshold_ms },
+    args.reuse_expected === true
+  );
+  const out: Record<string, unknown> = {
+    assessment: assessCache(entry, args.now, args.ttl_ms),
+    decision,
+  };
+  if (
+    entry &&
+    typeof args.cache_read_discount === "number" &&
+    typeof args.expected_hits === "number"
+  ) {
+    out.projectedSavings = cacheHitSavings(
+      entry.tokens,
+      args.cache_read_discount,
+      args.expected_hits
+    );
+  }
+  return JSON.stringify(out, null, 2);
+}
+
+export interface WastebenchAttestArgs {
+  /** Measured savings records: { feature, baselineTokens, optimizedTokens, overheadTokens }. */
+  records: SavingsRecord[];
+  /** Reflexive SLO budget: max overhead/gross ratio (default 0.1). */
+  max_overhead_ratio?: number;
+  /** ISO timestamp to stamp (default: now). */
+  issued_at?: string;
+  window?: { from: string; to: string } | null;
+  /** Signing key PEM; omit to mint an ephemeral keypair (public key returned). */
+  private_key_pem?: string;
+}
+
+/**
+ * F19 — Build and sign a savings attestation. Rolls up counterfactual net
+ * savings (overhead subtracted), evaluates the reflexive overhead SLO, and signs
+ * the manifest with Ed25519 — tamper-evident over a deterministic canonical
+ * form. Honest: net savings can be negative and the SLO can fail. Deterministic
+ * given `issued_at` + key.
+ */
+export function handleWastebenchAttest(args: WastebenchAttestArgs): string {
+  if (!args || !Array.isArray(args.records)) {
+    return JSON.stringify({
+      error: "wastebench_attest requires a `records` array.",
+    });
+  }
+  const manifest = buildManifest(
+    args.records,
+    { maxOverheadRatio: args.max_overhead_ratio ?? 0.1 },
+    {
+      issuedAt: args.issued_at ?? new Date().toISOString(),
+      window: args.window ?? null,
+    }
+  );
+  const privateKeyPem =
+    typeof args.private_key_pem === "string" && args.private_key_pem.length > 0
+      ? args.private_key_pem
+      : generateKeypair().privateKeyPem;
+  const attestation = signManifest(manifest, privateKeyPem);
+  return JSON.stringify({ manifest, attestation }, null, 2);
+}
+
+// ===========================================================================
+// F11 — task-ledger rollup
+// ===========================================================================
+
+export interface TaskLedgerArgs {
+  /** Per-request spend events: {taskId, model, inputTokens, outputTokens, outcome, ...}. */
+  events: SpendEvent[];
+  /** Override which outcomes count as waste (default rejected+retry+abandoned). */
+  waste_outcomes?: TaskOutcome[];
+}
+
+export function handleTaskLedger(args: TaskLedgerArgs): string {
+  if (!args || !Array.isArray(args.events)) {
+    return JSON.stringify({ error: "task_ledger_rollup requires an `events` array." });
+  }
+  const report = rollupTaskLedger(
+    args.events,
+    Array.isArray(args.waste_outcomes) ? { wasteOutcomes: args.waste_outcomes } : {}
+  );
+  return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F12 — waterbed net-effect gate
+// ===========================================================================
+
+export interface WaterbedArgs {
+  /** {grossSavingUsd, overheadUsd?, induced:[{kind,expectedOccurrences,perOccurrenceUsd}]}. */
+  transform: TransformEffect;
+  /** Minimum net USD saving required to approve (default 0). */
+  margin_usd?: number;
+}
+
+export function handleWaterbed(args: WaterbedArgs): string {
+  if (!args || !args.transform || typeof args.transform !== "object") {
+    return JSON.stringify({ error: "waterbed_check requires a `transform` object." });
+  }
+  const report = evaluateWaterbed(
+    args.transform,
+    typeof args.margin_usd === "number" ? { marginUsd: args.margin_usd } : {}
+  );
+  return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F14 — decision-time dual price tag + default-flip
+// ===========================================================================
+
+export interface PriceTagArgs {
+  chosen: DecisionPath;
+  cheap: DecisionPath;
+  /** The cheap path is caller-proven equivalence-non-inferior (gates the flip). */
+  equivalence_proven?: boolean;
+  min_saving_usd?: number;
+}
+
+export function handlePriceTag(args: PriceTagArgs): string {
+  if (!args || !args.chosen || !args.cheap) {
+    return JSON.stringify({ error: "price_tag requires `chosen` and `cheap` path objects." });
+  }
+  const report = priceDecision(args.chosen, args.cheap, {
+    equivalenceProven: args.equivalence_proven === true,
+    ...(typeof args.min_saving_usd === "number" ? { minSavingUsd: args.min_saving_usd } : {}),
+  });
+  return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F1 — Context-Utility Model (update + query/rank)
+// ===========================================================================
+
+export interface ContextUtilityArgs {
+  /** Prior standing state (omit for a fresh model). */
+  state?: CumState | null;
+  /** Observations to fold in first: {atomId, contributed, atIso}. */
+  observations?: UtilityObservation[];
+  /** Query one atom's posterior. */
+  query?: string;
+  /** Rank these atoms by utility (cold-start last). */
+  rank?: string[];
+  half_life_ms?: number;
+  min_observations?: number;
+  now_iso?: string;
+}
+
+export function handleContextUtility(args: ContextUtilityArgs): string {
+  if (!args || typeof args !== "object") {
+    return JSON.stringify({ error: "context_utility_query requires an args object." });
+  }
+  let state: CumState =
+    args.state && typeof args.state === "object" ? args.state : emptyCumState();
+  if (Array.isArray(args.observations) && args.observations.length > 0) {
+    state = updateUtility(
+      state,
+      args.observations,
+      typeof args.half_life_ms === "number" ? { halfLifeMs: args.half_life_ms } : {}
+    );
+  }
+  const qOpts = {
+    ...(typeof args.min_observations === "number" ? { minObservations: args.min_observations } : {}),
+    ...(typeof args.half_life_ms === "number" ? { halfLifeMs: args.half_life_ms } : {}),
+    ...(typeof args.now_iso === "string" ? { nowIso: args.now_iso } : {}),
+  };
+  const out: Record<string, unknown> = { state };
+  if (typeof args.query === "string") out.estimate = queryUtility(state, args.query, qOpts);
+  if (Array.isArray(args.rank)) out.ranked = rankAtoms(state, args.rank, qOpts);
+  return JSON.stringify(out, null, 2);
 }

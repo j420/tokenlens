@@ -28,6 +28,7 @@ import {
   type ModelFamily,
   type ProposedAction,
   type SessionSnapshot,
+  type TransportTier,
 } from "@prune/cache-habits";
 
 /**
@@ -82,6 +83,11 @@ export interface ProposedActionInput {
   /** MCP server ids attached for the next turn. Default [] (none declared). */
   mcpServers?: readonly string[];
   /**
+   * Transport tier the next turn will use, if the host can report it (e.g. it
+   * detected a reconnect/fallback). Absent ⇒ no transport change signalled.
+   */
+  transport?: TransportTier;
+  /**
    * Wall-clock time the action will fire (ISO 8601). Used by CH-004 for the
    * idle-gap computation. Default: the snapshot's lastTurnAt (⇒ zero idle gap,
    * so CH-004 never fires spuriously when the host omits a clock).
@@ -110,6 +116,16 @@ export interface SnapshotContextInput {
   temperature?: number;
   /** MCP server ids attached to the active session. Default []. */
   mcpServers?: readonly string[];
+  /**
+   * Transport tier the active session is on. Absent ⇒ "unknown" ⇒ the
+   * transport rules (CH-013/CH-014) stay dormant.
+   */
+  transport?: TransportTier;
+  /**
+   * Tokens of conversation history a stateless transport re-transmits each
+   * turn (host-computed via the tokenizer). null/absent ⇒ unknown.
+   */
+  historyTokens?: number | null;
 }
 
 export interface CacheHabitsInputs {
@@ -253,6 +269,10 @@ export function buildCacheHabitsInputs(
       ? { reasoningEffort: context.reasoningEffort }
       : {}),
     ...(context.temperature !== undefined ? { temperature: context.temperature } : {}),
+    // Transport tier + re-communicated history: include only when the host
+    // declares them. Absent ⇒ undefined ⇒ CH-013/CH-014 stay dormant.
+    ...(context.transport !== undefined ? { transport: context.transport } : {}),
+    historyTokens: context.historyTokens === undefined ? null : context.historyTokens,
   };
 
   const proposedMcp = cleanList(proposed.mcpServers);
@@ -311,6 +331,17 @@ export function buildCacheHabitsInputs(
   const mcpServersAdded = difference(proposedMcp, snapshotMcp);
   const mcpServersRemoved = difference(snapshotMcp, proposedMcp);
 
+  // Transport change: declared next tier differs from a known prior tier
+  // (e.g. a silent stateful→stateless fallback). null when unchanged/unknown.
+  let changeTransport: TransportTier | null = null;
+  if (
+    proposed.transport !== undefined &&
+    context.transport !== undefined &&
+    proposed.transport !== context.transport
+  ) {
+    changeTransport = proposed.transport;
+  }
+
   const pastedBlocks: ProposedAction["prompt"]["pastedBlocks"] = Array.isArray(
     proposed.pastedBlocks
   )
@@ -332,6 +363,7 @@ export function buildCacheHabitsInputs(
       temperature: changeTemperature,
       mcpServersAdded,
       mcpServersRemoved,
+      transport: changeTransport,
     },
     // now: host-declared firing time, or the last turn's time (⇒ zero idle gap,
     // so CH-004 never fires from a fabricated clock). Never invent "new Date()"
