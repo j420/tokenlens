@@ -93,6 +93,18 @@ describe("evaluateWaterbed", () => {
     expect(evaluateWaterbed(42 as unknown).approved).toBe(false);
   });
 
+  it("rounds every USD value in the reason string consistently (no raw long decimals)", () => {
+    // A margin with float dust must not leak into the human-readable reason.
+    const r = evaluateWaterbed({ grossSavingUsd: 0.01, induced: [] }, { marginUsd: 0.0000001234 });
+    expect(r.reason).not.toContain("0.0000001234");
+    // every "$<number>" token in the reason is rounded to <= 6 decimals
+    const nums = r.reason.match(/\$(-?\d+\.?\d*)/g) ?? [];
+    for (const n of nums) {
+      const dec = (n.split(".")[1] ?? "").length;
+      expect(dec).toBeLessThanOrEqual(6);
+    }
+  });
+
   it("is deterministic", () => {
     const t: TransformEffect = {
       grossSavingUsd: 0.2,

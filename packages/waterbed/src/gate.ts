@@ -153,18 +153,23 @@ export function evaluateWaterbed(
   }
 
   const net = round(gross - inducedCostUsd);
+  // Pre-round every USD value the report and its reason string expose, ONCE,
+  // so the structured fields and the human-readable text never disagree on
+  // precision. The decision itself compares the raw (unrounded) margin.
+  const grossRounded = round(gross);
+  const marginRounded = round(margin);
   const approve = net > margin;
   return {
     verdict: approve ? "approve" : "veto",
     approved: approve,
-    grossSavingUsd: round(gross),
+    grossSavingUsd: grossRounded,
     inducedCostUsd,
     netSavingUsd: net,
     breakdown,
     reason: approve
-      ? `Net saving $${net} exceeds the $${margin} margin after netting $${inducedCostUsd} of induced cost.`
-      : `Net saving $${net} does not clear the $${margin} margin (induced cost $${inducedCostUsd} ` +
-        `eats the gross $${round(gross)}) — the saving reappears elsewhere; vetoed.`,
+      ? `Net saving $${net} exceeds the $${marginRounded} margin after netting $${inducedCostUsd} of induced cost.`
+      : `Net saving $${net} does not clear the $${marginRounded} margin (induced cost $${inducedCostUsd} ` +
+        `eats the gross $${grossRounded}) — the saving reappears elsewhere; vetoed.`,
   };
 }
 
