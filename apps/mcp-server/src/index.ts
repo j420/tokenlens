@@ -58,6 +58,7 @@ import {
   handleOpenTabAudit,
   handleRewardIntegrityCheck,
   handleObservationMaskPlan,
+  handleReadGateCheck,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1548,6 +1549,32 @@ const TOOLS = [
       required: ["observations", "current_turn", "window_turns"],
     },
   },
+  {
+    name: "read_gate_check",
+    description:
+      "F16 Dedup-VoI Read Gate. Given a proposed file read (path, content " +
+      "hash, turn, tokens, epoch) and the prior resident set, returns the " +
+      "verdict and updated resident set. A `deny` fires only when the identical " +
+      "content is provably still in context (same content hash AND same " +
+      "compaction epoch), so it is information-lossless by construction; every " +
+      "uncertain case (changed content, advanced epoch, first read) allows. " +
+      "Deterministic hash state machine; reclaim from caller-measured tokens.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        path: { type: "string" as const, description: "File path being read." },
+        content_hash: { type: "string" as const, description: "SHA of current content." },
+        turn: { type: "number" as const, description: "Current turn number." },
+        tokens: { type: "number" as const, description: "Measured token cost of the read." },
+        epoch: { type: "number" as const, description: "Current compaction epoch." },
+        resident_set: {
+          type: "object" as const,
+          description: "Prior resident set { epoch, entries } (omit for fresh).",
+        },
+      },
+      required: ["path", "content_hash", "turn", "tokens", "epoch"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -2911,6 +2938,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "observation_mask_plan":
         result = handleObservationMaskPlan(
           args as unknown as Parameters<typeof handleObservationMaskPlan>[0]
+        );
+        break;
+      case "read_gate_check":
+        result = handleReadGateCheck(
+          args as unknown as Parameters<typeof handleReadGateCheck>[0]
         );
         break;
       case "tool_audit":

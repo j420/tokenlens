@@ -990,3 +990,45 @@ describe("observation_mask_plan MCP handler (F15)", () => {
     expect(r.error).toBeDefined();
   });
 });
+
+describe("read_gate_check MCP handler (F16)", () => {
+  it("allows a first read and records residency", async () => {
+    const { handleReadGateCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleReadGateCheck({
+        path: "src/a.ts",
+        content_hash: "h1",
+        turn: 1,
+        tokens: 2400,
+        epoch: 0,
+      })
+    );
+    expect(r.verdict.decision).toBe("allow");
+    expect(r.resident_set.entries["src/a.ts"]).toBeDefined();
+  });
+
+  it("denies an exact re-read against a prior resident set", async () => {
+    const { handleReadGateCheck } = await import("./tcrp-tools.js");
+    const first = JSON.parse(
+      handleReadGateCheck({ path: "src/a.ts", content_hash: "h1", turn: 1, tokens: 2400, epoch: 0 })
+    );
+    const second = JSON.parse(
+      handleReadGateCheck({
+        path: "src/a.ts",
+        content_hash: "h1",
+        turn: 5,
+        tokens: 2400,
+        epoch: 0,
+        resident_set: first.resident_set,
+      })
+    );
+    expect(second.verdict.decision).toBe("deny");
+    expect(second.verdict.reclaimedTokens).toBe(2400);
+  });
+
+  it("errors cleanly on missing fields", async () => {
+    const { handleReadGateCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleReadGateCheck({ path: "x" } as never));
+    expect(r.error).toBeDefined();
+  });
+});

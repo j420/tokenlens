@@ -1,0 +1,23 @@
+{
+  "name": "@prune/read-gate",
+  "version": "0.1.0",
+  "description": "F16 — Dedup-VoI Read Gate. Deterministically denies a file re-read only when the exact content is provably still in context, keyed by content-SHA x compaction-epoch. Zero information loss by construction: a deny means the identical bytes are already present (same epoch, unchanged hash), so nothing is dropped. Pure state machine over hashes; no regex, no model call, no fabricated tokens.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

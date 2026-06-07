@@ -84,6 +84,12 @@ import {
   type Observation,
 } from "@prune/observation-mask";
 import {
+  stepReadGate,
+  emptyResidentSet,
+  type ReadRequest,
+  type ResidentSet,
+} from "@prune/read-gate";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1234,4 +1240,52 @@ export function handleObservationMaskPlan(args: ObservationMaskArgs): string {
     previouslyMaskedIds: args.previously_masked_ids ?? [],
   };
   return JSON.stringify(planMask(args.observations, config), null, 2);
+}
+
+export interface ReadGateArgs {
+  /** The file read being proposed. */
+  path: string;
+  /** SHA of the file's current content. */
+  content_hash: string;
+  turn: number;
+  tokens: number;
+  epoch: number;
+  /** Prior resident set to evaluate against (omit for a fresh set). */
+  resident_set?: ResidentSet;
+}
+
+/**
+ * F16 — Read-gate check. Given a proposed read and the prior resident set,
+ * returns the verdict (allow | deny) and the updated resident set. A `deny`
+ * means the identical content is provably still in context (same hash + epoch),
+ * so it is information-lossless. Deterministic; reclaim from caller-measured
+ * tokens.
+ */
+export function handleReadGateCheck(args: ReadGateArgs): string {
+  if (
+    !args ||
+    typeof args.path !== "string" ||
+    typeof args.content_hash !== "string" ||
+    typeof args.turn !== "number" ||
+    typeof args.tokens !== "number" ||
+    typeof args.epoch !== "number"
+  ) {
+    return JSON.stringify({
+      error:
+        "read_gate_check requires `path`, `content_hash`, `turn`, `tokens`, `epoch`.",
+    });
+  }
+  const set: ResidentSet =
+    args.resident_set && typeof args.resident_set === "object"
+      ? args.resident_set
+      : emptyResidentSet(args.epoch);
+  const req: ReadRequest = {
+    path: args.path,
+    contentHash: args.content_hash,
+    turn: args.turn,
+    tokens: args.tokens,
+    epoch: args.epoch,
+  };
+  const { verdict, set: nextSet } = stepReadGate(set, req);
+  return JSON.stringify({ verdict, resident_set: nextSet }, null, 2);
 }
