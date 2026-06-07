@@ -918,3 +918,50 @@ describe("mcp_proxy_trim MCP handler (F10)", () => {
     expect(kept).toContain("ambiguous_tool_xyz");
   });
 });
+
+describe("reward_integrity_check MCP handler (F14)", () => {
+  it("flags a tautology-introducing test edit as a violation", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleRewardIntegrityCheck({
+        path: "src/auth.test.ts",
+        before: "expect(login()).toBe(true);",
+        after: "expect(true).toBe(true);",
+      })
+    );
+    expect(r.severity).toBe("violation");
+    expect(r.isTestFile).toBe(true);
+  });
+
+  it("flags a write to a designated grader", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleRewardIntegrityCheck({
+        path: "eval/grader.ts",
+        before: "a",
+        after: "b",
+        grader_paths: ["eval/grader.ts"],
+      })
+    );
+    expect(r.severity).toBe("violation");
+    expect(r.isGrader).toBe(true);
+  });
+
+  it("returns ok for an ordinary source write", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleRewardIntegrityCheck({
+        path: "src/auth.ts",
+        before: "const x = 1;",
+        after: "const x = 2;",
+      })
+    );
+    expect(r.severity).toBe("ok");
+  });
+
+  it("errors cleanly without a path", async () => {
+    const { handleRewardIntegrityCheck } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleRewardIntegrityCheck({} as never));
+    expect(r.error).toBeDefined();
+  });
+});

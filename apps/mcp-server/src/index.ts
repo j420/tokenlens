@@ -56,6 +56,7 @@ import {
   handleMaxTokensCalibrate,
   handleDiffVsRewrite,
   handleOpenTabAudit,
+  handleRewardIntegrityCheck,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1456,6 +1457,46 @@ const TOOLS = [
       required: ["tabs", "activeFile"],
     },
   },
+  {
+    name: "reward_integrity_check",
+    description:
+      "F14 Reward-Integrity Interlock. Given a proposed file write " +
+      "(path + before/after content), returns a structural verdict on whether " +
+      "the edit weakens the success signal the agent is judged against — " +
+      "removing/tautologizing assertions, disabling or focusing tests, or " +
+      "writing a designated grader/oracle. AST + content-hash only (no regex, " +
+      "no model). Fail-safe: an unparseable or ambiguous edit returns " +
+      "`inconclusive`, never a false `violation`. Verdict is advisory here; the " +
+      "PreToolUse hook decides whether to block.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        path: {
+          type: "string" as const,
+          description: "Path the write targets.",
+        },
+        before: {
+          type: ["string", "null"] as const,
+          description: "On-disk content before the write (null on creation).",
+        },
+        after: {
+          type: ["string", "null"] as const,
+          description: "Proposed content after the write (null on deletion).",
+        },
+        grader_paths: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Grader/oracle path suffixes the agent must not write.",
+        },
+        extra_test_suffixes: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Extra repo-specific test-file suffixes.",
+        },
+      },
+      required: ["path"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -2809,6 +2850,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "open_tab_audit":
         result = handleOpenTabAudit(
           args as unknown as Parameters<typeof handleOpenTabAudit>[0]
+        );
+        break;
+      case "reward_integrity_check":
+        result = handleRewardIntegrityCheck(
+          args as unknown as Parameters<typeof handleRewardIntegrityCheck>[0]
         );
         break;
       case "tool_audit":

@@ -54,6 +54,7 @@ export const HOOK_REGISTRY = [
   { file: "subagent-warden.mjs", event: "PreToolUse", matcher: "Task" },
   { file: "fanout-acceleration.mjs", event: "PreToolUse", matcher: "Task" },
   { file: "edit-amplification.mjs", event: "PreToolUse", matcher: "Write" },
+  { file: "reward-integrity.mjs", event: "PreToolUse", matcher: "Write|Edit|MultiEdit" },
   { file: "trajectory-diet.mjs", event: "PreToolUse" },
   { file: "speculative-prune.mjs", event: "PreToolUse" },
   // PostToolUse — post-action recorders / shields.

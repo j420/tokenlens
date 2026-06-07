@@ -74,6 +74,11 @@ import { pruneResult, calibrateMaxTokens } from "@prune/response-tuner";
 import { diffEnforce } from "@prune/diff-enforcer";
 import { auditOpenTabs } from "@prune/tab-auditor";
 import {
+  evaluateRewardIntegrity,
+  type ProposedWrite,
+  type RewardIntegrityConfig,
+} from "@prune/reward-integrity";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1149,4 +1154,42 @@ export function handleOpenTabAudit(args: OpenTabAuditArgs): string {
     null,
     2
   );
+}
+
+export interface RewardIntegrityArgs {
+  /** The file path the write targets. */
+  path: string;
+  /** On-disk content before the write (null on file creation). */
+  before?: string | null;
+  /** Proposed content after the write (null on deletion). */
+  after?: string | null;
+  /** Designated grader/oracle path suffixes the agent must not write. */
+  grader_paths?: string[];
+  /** Extra repo-specific test-file suffixes. */
+  extra_test_suffixes?: string[];
+}
+
+/**
+ * F14 — Reward-Integrity check. Given a proposed write, returns the structural
+ * verdict (ok | suspicious | violation | inconclusive) for whether the edit
+ * weakens the tests/grader the agent is judged against. AST + content-hash;
+ * deterministic; never blocks here (the hook decides) — this surfaces the
+ * verdict for AI self-regulation.
+ */
+export function handleRewardIntegrityCheck(args: RewardIntegrityArgs): string {
+  if (!args || typeof args.path !== "string") {
+    return JSON.stringify({
+      error: "reward_integrity_check requires a `path` string.",
+    });
+  }
+  const write: ProposedWrite = {
+    path: args.path,
+    before: args.before ?? null,
+    after: args.after ?? null,
+  };
+  const config: RewardIntegrityConfig = {
+    graderPaths: args.grader_paths ?? [],
+    extraTestSuffixes: args.extra_test_suffixes ?? [],
+  };
+  return JSON.stringify(evaluateRewardIntegrity(write, config), null, 2);
 }

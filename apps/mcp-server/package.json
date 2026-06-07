@@ -35,6 +35,7 @@
     "@prune/cache-habits": "0.1.0",
     "@prune/response-tuner": "0.1.0",
     "@prune/diff-enforcer": "0.1.0",
+    "@prune/reward-integrity": "0.1.0",
     "@prune/tab-auditor": "0.1.0",
     "@prune/context-health": "0.1.0",
     "@prune/trajectory-diet": "0.1.0",
