@@ -63,6 +63,10 @@ import {
   handlePriceQuote,
   handlePrefixWarmPlan,
   handleWastebenchAttest,
+  handleTaskLedger,
+  handleWaterbed,
+  handlePriceTag,
+  handleContextUtility,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1761,6 +1765,123 @@ const TOOLS = [
       required: ["records"],
     },
   },
+  {
+    name: "task_ledger_rollup",
+    description:
+      "F11 cost-per-completed-task ledger. Re-aggregates caller-supplied per-request " +
+      "spend events by TASK and divides total spend by the accepted-outcome count, " +
+      "exposing the retry/dead-end spend per-request views hide (cost-per-accepted, " +
+      "waste ratio). Honest pricing via @prune/shared: an event on an unpriced model " +
+      "contributes tokens but no dollars, and the task's cost-per-accepted is null " +
+      "(never fabricated). Deterministic; PII-safe (ids + counts + an outcome enum).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        events: {
+          type: "array" as const,
+          description:
+            "Spend events: { taskId, model, inputTokens, outputTokens, cacheReadTokens?, " +
+            "cacheWriteTokens?, outcome ∈ accepted|rejected|retry|abandoned|pending }.",
+          items: { type: "object" as const },
+        },
+        waste_outcomes: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Override waste outcomes (default rejected+retry+abandoned).",
+        },
+      },
+      required: ["events"],
+    },
+  },
+  {
+    name: "waterbed_check",
+    description:
+      "F12 waterbed net-effect gate. Nets a transform's gross saving against its " +
+      "overhead and every caller-supplied induced downstream cost (e.g. the retry " +
+      "rate measured by task_ledger_rollup), and returns approve | veto | " +
+      "insufficient_data. A 'saving' that merely reappears elsewhere is vetoed. " +
+      "Fail-toward-veto: any null gross or null induced price ⇒ insufficient_data " +
+      "(never approve). Generalizes the diff-enforcer's single-transform check.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        transform: {
+          type: "object" as const,
+          description:
+            "{ grossSavingUsd: number|null, overheadUsd?, induced?: [{ kind, " +
+            "expectedOccurrences, perOccurrenceUsd: number|null }] }.",
+        },
+        margin_usd: {
+          type: "number" as const,
+          description: "Minimum net USD saving to approve (default 0; strictly greater).",
+        },
+      },
+      required: ["transform"],
+    },
+  },
+  {
+    name: "price_tag",
+    description:
+      "F14 decision-time dual price tag + default-flip. Prices the chosen path " +
+      "against a cheap-sufficient alternative and recommends the cheaper one ONLY " +
+      "when it is caller-proven equivalence-non-inferior AND strictly cheaper AND " +
+      "fully priced — so the flipped default is never worse. Unpriced model ⇒ null " +
+      "cost, no flip, no saving claimed. Complements the clearing-price controller.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        chosen: {
+          type: "object" as const,
+          description: "{ label, model, inputTokens, outputTokens, cacheReadTokens?, cacheWriteTokens? }.",
+        },
+        cheap: {
+          type: "object" as const,
+          description: "The cheap-sufficient alternative path (same shape).",
+        },
+        equivalence_proven: {
+          type: "boolean" as const,
+          description: "Cheap path proven non-inferior (gates the flip). Default false.",
+        },
+        min_saving_usd: { type: "number" as const, description: "Suppress flips below this saving." },
+      },
+      required: ["chosen", "cheap"],
+    },
+  },
+  {
+    name: "context_utility_query",
+    description:
+      "F1 Context-Utility Model. A standing per-atom utility store learned from the " +
+      "caller-supplied accept/reject (cite-back) verdict. Optionally folds new " +
+      "observations into the prior state, then queries one atom's posterior utility " +
+      "and/or ranks a set of atoms. Pure decayed Beta-Binomial empirical-Bayes — no " +
+      "model call, no regex; cold-start/unknown atoms return null utility so a " +
+      "querying selector falls back to its base behavior (floor-safe). Returns the " +
+      "updated state for persistence.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        state: {
+          type: ["object", "null"] as const,
+          description: "Prior CumState (omit for a fresh model).",
+        },
+        observations: {
+          type: "array" as const,
+          description: "Fold these first: { atomId, contributed: boolean, atIso }.",
+          items: { type: "object" as const },
+        },
+        query: { type: "string" as const, description: "Atom id to query the posterior for." },
+        rank: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Atom ids to rank by utility (cold-start last).",
+        },
+        half_life_ms: { type: "number" as const, description: "Recency decay half-life (ms)." },
+        min_observations: { type: "number" as const, description: "Cold-start floor (default 3)." },
+        now_iso: { type: "string" as const, description: "Query-time forward-decay instant (ISO)." },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ============================================================================
@@ -3149,6 +3270,26 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "wastebench_attest":
         result = handleWastebenchAttest(
           args as unknown as Parameters<typeof handleWastebenchAttest>[0]
+        );
+        break;
+      case "task_ledger_rollup":
+        result = handleTaskLedger(
+          args as unknown as Parameters<typeof handleTaskLedger>[0]
+        );
+        break;
+      case "waterbed_check":
+        result = handleWaterbed(
+          args as unknown as Parameters<typeof handleWaterbed>[0]
+        );
+        break;
+      case "price_tag":
+        result = handlePriceTag(
+          args as unknown as Parameters<typeof handlePriceTag>[0]
+        );
+        break;
+      case "context_utility_query":
+        result = handleContextUtility(
+          args as unknown as Parameters<typeof handleContextUtility>[0]
         );
         break;
       case "tool_audit":

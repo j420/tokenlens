@@ -4,7 +4,7 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~51-workspace monorepo** (48 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~52-workspace monorepo** (49 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
@@ -86,6 +86,8 @@ tokenlens/
 │   ├── export/                 # OpenTelemetry GenAI + FOCUS FinOps exporters
 │   ├── agent-sdk-adapter/      # Provider-neutral Agent SDK control plane
 │   ├── host-adapters/          # Real Claude Code session data → typed tool inputs
+│   # --- Outcome-learning substrate (Phase-2) ---
+│   ├── context-utility/        # F1  — Context-Utility Model (decayed empirical-Bayes per-atom utility)
 │   # --- Deterministic value / economics levers (List1/List2) ---
 │   ├── task-ledger/            # F11 — cost-per-completed-task ledger (the value denominator)
 │   ├── waterbed/               # F12 — general induced-cost net-effect gate (veto phantom savings)
@@ -150,7 +152,7 @@ fail-safe, and never fabricate a token/cost number.
 
 ## MCP Tool Surface
 
-`apps/mcp-server` registers ~37 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
+`apps/mcp-server` registers ~41 tools (names from `src/index.ts` / `src/tcrp-tools.ts`),
 including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
 `routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
@@ -162,7 +164,8 @@ including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `trajectory_replay_report`, `context_health_report`, `open_tab_audit`, and the
 ROUND-16 exponential set: `reward_integrity_check`, `observation_mask_plan`,
 `read_gate_check`, `program_slice`, `price_quote`, `prefix_warm_plan`,
-`wastebench_attest`.
+`wastebench_attest`, and the value/economics levers: `task_ledger_rollup` (F11),
+`waterbed_check` (F12), `price_tag` (F14), `context_utility_query` (F1).
 
 Some tools are **caller-fed**: they require typed inputs (e.g. a proposed-action
 diff) that a Claude Code hook payload doesn't carry; `@prune/host-adapters`

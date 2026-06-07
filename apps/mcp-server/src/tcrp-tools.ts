@@ -115,6 +115,17 @@ import {
   generateKeypair,
   type SavingsRecord,
 } from "@prune/wastebench";
+import { rollupTaskLedger, type SpendEvent, type TaskOutcome } from "@prune/task-ledger";
+import { evaluateWaterbed, type TransformEffect } from "@prune/waterbed";
+import { priceDecision, type DecisionPath } from "@prune/price-tag";
+import {
+  updateUtility,
+  queryUtility,
+  rankAtoms,
+  emptyCumState,
+  type UtilityObservation,
+  type CumState,
+} from "@prune/context-utility";
 import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
@@ -1506,4 +1517,113 @@ export function handleWastebenchAttest(args: WastebenchAttestArgs): string {
       : generateKeypair().privateKeyPem;
   const attestation = signManifest(manifest, privateKeyPem);
   return JSON.stringify({ manifest, attestation }, null, 2);
+}
+
+// ===========================================================================
+// F11 — task-ledger rollup
+// ===========================================================================
+
+export interface TaskLedgerArgs {
+  /** Per-request spend events: {taskId, model, inputTokens, outputTokens, outcome, ...}. */
+  events: SpendEvent[];
+  /** Override which outcomes count as waste (default rejected+retry+abandoned). */
+  waste_outcomes?: TaskOutcome[];
+}
+
+export function handleTaskLedger(args: TaskLedgerArgs): string {
+  if (!args || !Array.isArray(args.events)) {
+    return JSON.stringify({ error: "task_ledger_rollup requires an `events` array." });
+  }
+  const report = rollupTaskLedger(
+    args.events,
+    Array.isArray(args.waste_outcomes) ? { wasteOutcomes: args.waste_outcomes } : {}
+  );
+  return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F12 — waterbed net-effect gate
+// ===========================================================================
+
+export interface WaterbedArgs {
+  /** {grossSavingUsd, overheadUsd?, induced:[{kind,expectedOccurrences,perOccurrenceUsd}]}. */
+  transform: TransformEffect;
+  /** Minimum net USD saving required to approve (default 0). */
+  margin_usd?: number;
+}
+
+export function handleWaterbed(args: WaterbedArgs): string {
+  if (!args || !args.transform || typeof args.transform !== "object") {
+    return JSON.stringify({ error: "waterbed_check requires a `transform` object." });
+  }
+  const report = evaluateWaterbed(
+    args.transform,
+    typeof args.margin_usd === "number" ? { marginUsd: args.margin_usd } : {}
+  );
+  return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F14 — decision-time dual price tag + default-flip
+// ===========================================================================
+
+export interface PriceTagArgs {
+  chosen: DecisionPath;
+  cheap: DecisionPath;
+  /** The cheap path is caller-proven equivalence-non-inferior (gates the flip). */
+  equivalence_proven?: boolean;
+  min_saving_usd?: number;
+}
+
+export function handlePriceTag(args: PriceTagArgs): string {
+  if (!args || !args.chosen || !args.cheap) {
+    return JSON.stringify({ error: "price_tag requires `chosen` and `cheap` path objects." });
+  }
+  const report = priceDecision(args.chosen, args.cheap, {
+    equivalenceProven: args.equivalence_proven === true,
+    ...(typeof args.min_saving_usd === "number" ? { minSavingUsd: args.min_saving_usd } : {}),
+  });
+  return JSON.stringify(report, null, 2);
+}
+
+// ===========================================================================
+// F1 — Context-Utility Model (update + query/rank)
+// ===========================================================================
+
+export interface ContextUtilityArgs {
+  /** Prior standing state (omit for a fresh model). */
+  state?: CumState | null;
+  /** Observations to fold in first: {atomId, contributed, atIso}. */
+  observations?: UtilityObservation[];
+  /** Query one atom's posterior. */
+  query?: string;
+  /** Rank these atoms by utility (cold-start last). */
+  rank?: string[];
+  half_life_ms?: number;
+  min_observations?: number;
+  now_iso?: string;
+}
+
+export function handleContextUtility(args: ContextUtilityArgs): string {
+  if (!args || typeof args !== "object") {
+    return JSON.stringify({ error: "context_utility_query requires an args object." });
+  }
+  let state: CumState =
+    args.state && typeof args.state === "object" ? args.state : emptyCumState();
+  if (Array.isArray(args.observations) && args.observations.length > 0) {
+    state = updateUtility(
+      state,
+      args.observations,
+      typeof args.half_life_ms === "number" ? { halfLifeMs: args.half_life_ms } : {}
+    );
+  }
+  const qOpts = {
+    ...(typeof args.min_observations === "number" ? { minObservations: args.min_observations } : {}),
+    ...(typeof args.half_life_ms === "number" ? { halfLifeMs: args.half_life_ms } : {}),
+    ...(typeof args.now_iso === "string" ? { nowIso: args.now_iso } : {}),
+  };
+  const out: Record<string, unknown> = { state };
+  if (typeof args.query === "string") out.estimate = queryUtility(state, args.query, qOpts);
+  if (Array.isArray(args.rank)) out.ranked = rankAtoms(state, args.rank, qOpts);
+  return JSON.stringify(out, null, 2);
 }

@@ -50,7 +50,11 @@
     "@prune/code-mode-mcp": "0.1.0",
     "@prune/mcp-proxy": "0.1.0",
     "@prune/replay-cost": "0.1.0",
-    "@prune/host-adapters": "0.1.0"
+    "@prune/host-adapters": "0.1.0",
+    "@prune/task-ledger": "0.1.0",
+    "@prune/waterbed": "0.1.0",
+    "@prune/price-tag": "0.1.0",
+    "@prune/context-utility": "0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.3.3",
