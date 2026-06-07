@@ -4,7 +4,7 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~52-workspace monorepo** (49 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~67-workspace monorepo** (64 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
