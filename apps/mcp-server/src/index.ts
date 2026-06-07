@@ -61,6 +61,7 @@ import {
   handleReadGateCheck,
   handleProgramSlice,
   handlePriceQuote,
+  handlePrefixWarmPlan,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1670,6 +1671,46 @@ const TOOLS = [
       required: ["spent", "budget"],
     },
   },
+  {
+    name: "prefix_warm_plan",
+    description:
+      "Cross-session reuse — TTL-aware prompt-cache prefix warming (companion " +
+      "to the f12 skill library). Given a tracked prefix (hash, tokens, " +
+      "lastUsedAt), the current time, the provider cache TTL, and whether reuse " +
+      "is expected, returns the cache assessment (warm | expired | absent + " +
+      "expiry), a keep-alive decision (warm a warm-but-soon-expiring prefix; " +
+      "prime an expired/absent one only when reuse is expected), and the " +
+      "read-discount savings of reusing it. Deterministic TTL arithmetic; all " +
+      "magnitudes caller-supplied (never fabricated).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        entry: {
+          type: ["object", "null"] as const,
+          description: "Tracked prefix { prefixHash, tokens, lastUsedAt } (null if never seen).",
+        },
+        now: { type: "number" as const, description: "Current epoch ms." },
+        ttl_ms: { type: "number" as const, description: "Provider cache TTL in ms." },
+        refresh_threshold_ms: {
+          type: "number" as const,
+          description: "Keep-alive when a warm prefix expires within this window.",
+        },
+        reuse_expected: {
+          type: "boolean" as const,
+          description: "Whether the prefix is expected to be reused.",
+        },
+        cache_read_discount: {
+          type: "number" as const,
+          description: "Optional: fraction of full price a cache read costs ([0,1]).",
+        },
+        expected_hits: {
+          type: "number" as const,
+          description: "Optional: number of warm re-serves for the savings projection.",
+        },
+      },
+      required: ["now", "ttl_ms", "refresh_threshold_ms", "reuse_expected"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -3048,6 +3089,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "price_quote":
         result = handlePriceQuote(
           args as unknown as Parameters<typeof handlePriceQuote>[0]
+        );
+        break;
+      case "prefix_warm_plan":
+        result = handlePrefixWarmPlan(
+          args as unknown as Parameters<typeof handlePrefixWarmPlan>[0]
         );
         break;
       case "tool_audit":

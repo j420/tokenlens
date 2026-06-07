@@ -1,0 +1,23 @@
+{
+  "name": "@prune/prefix-warm",
+  "version": "0.1.0",
+  "description": "F12-adjacent — TTL-aware prompt-cache prefix warming for cross-session reuse. Deterministic cache arithmetic over a stable prefix (system + tool defs + pinned context): given the last-use time and the provider cache TTL, decide whether the prefix is still warm, when it expires, whether a keep-alive is worth sending, and the read-discount savings of a hit vs a cold prefix. Caller supplies tokens, TTL, and discount — never fabricated. No regex, no model call.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

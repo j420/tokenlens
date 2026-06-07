@@ -103,6 +103,12 @@ import {
   type ControllerConfig,
 } from "@prune/clearing-price";
 import {
+  assessCache,
+  shouldWarm,
+  cacheHitSavings,
+  type PrefixEntry,
+} from "@prune/prefix-warm";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1380,6 +1386,64 @@ export function handlePriceQuote(args: PriceQuoteArgs): string {
   const out: Record<string, unknown> = { lambda: next.lambda, state: next };
   if (args.bid && typeof args.bid.token_cost === "number") {
     out.decision = shouldSpend(args.bid.quality_gain, args.bid.token_cost, next.lambda);
+  }
+  return JSON.stringify(out, null, 2);
+}
+
+export interface PrefixWarmArgs {
+  /** The tracked prefix; omit `entry` for an absent (never-seen) prefix. */
+  entry?: PrefixEntry | null;
+  /** Current epoch ms. */
+  now: number;
+  /** Provider cache TTL in ms. */
+  ttl_ms: number;
+  /** Send a keep-alive when a warm prefix expires within this window (ms). */
+  refresh_threshold_ms: number;
+  /** Whether the prefix is expected to be reused (gates speculative priming). */
+  reuse_expected: boolean;
+  /** Optional savings projection: cache-read discount in [0,1] and hit count. */
+  cache_read_discount?: number;
+  expected_hits?: number;
+}
+
+/**
+ * Cross-session prefix warming. Returns the cache assessment (warm | expired |
+ * absent + expiry), the keep-alive decision, and — when discount/hits are
+ * given — the read-discount savings of reusing the warm prefix. Deterministic
+ * TTL arithmetic; all magnitudes caller-supplied.
+ */
+export function handlePrefixWarmPlan(args: PrefixWarmArgs): string {
+  if (
+    !args ||
+    typeof args.now !== "number" ||
+    typeof args.ttl_ms !== "number" ||
+    typeof args.refresh_threshold_ms !== "number"
+  ) {
+    return JSON.stringify({
+      error: "prefix_warm_plan requires numeric `now`, `ttl_ms`, `refresh_threshold_ms`.",
+    });
+  }
+  const entry = args.entry && typeof args.entry === "object" ? args.entry : null;
+  const decision = shouldWarm(
+    entry,
+    args.now,
+    { ttlMs: args.ttl_ms, refreshThresholdMs: args.refresh_threshold_ms },
+    args.reuse_expected === true
+  );
+  const out: Record<string, unknown> = {
+    assessment: assessCache(entry, args.now, args.ttl_ms),
+    decision,
+  };
+  if (
+    entry &&
+    typeof args.cache_read_discount === "number" &&
+    typeof args.expected_hits === "number"
+  ) {
+    out.projectedSavings = cacheHitSavings(
+      entry.tokens,
+      args.cache_read_discount,
+      args.expected_hits
+    );
   }
   return JSON.stringify(out, null, 2);
 }

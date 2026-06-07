@@ -1091,3 +1091,45 @@ describe("price_quote MCP handler (F18)", () => {
     expect(r.error).toBeDefined();
   });
 });
+
+describe("prefix_warm_plan MCP handler (cross-session reuse)", () => {
+  const entry = { prefixHash: "h", tokens: 5000, lastUsedAt: 0 };
+
+  it("assesses a warm prefix and projects savings", async () => {
+    const { handlePrefixWarmPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePrefixWarmPlan({
+        entry,
+        now: 100_000,
+        ttl_ms: 300_000,
+        refresh_threshold_ms: 60_000,
+        reuse_expected: true,
+        cache_read_discount: 0.1,
+        expected_hits: 2,
+      })
+    );
+    expect(r.assessment.status).toBe("warm");
+    expect(r.projectedSavings).toBeCloseTo(5000 * 0.9 * 2);
+  });
+
+  it("recommends priming an absent prefix when reuse is expected", async () => {
+    const { handlePrefixWarmPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePrefixWarmPlan({
+        entry: null,
+        now: 1000,
+        ttl_ms: 300_000,
+        refresh_threshold_ms: 60_000,
+        reuse_expected: true,
+      })
+    );
+    expect(r.assessment.status).toBe("absent");
+    expect(r.decision.warm).toBe(true);
+  });
+
+  it("errors cleanly without required numeric fields", async () => {
+    const { handlePrefixWarmPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handlePrefixWarmPlan({ reuse_expected: true } as never));
+    expect(r.error).toBeDefined();
+  });
+});
