@@ -1,0 +1,23 @@
+{
+  "name": "@prune/observation-mask",
+  "version": "0.1.0",
+  "description": "F15 — Observation Masking + Belady eviction. Deterministically replaces tool observations older than a sliding window with short, reversible placeholders, capping the O(n^2) growth of an agent transcript at O(n*window). When a hard token budget forces extra drops, orders evictions by Belady's MIN (true optimal when future reuse is known; LRU — Sleator-Tarjan k-competitive — otherwise). Masking is monotone (already-masked stays masked) so the prompt-cache prefix stays stable. Pure math + content hashes; no regex, no model call, no fabricated tokens.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

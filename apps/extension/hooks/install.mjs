@@ -49,6 +49,7 @@ export const HOOK_REGISTRY = [
   { file: "skill-advisor.mjs", event: "UserPromptSubmit" },
   { file: "cache-habits-advisor.mjs", event: "UserPromptSubmit" },
   { file: "context-health-advisor.mjs", event: "UserPromptSubmit" },
+  { file: "observation-mask.mjs", event: "UserPromptSubmit" },
   { file: "preturn-forecast.mjs", event: "UserPromptSubmit" },
   // PreToolUse — pre-action guards.
   { file: "subagent-warden.mjs", event: "PreToolUse", matcher: "Task" },

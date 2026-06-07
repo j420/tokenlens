@@ -79,6 +79,11 @@ import {
   type RewardIntegrityConfig,
 } from "@prune/reward-integrity";
 import {
+  planMask,
+  type MaskConfig,
+  type Observation,
+} from "@prune/observation-mask";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1192,4 +1197,41 @@ export function handleRewardIntegrityCheck(args: RewardIntegrityArgs): string {
     extraTestSuffixes: args.extra_test_suffixes ?? [],
   };
   return JSON.stringify(evaluateRewardIntegrity(write, config), null, 2);
+}
+
+export interface ObservationMaskArgs {
+  /** The observation buffer: { id, turn, tokens, contentHash, pinned?, nextUseTurn? }. */
+  observations: Observation[];
+  current_turn: number;
+  window_turns: number;
+  placeholder_tokens?: number;
+  token_budget?: number | null;
+  previously_masked_ids?: string[];
+}
+
+/**
+ * F15 — Observation-mask plan. Given the observation buffer and a window,
+ * returns which observations to replace with placeholders (and the reclaimed
+ * tokens), capping retained context at O(window). Deterministic; reclaim is
+ * computed from caller-measured token counts (never fabricated).
+ */
+export function handleObservationMaskPlan(args: ObservationMaskArgs): string {
+  if (!args || !Array.isArray(args.observations)) {
+    return JSON.stringify({
+      error: "observation_mask_plan requires an `observations` array.",
+    });
+  }
+  if (typeof args.current_turn !== "number" || typeof args.window_turns !== "number") {
+    return JSON.stringify({
+      error: "observation_mask_plan requires numeric `current_turn` and `window_turns`.",
+    });
+  }
+  const config: MaskConfig = {
+    currentTurn: args.current_turn,
+    windowTurns: args.window_turns,
+    placeholderTokens: args.placeholder_tokens,
+    tokenBudget: args.token_budget ?? null,
+    previouslyMaskedIds: args.previously_masked_ids ?? [],
+  };
+  return JSON.stringify(planMask(args.observations, config), null, 2);
 }

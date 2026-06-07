@@ -965,3 +965,28 @@ describe("reward_integrity_check MCP handler (F14)", () => {
     expect(r.error).toBeDefined();
   });
 });
+
+describe("observation_mask_plan MCP handler (F15)", () => {
+  it("masks stale observations and reports reclaimed tokens", async () => {
+    const { handleObservationMaskPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handleObservationMaskPlan({
+        observations: [
+          { id: "a", turn: 0, tokens: 1000, contentHash: "h-a" },
+          { id: "b", turn: 10, tokens: 1000, contentHash: "h-b" },
+        ],
+        current_turn: 10,
+        window_turns: 2,
+        placeholder_tokens: 16,
+      })
+    );
+    expect(r.masked.map((m: { id: string }) => m.id)).toEqual(["a"]);
+    expect(r.reclaimedTokens).toBe(1000 - 16);
+  });
+
+  it("errors cleanly without observations", async () => {
+    const { handleObservationMaskPlan } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handleObservationMaskPlan({} as never));
+    expect(r.error).toBeDefined();
+  });
+});

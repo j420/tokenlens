@@ -57,6 +57,7 @@ import {
   handleDiffVsRewrite,
   handleOpenTabAudit,
   handleRewardIntegrityCheck,
+  handleObservationMaskPlan,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1497,6 +1498,56 @@ const TOOLS = [
       required: ["path"],
     },
   },
+  {
+    name: "observation_mask_plan",
+    description:
+      "F15 Observation Masking + Belady eviction. Given a transcript's " +
+      "observation buffer (tool results with measured token counts and turn " +
+      "numbers) and a sliding window, returns which observations to replace " +
+      "with short reversible placeholders — capping retained context at " +
+      "O(window) instead of O(n^2). When a token_budget forces extra drops, " +
+      "orders evictions by Belady's MIN (true optimal with foresight; LRU " +
+      "otherwise). Masking is monotone (cache-stable). Deterministic; reclaim " +
+      "is computed from caller-measured tokens, never fabricated.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        observations: {
+          type: "array" as const,
+          description:
+            "Observation buffer: { id, turn, tokens, contentHash, pinned?, nextUseTurn? }.",
+          items: {
+            type: "object" as const,
+            properties: {
+              id: { type: "string" as const },
+              turn: { type: "number" as const },
+              tokens: { type: "number" as const },
+              contentHash: { type: "string" as const },
+              pinned: { type: "boolean" as const },
+              nextUseTurn: { type: ["number", "null"] as const },
+            },
+            required: ["id", "turn", "tokens", "contentHash"],
+          },
+        },
+        current_turn: { type: "number" as const, description: "Latest turn number." },
+        window_turns: { type: "number" as const, description: "Turns to keep unmasked." },
+        placeholder_tokens: {
+          type: "number" as const,
+          description: "Token cost of the placeholder (default 16).",
+        },
+        token_budget: {
+          type: ["number", "null"] as const,
+          description: "Optional hard cap on retained observation tokens.",
+        },
+        previously_masked_ids: {
+          type: "array" as const,
+          items: { type: "string" as const },
+          description: "Ids masked in a prior turn (kept masked, cache-stable).",
+        },
+      },
+      required: ["observations", "current_turn", "window_turns"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -2855,6 +2906,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "reward_integrity_check":
         result = handleRewardIntegrityCheck(
           args as unknown as Parameters<typeof handleRewardIntegrityCheck>[0]
+        );
+        break;
+      case "observation_mask_plan":
+        result = handleObservationMaskPlan(
+          args as unknown as Parameters<typeof handleObservationMaskPlan>[0]
         );
         break;
       case "tool_audit":
