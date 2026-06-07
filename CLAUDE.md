@@ -14,6 +14,7 @@ TokenLens (internally: Prune) started as an extension for AI coding assistants (
 - **MCP tool surface (~30 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
 - **Hooks system:** `apps/extension/hooks/*.mjs` — Claude Code lifecycle hooks (advisors, recorders, breakers, forwarders) with a flag system and an auto-installer.
 - **Persistence + telemetry:** local SQLite + a real Postgres sink (`@prune/persistence`), with open-standard exporters (OpenTelemetry GenAI + FOCUS FinOps).
+  - **Known limitation (tracked follow-up #1):** the event schema's `estimated_cost_usd` column is `number` (non-nullable), and two hooks coerce an unknown cost with `?? 0` (`cache-habits-advisor.mjs`, `cost-guard.mjs`). So an UNPRICED-model event is persisted as `$0`, indistinguishable from a genuinely-free one — a dashboard `SUM(estimated_cost)` under-counts true spend. The package-level discipline is honest (unknown model ⇒ `null`); the masking is only at the telemetry boundary. Fix = make `estimatedCostUsd` `number | null` end-to-end (`feature-event.ts` + `EventRow` + SQLite/Postgres bindings + the two hook masks + persistence tests) so the dashboards never show a fabricated `$0`. Deferred as its own focused change (touches ~141 persistence tests).
 - **Strict, honest pricing:** unknown model → `null`, never a fabricated default rate (`@prune/shared`).
 
 ---
