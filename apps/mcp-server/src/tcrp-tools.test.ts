@@ -1059,3 +1059,35 @@ describe("program_slice MCP handler (F17)", () => {
     expect(r.error).toBeDefined();
   });
 });
+
+describe("price_quote MCP handler (F18)", () => {
+  it("returns a lambda and advances state from a budget reading", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handlePriceQuote({ spent: 2000, budget: 1000 }));
+    expect(typeof r.lambda).toBe("number");
+    expect(r.state).toBeDefined();
+    expect(r.lambda).toBeGreaterThan(0.5); // over budget pushes price up
+  });
+
+  it("evaluates a bid against the fresh price", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePriceQuote({ spent: 100, budget: 1000, bid: { quality_gain: 100, token_cost: 1 } })
+    );
+    expect(["spend", "skip"]).toContain(r.decision.action);
+  });
+
+  it("abstains on a bid with unknown quality", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(
+      handlePriceQuote({ spent: 100, budget: 1000, bid: { quality_gain: null, token_cost: 5 } })
+    );
+    expect(r.decision.action).toBe("abstain");
+  });
+
+  it("errors cleanly without numeric budget fields", async () => {
+    const { handlePriceQuote } = await import("./tcrp-tools.js");
+    const r = JSON.parse(handlePriceQuote({} as never));
+    expect(r.error).toBeDefined();
+  });
+});

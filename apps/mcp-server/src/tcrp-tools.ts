@@ -95,6 +95,14 @@ import {
   type SliceDirection,
 } from "@prune/program-slice";
 import {
+  updatePrice,
+  initialState as initialPriceState,
+  shouldSpend,
+  DEFAULT_CONFIG as DEFAULT_PRICE_CONFIG,
+  type ControllerState,
+  type ControllerConfig,
+} from "@prune/clearing-price";
+import {
   buildCacheHabitsInputs,
   type ProposedActionInput,
   type SnapshotContextInput,
@@ -1335,4 +1343,43 @@ export function handleProgramSlice(args: ProgramSliceArgs): string {
     null,
     2
   );
+}
+
+export interface PriceQuoteArgs {
+  /** Current budget reading. */
+  spent: number;
+  budget: number;
+  /** Prior controller state (omit to start from the neutral midpoint). */
+  state?: ControllerState;
+  /** Optional PID/bounds config override. */
+  config?: Partial<ControllerConfig>;
+  /** Optional bid to evaluate against the freshly-updated price. */
+  bid?: { quality_gain: number | null; token_cost: number };
+}
+
+/**
+ * F18 — Clearing-price quote. Advances the PID price loop with a budget reading
+ * and returns the updated controller state and lambda. If a `bid` is supplied,
+ * also returns the act/skip/abstain decision for it. Functional: the caller
+ * persists `state` between calls. Deterministic; abstains (never forces) when a
+ * bid's quality is unknown.
+ */
+export function handlePriceQuote(args: PriceQuoteArgs): string {
+  if (!args || typeof args.spent !== "number" || typeof args.budget !== "number") {
+    return JSON.stringify({
+      error: "price_quote requires numeric `spent` and `budget`.",
+    });
+  }
+  const config: ControllerConfig = { ...DEFAULT_PRICE_CONFIG, ...(args.config ?? {}) };
+  const prior: ControllerState =
+    args.state && typeof args.state === "object"
+      ? args.state
+      : initialPriceState(config);
+  const next = updatePrice(prior, { spent: args.spent, budget: args.budget }, config);
+
+  const out: Record<string, unknown> = { lambda: next.lambda, state: next };
+  if (args.bid && typeof args.bid.token_cost === "number") {
+    out.decision = shouldSpend(args.bid.quality_gain, args.bid.token_cost, next.lambda);
+  }
+  return JSON.stringify(out, null, 2);
 }

@@ -60,6 +60,7 @@ import {
   handleObservationMaskPlan,
   handleReadGateCheck,
   handleProgramSlice,
+  handlePriceQuote,
 } from "./tcrp-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
@@ -1633,6 +1634,42 @@ const TOOLS = [
       required: ["nodes", "edges", "seeds"],
     },
   },
+  {
+    name: "price_quote",
+    description:
+      "F18 Token Clearing-Price Controller. Advances the PID price loop with a " +
+      "budget reading (spent/budget) and returns the updated state and lambda — " +
+      "the marginal value of a token in quality units that every actuator bids " +
+      "against (act iff qualityGain >= lambda*tokenCost). lambda rises over " +
+      "budget, falls under it. Supply an optional `bid` to get the " +
+      "spend/skip/abstain decision; it abstains (never forces) when quality is " +
+      "unknown. Functional — caller persists `state`. Deterministic control math.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        spent: { type: "number" as const, description: "Tokens/cost spent in the window." },
+        budget: { type: "number" as const, description: "Window budget (> 0)." },
+        state: {
+          type: "object" as const,
+          description: "Prior controller state (omit to start at the neutral midpoint).",
+        },
+        config: {
+          type: "object" as const,
+          description: "Optional PID gains / lambda bounds / setpoint override.",
+        },
+        bid: {
+          type: "object" as const,
+          description: "Optional bid to evaluate: { quality_gain, token_cost }.",
+          properties: {
+            quality_gain: { type: ["number", "null"] as const },
+            token_cost: { type: "number" as const },
+          },
+          required: ["token_cost"],
+        },
+      },
+      required: ["spent", "budget"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -3006,6 +3043,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "program_slice":
         result = handleProgramSlice(
           args as unknown as Parameters<typeof handleProgramSlice>[0]
+        );
+        break;
+      case "price_quote":
+        result = handlePriceQuote(
+          args as unknown as Parameters<typeof handlePriceQuote>[0]
         );
         break;
       case "tool_audit":

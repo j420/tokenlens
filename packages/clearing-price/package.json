@@ -1,0 +1,23 @@
+{
+  "name": "@prune/clearing-price",
+  "version": "0.1.0",
+  "description": "F18 — Token Clearing-Price Controller. Maintains one price lambda (the marginal value of a token in quality units) via a PID loop over the cost-SLO error budget, and exposes the single bid rule every actuator consults: act iff qualityGain >= lambda * tokenCost. lambda rises when over budget (stingier) and falls when under (more generous), so pruning, routing, and reasoning-effort are coordinated by one number. A null quote (quality unknown) makes every consumer no-op — the controller never forces a change it cannot price. Pure control math; no regex, no model call, no fabricated tokens.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}
