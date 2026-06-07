@@ -662,6 +662,36 @@ The MCP server (`apps/mcp-server/`) provides tools for AI self-regulation:
 
 ---
 
+## Working Agreements (from usage insights)
+
+> Distilled from how this repo is actually driven (orientation → research → catalog →
+> build, with an adversarial second round and a high bar for verified, concrete output).
+> These are operating rules for anyone — human or agent — working here.
+
+1. **Deliverables are concrete, never abstract.** When asked for prompts, research lists,
+   or meta-prompts, produce the **FULL verbatim text** — do not describe them abstractly or
+   stop at a plan/summary. The artifact *is* the deliverable.
+
+2. **Combined output means everything.** When asked to combine or display feature lists
+   (e.g. List1 + List2, or "the catalog"), show **ALL items from every referenced list** in
+   full, unless explicitly told to filter. Default to the union, not the latest slice.
+
+3. **"Research"/"execute" means actually run it.** When asked to research or execute prompts,
+   **run them** and map each result back to specific files/modules in the codebase — never
+   stop at planning or synthesizing. State which prompts ran and show their outputs.
+
+4. **Verify before commit.** Always run a clean compile + the test suite
+   (`npm run build && npm run test`, or `tsc --noEmit` for a quick check) and fix any
+   failures **before** committing. Catch a feature failing its own guards early, not after
+   the push. (For autonomous-hook work, this includes the adversarial cases — malformed
+   input, tokenization-DoS, fail-safe gaps.)
+
+5. **Honesty bar (already load-bearing, restated):** no fabricated token/cost numbers
+   (unknown model ⇒ `null`), no regex/model in a deterministic decision core, surfaces and
+   feature handles in docs/dashboards must map to real MCP tools / hooks — never overclaim.
+
+---
+
 ## The Golden Rule
 
 > "If the intelligence layer crashes, does token counting still work?"
