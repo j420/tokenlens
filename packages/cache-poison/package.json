@@ -1,0 +1,11 @@
+{
+  "name": "@prune/cache-poison",
+  "version": "0.1.0",
+  "description": "F21 — cache-poisoning economics. f7 semantic-cache defends a single entry's content-SHA; this attributes ECONOMIC harm to a WRITER identity: per writer it tracks the equivalence-rejection rate (poisoned entries that fail the gate) and the near-key-collision rate (entries crafted to force misses / wrong-then-retry), and quarantines a writer above threshold by recommending REVALIDATION (never deletion). Deterministic rate accounting over caller-fed write outcomes; fail-open (advisory); no model call, no regex.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}
