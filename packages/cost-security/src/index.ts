@@ -11,6 +11,10 @@
  *   - detectThrash          — file-state oscillation (A->B->A edit loops).
  *   - attributeDownstreamCost — per-source cost amplification (cost-driving
  *                             injection that steers a read-everything cascade).
+ *   - assessNavigationRatio   — post-localization over-exploration (read-only
+ *                             stalls that re-visit files with zero edits).
+ *   - assessToolErrorRate     — sustained tool-error-rate degeneration (the
+ *                             mechanical failure facet loop-breaker misses).
  *
  * Every function is pure/deterministic, never throws on bad input, fabricates no
  * numbers (real token counts; USD null on unpriced model), and is advisory —
@@ -65,3 +69,18 @@ export {
   type FanoutOptions,
   type FanoutReport,
 } from "./fanout.js";
+
+export {
+  assessNavigationRatio,
+  type NavToolCall,
+  type NavTurn,
+  type NavigationOptions,
+  type NavigationReport,
+} from "./navigation.js";
+
+export {
+  assessToolErrorRate,
+  type ToolResultSignal,
+  type ToolErrorOptions,
+  type ToolErrorReport,
+} from "./tool-error.js";

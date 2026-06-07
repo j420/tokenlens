@@ -174,8 +174,25 @@ advisors (`cache-habits-advisor`, `context-health-advisor`, `skill-advisor`,
 `speculative-record`), breakers (`loop-breaker`, `slo-breaker`,
 `subagent-warden`), safety (`sentinel-prompt`, `sentinel-mcp`), cache
 (`cache-stabilize`, `speculative-prune`), recovery (`compaction-recover`), budget
-(`budget-gate`), and the telemetry forwarder (`telemetry-forward`). Hooks are
-fail-safe: they must never hang, throw uncaught, or block the agent.
+(`budget-gate`), cost-security (`cost-guard`, `thrash-detector`, `injection-cost`,
+`fanout-acceleration`, `edit-amplification`, `preturn-forecast`, plus the List3
+runtime-neutral detectors `navigation-ratio` and `tool-error-rate`), and the
+telemetry forwarder (`telemetry-forward`). Hooks are fail-safe: they must never
+hang, throw uncaught, or block the agent.
+
+**Cost-Security detectors (List2 + List3, `@prune/cost-security` + `@prune/intelligence`).**
+Deterministic, fail-open, env-gated (not TCRP-flagged), surfaced as autonomous hooks
+(no MCP tool). Runtime-neutral — tool classification uses a cross-runtime default
+vocabulary (Claude Code / Cursor / Codex) and is overridable per host:
+
+| Detector | Function (pkg) | Hook (event) | Fires when |
+|----------|----------------|--------------|------------|
+| Navigation-to-edit ratio | `assessNavigationRatio` (cost-security) | `navigation-ratio.mjs` (PostToolUse) | a window of read-only turns re-visits a file with zero edits (post-localization over-exploration) |
+| Tool-error-rate breaker | `assessToolErrorRate` (cost-security) | `tool-error-rate.mjs` (PostToolUse) | host-tagged `is_error` rate ≥ threshold over enough tagged calls; `insufficient_signal` no-op when absent |
+| Identical-action loop | `evaluateIdenticalActionLoop` (intelligence) | `loop-breaker.mjs` (2nd trip) | same tool + canonical input returns an identical result-SHA ≥ N times (provable no-progress) |
+
+Config: `PRUNE_NAV_RATIO_*`, `PRUNE_TOOL_ERROR_*`, `PRUNE_IDENTICAL_ACTION_*`,
+`PRUNE_NAV_TOOLS` / `PRUNE_MUT_TOOLS` (per-runtime vocabulary overrides).
 
 ---
 

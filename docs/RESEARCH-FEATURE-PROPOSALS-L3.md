@@ -22,6 +22,23 @@
 
 ---
 
+> **Build status (June 2026).** The three deterministic, autonomous-hook items from the recommended
+> sequencing are SHIPPED, runtime-neutral (Claude Code / Cursor / Codex — tool vocabulary is configurable),
+> fail-open, and verified end-to-end (firing on real waste-pattern transcripts + a negative control):
+> - **`navigation-to-edit-ratio`** → `assessNavigationRatio` (`@prune/cost-security`) + `navigation-ratio.mjs`
+>   (PostToolUse). 13 unit tests; revisited-path gate keeps a first-pass distinct-file survey from firing.
+> - **`tool-error-rate-breaker`** → `assessToolErrorRate` (`@prune/cost-security`) + `tool-error-rate.mjs`
+>   (PostToolUse). 9 unit tests; reads ONLY the host-tagged `is_error` boolean; `insufficient_signal` no-op
+>   when the field is absent (never text-matches).
+> - **`degeneration-loop` fold** → `evaluateIdenticalActionLoop` (`@prune/intelligence`) wired as a second
+>   trip in `loop-breaker.mjs`. 21 unit tests; result-SHA gate makes same-args-different-result (real
+>   progress) never block.
+>
+> All three are env-configurable (`PRUNE_NAV_RATIO_*`, `PRUNE_TOOL_ERROR_*`, `PRUNE_IDENTICAL_ACTION_*`),
+> registered in the installer (30 bindings), and carry the cost-security non-negotiables (no regex, no model,
+> no fabricated numbers, PII-safe SHAs only). Still HELD pending verification: `stateful-transport-advisor`
+> (M7-1, unverified mechanic) and `CH-013` (cache-habits transport-tier extension) — see sequencing #3.
+
 ## Summary
 
 - **2 NEW autonomous hook-detectors** survive M9 with confirmed host signals: `navigation-to-edit-ratio`,
