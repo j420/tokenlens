@@ -93,7 +93,7 @@ export function VideoPreview({
       {/* Loading state */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-card-hover">
-          <div className="w-8 h-8 border-2 border-border border-t-status-green rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-border border-t-accent rounded-full animate-spin" />
         </div>
       )}
 
@@ -144,9 +144,9 @@ export function VideoPreview({
         )}
       >
         <div className="flex items-center gap-0.5">
-          <div className="w-0.5 h-3 bg-status-green rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
-          <div className="w-0.5 h-4 bg-status-green rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
-          <div className="w-0.5 h-2 bg-status-green rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
+          <div className="w-0.5 h-3 bg-accent rounded-full animate-pulse" style={{ animationDelay: "0ms" }} />
+          <div className="w-0.5 h-4 bg-accent rounded-full animate-pulse" style={{ animationDelay: "150ms" }} />
+          <div className="w-0.5 h-2 bg-accent rounded-full animate-pulse" style={{ animationDelay: "300ms" }} />
         </div>
         <span className="text-xs text-white font-medium">Playing</span>
       </div>

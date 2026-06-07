@@ -46,7 +46,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
               "focus:outline-none focus:ring-2 focus:ring-offset-1",
               error
                 ? "border-status-red focus:border-status-red focus:ring-status-red"
-                : "border-border focus:border-status-green focus:ring-status-green",
+                : "border-border focus:border-accent-line focus:ring-accent",
               leftIcon && "pl-10",
               (rightIcon || isPasswordType) && "pr-10",
               className

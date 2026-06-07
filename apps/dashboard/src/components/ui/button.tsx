@@ -18,34 +18,34 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         ref={ref}
         disabled={isDisabled}
         className={cn(
-          "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition",
-          "focus:outline-none focus:ring-2 focus:ring-offset-1",
+          "inline-flex items-center justify-center gap-2 rounded-md font-medium transition",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           "disabled:cursor-not-allowed disabled:opacity-50",
           // Variants
           variant === "primary" && [
-            "bg-status-green text-white",
-            "hover:bg-emerald-600 focus:ring-status-green",
+            "bg-accent text-accent-on shadow-glow",
+            "hover:brightness-95 active:brightness-90",
           ],
           variant === "secondary" && [
-            "border border-border bg-card text-foreground",
-            "hover:bg-card-hover focus:ring-status-green",
+            "border border-line bg-card text-foreground",
+            "hover:bg-card-hover hover:border-secondary",
           ],
           variant === "ghost" && [
             "text-secondary",
-            "hover:bg-card-hover hover:text-foreground focus:ring-status-green",
+            "hover:bg-card-hover hover:text-foreground",
           ],
           variant === "danger" && [
             "bg-status-red text-white",
-            "hover:bg-red-600 focus:ring-status-red",
+            "hover:brightness-95 active:brightness-90",
           ],
           variant === "success" && [
-            "bg-status-green text-white",
-            "hover:bg-emerald-600 focus:ring-status-green",
+            "bg-accent text-accent-on shadow-glow",
+            "hover:brightness-95 active:brightness-90",
           ],
           // Sizes
           size === "sm" && "px-3 py-1.5 text-sm",
           size === "md" && "px-4 py-2 text-sm",
-          size === "lg" && "px-6 py-3 text-base",
+          size === "lg" && "px-5 py-2.5 text-[15px]",
           className
         )}
         {...props}

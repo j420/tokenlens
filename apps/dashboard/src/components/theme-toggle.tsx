@@ -34,7 +34,9 @@ export function useTheme(): [Theme, (theme: Theme) => void] {
       setThemeState(stored);
       applyTheme(stored);
     } else {
-      applyTheme("system");
+      // Dark-first: with no stored preference, the brand canvas is dark.
+      setThemeState("dark");
+      applyTheme("dark");
     }
   }, []);
 
@@ -120,7 +122,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
         onClick={() => setTheme(nextTheme)}
         className={cn(
           "flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-secondary transition",
-          "hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1"
+          "hover:bg-card-hover hover:text-foreground focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1"
         )}
         aria-label={`Current theme: ${theme}. Click to switch to ${nextTheme}`}
       >

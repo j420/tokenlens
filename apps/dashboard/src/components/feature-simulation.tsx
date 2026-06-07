@@ -280,11 +280,11 @@ function TerminalWindow({ simulation, phase }: TerminalWindowProps) {
       {/* Highlight Badge */}
       {phase === "result" && simulation.highlight && (
         <div className="flex justify-center mt-4">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-status-green/10 border border-status-green/20">
-            <svg className="w-4 h-4 text-status-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-accent-dim border border-accent-line">
+            <svg className="w-4 h-4 text-accent-text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
-            <span className="text-sm font-semibold text-status-green">{simulation.highlight} saved</span>
+            <span className="text-sm font-semibold text-accent-text">{simulation.highlight} saved</span>
           </div>
         </div>
       )}
@@ -415,7 +415,7 @@ export function FeatureSimulation({
               className={cn(
                 "w-2 h-2 rounded-full transition-all duration-300",
                 variantIndex === idx
-                  ? "bg-status-green w-5"
+                  ? "bg-accent w-5"
                   : "bg-border hover:bg-secondary"
               )}
               aria-label={`Example ${idx + 1}`}

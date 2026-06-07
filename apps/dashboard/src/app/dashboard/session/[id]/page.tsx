@@ -73,12 +73,12 @@ function TurnCard({ turn }: { turn: Turn }) {
           <span className="text-muted">·</span>
           <span className="text-sm text-muted">{time}</span>
           {turn.status === "loop_start" && (
-            <span className="rounded bg-amber-200 px-2 py-0.5 text-xs font-semibold text-amber-800">
+            <span className="rounded bg-panel-2 px-2 py-0.5 text-xs font-semibold text-status-amber">
               LOOP START
             </span>
           )}
           {turn.status === "loop_continued" && (
-            <span className="rounded bg-red-200 px-2 py-0.5 text-xs font-semibold text-red-800">
+            <span className="rounded bg-panel-2 px-2 py-0.5 text-xs font-semibold text-status-red">
               LOOP CONTINUED
             </span>
           )}
@@ -102,14 +102,14 @@ function TurnCard({ turn }: { turn: Turn }) {
 
       {/* Waste alert inline */}
       {turn.wasteAlert && (
-        <div className="mt-3 rounded bg-amber-100 px-3 py-2 text-sm text-amber-800">
+        <div className="mt-3 rounded bg-panel-2 px-3 py-2 text-sm text-status-amber">
           ⚠ {turn.wasteAlert}
         </div>
       )}
 
       {/* Positive note */}
       {turn.note && (
-        <div className="mt-3 rounded bg-green-50 px-3 py-2 text-sm text-green-700">
+        <div className="mt-3 rounded bg-panel-2 px-3 py-2 text-sm text-accent-text">
           ✅ {turn.note}
         </div>
       )}
@@ -127,30 +127,30 @@ function CompactionCard({ compaction }: { compaction: Compaction }) {
   const tokensRemoved = compaction.tokensBefore - compaction.tokensAfter;
 
   return (
-    <div className="rounded-lg border-2 border-dashed border-blue-300 bg-blue-50 p-4">
+    <div className="rounded-lg border-2 border-dashed border-accent-line bg-panel-2 p-4">
       {/* Header */}
-      <div className="flex items-center gap-2 border-b border-blue-200 pb-2">
+      <div className="flex items-center gap-2 border-b border-line pb-2">
         <span className="text-lg">📋</span>
-        <span className="font-semibold text-blue-900">COMPACTION</span>
-        <span className="text-blue-600">·</span>
-        <span className="text-sm text-blue-600">{time}</span>
+        <span className="font-semibold text-foreground">COMPACTION</span>
+        <span className="text-cool">·</span>
+        <span className="text-sm text-cool">{time}</span>
       </div>
 
       {/* Stats */}
-      <p className="mt-3 text-sm text-blue-800">
+      <p className="mt-3 text-sm text-secondary">
         Context reduced from{" "}
         <span className="font-medium">{formatTokens(compaction.tokensBefore)}</span> →{" "}
         <span className="font-medium">{formatTokens(compaction.tokensAfter)}</span> tokens
-        <span className="text-blue-600"> ({formatTokens(tokensRemoved)} removed)</span>
+        <span className="text-cool"> ({formatTokens(tokensRemoved)} removed)</span>
       </p>
 
       {/* Lost references */}
       {compaction.lostReferences.length > 0 && (
         <div className="mt-3">
-          <p className="text-sm font-medium text-blue-800">Lost references:</p>
+          <p className="text-sm font-medium text-secondary">Lost references:</p>
           <ul className="mt-1 space-y-1">
             {compaction.lostReferences.map((ref, i) => (
-              <li key={i} className="text-sm text-blue-700">
+              <li key={i} className="text-sm text-accent-text">
                 • {ref.item} (turn {ref.originalTurn})
               </li>
             ))}
@@ -158,7 +158,7 @@ function CompactionCard({ compaction }: { compaction: Compaction }) {
         </div>
       )}
 
-      <button className="mt-3 text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline">
+      <button className="mt-3 text-sm font-medium text-accent-text hover:text-foreground hover:underline">
         [View full diff]
       </button>
     </div>
@@ -207,7 +207,7 @@ export default function SessionDetailPage({
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
       </div>
     );
   }
@@ -216,7 +216,7 @@ export default function SessionDetailPage({
     return (
       <div className="text-center">
         <h1 className="text-xl font-bold text-foreground">Session not found</h1>
-        <Link href="/dashboard" className="mt-4 inline-block text-prune-green hover:underline">
+        <Link href="/dashboard" className="mt-4 inline-block text-accent-text hover:underline">
           ← Back to Dashboard
         </Link>
       </div>
@@ -332,7 +332,7 @@ export default function SessionDetailPage({
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-secondary">Productive cost:</span>
-              <span className="font-semibold text-prune-green">
+              <span className="font-semibold text-accent-text">
                 {formatCurrency(session.productiveCost)} ({productivePercent}%)
               </span>
             </div>
@@ -376,7 +376,7 @@ export default function SessionDetailPage({
           <div className="border-t border-border pt-4">
             <div className="flex justify-between text-sm">
               <span className="text-secondary">Estimated savings from Prune:</span>
-              <span className="font-semibold text-prune-green">
+              <span className="font-semibold text-accent-text">
                 {formatCurrency(session.estimatedSavings)}
               </span>
             </div>

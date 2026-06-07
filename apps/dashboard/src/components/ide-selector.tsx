@@ -186,7 +186,7 @@ export function IDESelector({
         aria-label={`Select IDE: ${selectedIDE.name}`}
         className={cn(
           "inline-flex items-center gap-2 rounded-lg border border-border bg-card font-medium text-foreground transition",
-          "hover:bg-card-hover focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1",
+          "hover:bg-card-hover focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1",
           compact ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-sm"
         )}
       >
@@ -226,19 +226,19 @@ export function IDESelector({
               className={cn(
                 "flex w-full items-center gap-3 px-4 py-2.5 text-left transition",
                 "hover:bg-card-hover focus:bg-card-hover focus:outline-none",
-                ide.id === value && "bg-status-green/5",
+                ide.id === value && "bg-accent-dim",
                 focusedIndex === index && "bg-card-hover"
               )}
             >
               <IDEIcon ide={ide.id} className="h-5 w-5 text-secondary" />
               <div>
-                <div className={cn("font-medium", ide.id === value ? "text-status-green" : "text-foreground")}>
+                <div className={cn("font-medium", ide.id === value ? "text-accent-text" : "text-foreground")}>
                   {ide.name}
                 </div>
                 <div className="text-xs text-muted">{ide.description}</div>
               </div>
               {ide.id === value && (
-                <svg className="ml-auto h-4 w-4 text-status-green" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                <svg className="ml-auto h-4 w-4 text-accent-text" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                   <path
                     fillRule="evenodd"
                     d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
@@ -273,7 +273,7 @@ export function OpenInIDEButton({
       href={uri}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground transition",
-        "hover:bg-border focus:outline-none focus:ring-2 focus:ring-status-green focus:ring-offset-1",
+        "hover:bg-border focus:outline-none focus:ring-2 focus:ring-accent focus:ring-offset-1",
         className
       )}
     >

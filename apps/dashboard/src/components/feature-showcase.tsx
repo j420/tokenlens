@@ -135,7 +135,7 @@ const CATEGORIES = [
 
 function ImpactBadge({ impact }: { impact: "high" | "medium" | "low" }) {
   const styles = {
-    high: "bg-status-green/10 text-status-green border-status-green/20",
+    high: "bg-accent-dim text-accent-text border-accent-line",
     medium: "bg-status-amber/10 text-status-amber border-status-amber/20",
     low: "bg-secondary/10 text-secondary border-secondary/20",
   };
@@ -186,7 +186,7 @@ function FeatureDemoCard({ demo, onWatchDemo, isCompact = false }: FeatureDemoCa
 
         {/* Savings badge (if available) */}
         {demo.savings && (
-          <div className="absolute top-3 left-3 px-2 py-1 rounded bg-status-green/90 backdrop-blur-sm">
+          <div className="absolute top-3 left-3 px-2 py-1 rounded bg-accent backdrop-blur-sm">
             <span className="text-xs text-white font-semibold">{demo.savings} saved</span>
           </div>
         )}
@@ -195,7 +195,7 @@ function FeatureDemoCard({ demo, onWatchDemo, isCompact = false }: FeatureDemoCa
       {/* Content */}
       <div className="p-4">
         <div className="flex items-start justify-between gap-2 mb-2">
-          <h3 className="font-semibold text-foreground group-hover:text-status-green transition-colors">
+          <h3 className="font-semibold text-foreground group-hover:text-accent-text transition-colors">
             {demo.title}
           </h3>
           <ImpactBadge impact={demo.impact} />
@@ -206,7 +206,7 @@ function FeatureDemoCard({ demo, onWatchDemo, isCompact = false }: FeatureDemoCa
         </p>
 
         {!isCompact && (
-          <p className="text-sm text-status-green mb-3">
+          <p className="text-sm text-accent-text mb-3">
             {demo.benefit}
           </p>
         )}
@@ -407,16 +407,16 @@ export function FeaturedDemo({ demo = FEATURE_DEMOS[0], className }: FeaturedDem
             {demo.description}
           </p>
 
-          <p className="text-status-green font-medium mb-6">
+          <p className="text-accent-text font-medium mb-6">
             {demo.benefit}
           </p>
 
           {demo.savings && (
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-status-green/10 border border-status-green/20 mb-6">
-              <svg className="w-5 h-5 text-status-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-accent-dim border border-accent-line mb-6">
+              <svg className="w-5 h-5 text-accent-text" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
               </svg>
-              <span className="text-sm font-semibold text-status-green">
+              <span className="text-sm font-semibold text-accent-text">
                 Average savings: {demo.savings}
               </span>
             </div>
@@ -503,7 +503,7 @@ export function MiniDemoCarousel({ demos = FEATURE_DEMOS.slice(0, 4), className 
               </div>
             </div>
             <div className="p-3">
-              <h4 className="font-medium text-foreground text-sm group-hover:text-status-green transition-colors">
+              <h4 className="font-medium text-foreground text-sm group-hover:text-accent-text transition-colors">
                 {demo.shortTitle}
               </h4>
               <p className="text-xs text-secondary mt-1 line-clamp-1">

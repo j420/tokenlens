@@ -277,7 +277,7 @@ function BudgetRuleRow({ rule, onEdit }: { rule: BudgetRule; onEdit: () => void 
         <span className={cn("text-sm", usageColor)}>{usagePercent}% used</span>
         <button
           onClick={onEdit}
-          className="text-sm text-prune-green hover:text-prune-green/80"
+          className="text-sm text-accent-text hover:text-accent-text/80"
         >
           Edit
         </button>
@@ -339,7 +339,7 @@ export default function TeamDashboardPage() {
   if (loading || !data) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
       </div>
     );
   }
@@ -353,7 +353,7 @@ export default function TeamDashboardPage() {
       ? "bg-prune-red"
       : budgetUsed >= 0.7
       ? "bg-amber-500"
-      : "bg-prune-green";
+      : "bg-accent";
 
   return (
     <div className="space-y-8">
@@ -462,7 +462,7 @@ export default function TeamDashboardPage() {
                           className={cn(
                             "font-medium",
                             week.accuracyPercent >= 80
-                              ? "text-prune-green"
+                              ? "text-accent-text"
                               : week.accuracyPercent >= 60
                               ? "text-status-amber"
                               : "text-prune-red"
@@ -577,7 +577,7 @@ export default function TeamDashboardPage() {
                         {project.topWastePattern} ({formatCurrency(project.topWasteAmount)})
                       </span>
                     ) : (
-                      <span className="text-prune-green">Clean</span>
+                      <span className="text-accent-text">Clean</span>
                     )}
                   </td>
                 </tr>
@@ -607,7 +607,7 @@ export default function TeamDashboardPage() {
           ) : (
             <p className="text-muted">No budget rules configured.</p>
           )}
-          <button className="mt-4 text-sm font-medium text-prune-green hover:text-prune-green/80">
+          <button className="mt-4 text-sm font-medium text-accent-text hover:text-accent-text/80">
             + Add budget rule
           </button>
         </div>
@@ -629,12 +629,12 @@ export default function TeamDashboardPage() {
               value={slackWebhook}
               onChange={(e) => setSlackWebhook(e.target.value)}
               placeholder="https://hooks.slack.com/services/..."
-              className="flex-1 rounded-md border border-border px-3 py-2 text-sm focus:border-prune-green focus:outline-none focus:ring-1 focus:ring-prune-green"
+              className="flex-1 rounded-md border border-border px-3 py-2 text-sm focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
             />
             <button
               onClick={handleSaveSlack}
               disabled={savingSlack}
-              className="w-full rounded-md bg-prune-green px-4 py-2 text-sm font-medium text-white hover:bg-prune-green/90 disabled:opacity-50 sm:w-auto"
+              className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-on hover:brightness-95 disabled:opacity-50 sm:w-auto"
             >
               {savingSlack ? "Saving..." : "Configure"}
             </button>
