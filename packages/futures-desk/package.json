@@ -1,0 +1,12 @@
+{
+  "name": "@prune/futures-desk",
+  "version": "0.1.0",
+  "description": "F16 — token pre-commitment / futures desk. An actor-facing reservation instrument: declare non-urgent work with a deadline and capture the real published Batch/off-peak discount (latency-for-price). Deterministic eligibility (enough lead time to use the slow lane) + honest pricing (interactive vs discounted cost via @prune/shared; null on unpriced model). The discount rate is caller-supplied (the provider's published Batch rate) — never fabricated. Sits above the batch-tier router as the demand-side commitment contract. No regex, no model.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "scripts": { "build": "tsc", "test": "vitest run --passWithNoTests" },
+  "dependencies": { "@prune/shared": "0.1.0" },
+  "devDependencies": { "@types/node": "^22.10.0", "typescript": "^5.7.0", "vitest": "^2.1.0" }
+}
