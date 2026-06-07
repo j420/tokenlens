@@ -133,6 +133,17 @@ describe("canonicalKey", () => {
     expect(typeof canonicalKey(a)).toBe("string");
   });
 
+  it("treats a shared (acyclic) sub-object the same as an inline copy (DAG, not cycle)", () => {
+    const shared = { k: 1 };
+    const withShared = { a: shared, b: shared }; // same ref twice — a DAG
+    const withCopies = { a: { k: 1 }, b: { k: 1 } }; // distinct but equal
+    expect(canonicalKey(withShared)).toBe(canonicalKey(withCopies));
+  });
+
+  it("contains no NUL byte in its output (clean serialization)", () => {
+    expect([...canonicalKey({ a: 1, b: [2, 3] })].every((c) => c.charCodeAt(0) >= 32)).toBe(true);
+  });
+
   it("handles primitives", () => {
     expect(canonicalKey("auth.ts")).toBe('"auth.ts"');
     expect(canonicalKey(null)).toBe("null");

@@ -63,13 +63,16 @@ safeRun(async () => {
   const { turns } = await loadCachedSessionView(payload.transcript_path);
   if (turns.length < 2) return emitNoop();
 
-  const navTurns = turns.map((t) => ({
+  // Window first, then map: the detector only inspects the last `window` turns,
+  // so projecting the whole (possibly long) session would be wasted work.
+  const window = posIntEnv("PRUNE_NAV_RATIO_WINDOW");
+  const windowN = window ?? 4; // mirror assessNavigationRatio's default
+  const navTurns = turns.slice(-windowN).map((t) => ({
     turn: t.turnNumber,
     tools: (t.toolUses ?? []).map((u) => ({ name: u.name, path: pickPath(u.input) })),
   }));
 
   const options = {};
-  const window = posIntEnv("PRUNE_NAV_RATIO_WINDOW");
   if (window !== undefined) options.window = window;
   const navFloor = posIntEnv("PRUNE_NAV_RATIO_FLOOR");
   if (navFloor !== undefined) options.navFloor = navFloor;

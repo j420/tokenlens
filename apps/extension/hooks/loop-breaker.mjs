@@ -13,7 +13,12 @@
  *      The result-SHA gate keeps a same-args call that returns a DIFFERENT
  *      result (real progress) from tripping it.
  *
- * Both are fail-safe (block only on a confirmed signal). Config:
+ * The ROI loop is a hard block (its 3-consecutive-low-ROI condition is a strong,
+ * multi-turn signal). The identical-action trip is ADVISORY and fires only on a
+ * live tool turn (not on Stop): a `block` on the Stop event would force the agent
+ * to CONTINUE, the opposite of interrupting a loop, and a hard block at a low
+ * repetition bar could wrongly halt a legitimate re-read — so it surfaces as
+ * context, consistent with its sibling `thrash-detector`. Config:
  *   PRUNE_IDENTICAL_ACTION_DISABLED "1" → skip the identical-action trip.
  *   PRUNE_IDENTICAL_ACTION_MIN      override repetitions threshold (default 3).
  */
@@ -27,6 +32,7 @@ import {
   evaluateIdenticalActionLoop,
 } from "@prune/intelligence";
 import {
+  emitAdditionalContext,
   emitBlock,
   emitNoop,
   readHookPayload,
@@ -97,18 +103,26 @@ safeRun(async () => {
     }
   }
 
-  // 2) Identical-action loop (degeneration fold).
-  if (process.env.PRUNE_IDENTICAL_ACTION_DISABLED !== "1") {
+  // 2) Identical-action loop (degeneration fold) — advisory, live-turn only.
+  // On Stop a block would force the agent to keep going, so we never surface it
+  // there; on a tool turn we advise rather than hard-block (fail-open).
+  if (
+    process.env.PRUNE_IDENTICAL_ACTION_DISABLED !== "1" &&
+    payload.hook_event_name !== "Stop"
+  ) {
     const observations = buildActionObservations(turns);
     const minRepetitions = posIntEnv("PRUNE_IDENTICAL_ACTION_MIN") ?? 3;
     const idl = evaluateIdenticalActionLoop(observations, { minRepetitions });
     if (idl.shouldBlock) {
-      return emitBlock(idl.reason, {
-        kind: "identical-action",
-        tool: idl.tool ?? null,
-        repetitions: idl.repetitions ?? null,
-        turns: idl.turns ?? null,
-      });
+      return emitAdditionalContext(
+        idl.reason,
+        payload.hook_event_name ?? "PostToolUse",
+        {
+          kind: "identical-action",
+          tool: idl.tool ?? null,
+          repetitions: idl.repetitions ?? null,
+        }
+      );
     }
   }
 

@@ -80,7 +80,8 @@ safeRun(async () => {
       featureId: "tool-error-rate",
       verdict: report.verdict,
       errorCount: report.errorCount,
-      observedCount: report.observedCount,
+      taggedCount: report.taggedCount,
+      totalCount: report.totalCount,
       ratio: report.ratio,
     },
     sessionId: deriveSessionId(payload),
@@ -92,7 +93,7 @@ safeRun(async () => {
 
   const pct = Math.round((report.ratio ?? 0) * 100);
   return emitAdditionalContext(
-    `⚠️ Cost-guard (tool errors): ${report.errorCount} of the last ${report.observedCount} tool ` +
+    `⚠️ Cost-guard (tool errors): ${report.errorCount} of the last ${report.totalCount} tool ` +
       `calls failed (${pct}%). Repeating the same failing call burns tokens without progress — ` +
       `fix the call shape (check the path/args), or step back and re-read the error once before ` +
       `retrying.`,
@@ -100,7 +101,7 @@ safeRun(async () => {
     {
       verdict: report.verdict,
       error_count: report.errorCount,
-      observed_count: report.observedCount,
+      total_count: report.totalCount,
     }
   );
 });
