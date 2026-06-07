@@ -176,7 +176,7 @@ export default function OnboardPage() {
           {step === 3 && (
             <>
               <div className="mb-4 flex justify-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-status-green text-white">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent text-accent-on">
                   <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                   </svg>
@@ -194,19 +194,19 @@ export default function OnboardPage() {
                 <h3 className="mb-4 font-medium text-foreground">What TokenLens does:</h3>
                 <ul className="space-y-2 text-sm text-secondary">
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-status-green">●</span>
+                    <span className="mt-0.5 text-accent-text">●</span>
                     <span>Counts tokens in real-time (status bar)</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-status-green">●</span>
+                    <span className="mt-0.5 text-accent-text">●</span>
                     <span>Compresses code to save tokens (squeeze)</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-status-green">●</span>
+                    <span className="mt-0.5 text-accent-text">●</span>
                     <span>Shows estimated costs for AI context</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-0.5 text-status-green">●</span>
+                    <span className="mt-0.5 text-accent-text">●</span>
                     <span>Works 100% locally - no data leaves your machine</span>
                   </li>
                 </ul>

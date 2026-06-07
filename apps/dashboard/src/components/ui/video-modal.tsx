@@ -158,7 +158,7 @@ export function VideoModal({
         <div className="relative aspect-video bg-black">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-black">
-              <div className="w-12 h-12 border-4 border-border border-t-status-green rounded-full animate-spin" />
+              <div className="w-12 h-12 border-4 border-border border-t-accent rounded-full animate-spin" />
             </div>
           )}
 
@@ -215,7 +215,7 @@ export function VideoModal({
             aria-valuemax={100}
           >
             <div
-              className="h-full bg-status-green rounded-full transition-all duration-100"
+              className="h-full bg-accent rounded-full transition-all duration-100"
               style={{ width: `${progress}%` }}
             />
           </div>

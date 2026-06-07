@@ -196,7 +196,7 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
 
         <a
           href={uri}
-          className="inline-flex items-center gap-1.5 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-border group-hover:bg-prune-green group-hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-md bg-card-hover px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-border group-hover:bg-accent group-hover:text-accent-on"
         >
           <svg
             className="h-4 w-4"
@@ -240,10 +240,13 @@ export default function FeaturesPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Extension Features</h1>
-        <p className="mt-1 text-secondary">
-          All Prune commands available in your editor. Click &quot;Open in {ideName}&quot; to run
-          any command directly from here.
+        <p className="eyebrow">Surfaces</p>
+        <h1 className="mt-3 text-3xl font-semibold tracking-tight text-foreground">
+          Features &amp; levers
+        </h1>
+        <p className="mt-2 max-w-2xl text-secondary">
+          Editor commands you run, plus the deterministic backend levers — MCP tools and lifecycle
+          hooks. Click &quot;Open in {ideName}&quot; to run any command directly from here.
         </p>
       </div>
 
@@ -263,7 +266,7 @@ export default function FeaturesPage() {
             className={cn(
               "rounded-lg px-4 py-2 text-sm font-medium transition",
               filter === key
-                ? "bg-prune-green text-white"
+                ? "bg-accent text-accent-on"
                 : "bg-card-hover text-secondary hover:bg-border"
             )}
           >
@@ -281,14 +284,15 @@ export default function FeaturesPage() {
       </div>
 
       {/* How it works notice */}
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <div className="rounded-lg border border-line bg-panel-2 p-4">
         <div className="flex gap-3">
-          <span className="text-xl">💡</span>
+          <span className="mt-0.5 font-mono text-accent-text" aria-hidden>›_</span>
           <div>
-            <h3 className="font-medium text-blue-900">Dashboard → IDE Integration</h3>
-            <p className="mt-1 text-sm text-blue-800">
-              Clicking &quot;Open in {ideName}&quot; will launch your editor and execute the
-              command. Make sure the Prune extension is installed. You can change your preferred IDE using the selector in the header.
+            <h3 className="font-medium text-foreground">Dashboard → IDE integration</h3>
+            <p className="mt-1 text-sm text-secondary">
+              Clicking &quot;Open in {ideName}&quot; launches your editor and runs the command.
+              Make sure the Prune extension is installed. Change your preferred IDE from the selector
+              in the header.
             </p>
           </div>
         </div>
@@ -314,13 +318,13 @@ export default function FeaturesPage() {
         <div className="flex flex-wrap gap-3">
           <a
             href={getIDEUri(preferredIDE, "smartCopy")}
-            className="inline-flex items-center gap-2 rounded-lg bg-prune-green px-4 py-2 font-medium text-white transition hover:bg-emerald-600"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 font-medium text-accent-on transition hover:brightness-95"
           >
             📋 Smart Copy
           </a>
           <a
             href={getIDEUri(preferredIDE, "preflight")}
-            className="inline-flex items-center gap-2 rounded-lg bg-prune-green px-4 py-2 font-medium text-white transition hover:bg-emerald-600"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 font-medium text-accent-on transition hover:brightness-95"
           >
             ⚡ Pre-flight
           </a>

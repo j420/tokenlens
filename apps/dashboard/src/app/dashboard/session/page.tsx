@@ -63,10 +63,10 @@ function SessionCard({ session }: { session: Session }) {
         <span>{formatTokens(session.tokens)} tokens</span>
         <span>{session.turns} turns</span>
         {session.compactions > 0 && (
-          <span className="text-blue-600">{session.compactions} compaction{session.compactions !== 1 ? "s" : ""}</span>
+          <span className="text-cool">{session.compactions} compaction{session.compactions !== 1 ? "s" : ""}</span>
         )}
         {hasWaste && (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+          <span className="rounded bg-panel-2 px-2 py-0.5 text-xs font-medium text-status-amber">
             {session.wasteEvents} waste event{session.wasteEvents !== 1 ? "s" : ""}
           </span>
         )}
@@ -101,7 +101,7 @@ export default function SessionsListPage() {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-prune-green" />
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-border border-t-accent" />
       </div>
     );
   }

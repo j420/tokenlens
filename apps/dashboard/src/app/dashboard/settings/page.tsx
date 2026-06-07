@@ -119,7 +119,7 @@ function Toggle({
       <div
         className={cn(
           "relative h-6 w-11 rounded-full transition-colors",
-          enabled ? "bg-prune-green" : "bg-border"
+          enabled ? "bg-accent" : "bg-border"
         )}
       >
         <div
@@ -301,7 +301,7 @@ export default function SettingsPage() {
                 </div>
               </div>
               {!tool.connected && (
-                <button className="text-sm font-medium text-prune-green hover:underline">
+                <button className="text-sm font-medium text-accent-text hover:underline">
                   [Setup instructions]
                 </button>
               )}
@@ -331,7 +331,7 @@ export default function SettingsPage() {
           </button>
           <button
             onClick={handleRegenerateApiKey}
-            className="rounded-md bg-red-50 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-100"
+            className="rounded-md bg-panel-2 px-3 py-2 text-sm font-medium text-status-red hover:bg-card-hover"
           >
             Regenerate
           </button>
@@ -434,7 +434,7 @@ export default function SettingsPage() {
             <p className="mb-3 font-medium text-foreground">Cost meter color thresholds</p>
             <div className="flex flex-wrap gap-6">
               <div className="flex items-center gap-2">
-                <span className="inline-block h-3 w-3 rounded bg-prune-green" />
+                <span className="inline-block h-3 w-3 rounded bg-accent" />
                 <span className="text-sm text-muted">→</span>
                 <span className="inline-block h-3 w-3 rounded bg-amber-500" />
                 <span className="text-sm text-muted">at $</span>
@@ -502,7 +502,7 @@ export default function SettingsPage() {
         ) : (
           <p className="text-sm text-muted">No auto-trim rules configured</p>
         )}
-        <button className="mt-4 text-sm font-medium text-prune-green hover:underline">
+        <button className="mt-4 text-sm font-medium text-accent-text hover:underline">
           [+ Add rule manually]
         </button>
       </section>
@@ -517,7 +517,7 @@ export default function SettingsPage() {
             </p>
           </div>
           {settings.plan.tier === "free" && (
-            <button className="rounded-lg bg-prune-green px-4 py-2 font-medium text-white hover:bg-emerald-600">
+            <button className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-on hover:brightness-95">
               Upgrade to Pro — $9/month
             </button>
           )}

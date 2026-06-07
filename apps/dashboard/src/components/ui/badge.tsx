@@ -14,16 +14,16 @@ const Badge = forwardRef<HTMLSpanElement, BadgeProps>(
       <span
         ref={ref}
         className={cn(
-          "inline-flex items-center rounded-full font-medium",
+          "inline-flex items-center gap-1.5 rounded-md border font-mono font-medium uppercase tracking-wider",
           // Sizes
-          size === "sm" && "px-2 py-0.5 text-xs",
-          size === "md" && "px-2.5 py-1 text-sm",
-          // Variants
-          variant === "default" && "bg-card-hover text-secondary",
-          variant === "success" && "bg-status-green/10 text-status-green",
-          variant === "warning" && "bg-status-amber/10 text-status-amber",
-          variant === "danger" && "bg-status-red/10 text-status-red",
-          variant === "info" && "bg-secondary/10 text-secondary",
+          size === "sm" && "px-1.5 py-0.5 text-[10px]",
+          size === "md" && "px-2 py-0.5 text-[11px]",
+          // Variants — hairline border + colored ink (reliable, technical)
+          variant === "default" && "border-line text-secondary",
+          variant === "success" && "border-accent-line text-accent-text",
+          variant === "warning" && "border-line text-status-amber",
+          variant === "danger" && "border-line text-status-red",
+          variant === "info" && "border-line text-cool",
           className
         )}
         {...props}

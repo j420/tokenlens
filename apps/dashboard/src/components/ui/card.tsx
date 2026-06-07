@@ -16,12 +16,12 @@ const Card = forwardRef<HTMLDivElement, CardProps>(
         className={cn(
           "rounded-lg border",
           // Variants
-          variant === "default" && "border-border bg-card",
-          variant === "elevated" && "border-border bg-card shadow-sm",
-          variant === "outlined" && "border-border bg-transparent",
+          variant === "default" && "border-line bg-card",
+          variant === "elevated" && "border-line bg-panel-2 shadow-lift",
+          variant === "outlined" && "border-line bg-transparent",
           variant === "interactive" && [
-            "border-border bg-card",
-            "transition hover:border-secondary hover:shadow-sm",
+            "border-line bg-card",
+            "transition-colors duration-200 hover:border-accent-line hover:bg-card-hover",
             "cursor-pointer",
           ],
           // Padding

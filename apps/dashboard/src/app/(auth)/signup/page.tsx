@@ -45,7 +45,7 @@ export default function SignupPage() {
           </div>
 
           {error && (
-            <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-600">
+            <div className="mb-4 rounded-md bg-panel-2 p-3 text-sm text-status-red">
               {error}
             </div>
           )}
@@ -89,7 +89,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-prune-green px-4 py-3 font-medium text-white transition hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-accent-on transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "Signing up..." : "Continue with Email"}
             </button>
@@ -97,7 +97,7 @@ export default function SignupPage() {
 
           <p className="mt-6 text-center text-sm text-muted">
             Already have an account?{" "}
-            <a href="/login" className="font-medium text-prune-green hover:underline">
+            <a href="/login" className="font-medium text-accent-text hover:underline">
               Log in
             </a>
           </p>
