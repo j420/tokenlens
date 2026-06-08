@@ -517,7 +517,7 @@ export default function SettingsPage() {
             </p>
           </div>
           {settings.plan.tier === "free" && (
-            <button className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-on hover:brightness-95">
+            <button className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-on hover:bg-[var(--accent-hover)]">
               Upgrade to Pro — $9/month
             </button>
           )}

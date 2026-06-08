@@ -24,7 +24,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           // Variants
           variant === "primary" && [
             "bg-accent text-accent-on shadow-glow",
-            "hover:brightness-95 active:brightness-90",
+            "hover:bg-[var(--accent-hover)]",
           ],
           variant === "secondary" && [
             "border border-line bg-card text-foreground",
@@ -40,7 +40,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           ],
           variant === "success" && [
             "bg-accent text-accent-on shadow-glow",
-            "hover:brightness-95 active:brightness-90",
+            "hover:bg-[var(--accent-hover)]",
           ],
           // Sizes
           size === "sm" && "px-3 py-1.5 text-sm",

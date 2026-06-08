@@ -680,14 +680,14 @@ function FeaturesSection({ ide }: { ide: IDEType }) {
         <div className="flex flex-wrap gap-2">
           <a
             href={getIDEUri(ide, "smartCopy")}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-on transition hover:brightness-95"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-on transition hover:bg-[var(--accent-hover)]"
           >
             <FeatureIcon icon="copy" className="h-4 w-4" />
             Smart Copy
           </a>
           <a
             href={getIDEUri(ide, "preflight")}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-on transition hover:brightness-95"
+            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-on transition hover:bg-[var(--accent-hover)]"
           >
             <FeatureIcon icon="zap" className="h-4 w-4" />
             Pre-flight
@@ -743,7 +743,7 @@ function SetupSection({ ide }: { ide: IDEType }) {
       action: (
         <a
           href="vscode:extension/delimit.prune"
-          className="inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-on hover:brightness-95"
+          className="inline-flex items-center gap-2 rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-on hover:bg-[var(--accent-hover)]"
         >
           Install Extension
         </a>
@@ -1003,7 +1003,7 @@ export default function DashboardPage() {
           </p>
           <button
             onClick={() => setActiveTab("setup")}
-            className="inline-flex items-center rounded-lg bg-accent px-4 py-2 font-medium text-accent-on transition hover:brightness-95"
+            className="inline-flex items-center rounded-lg bg-accent px-4 py-2 font-medium text-accent-on transition hover:bg-[var(--accent-hover)]"
           >
             Get Started →
           </button>

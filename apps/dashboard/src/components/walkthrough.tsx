@@ -45,7 +45,7 @@ export function Walkthrough() {
     <div>
       <Reveal className="max-w-2xl">
         <p className="eyebrow">How it runs</p>
-        <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
+        <h2 className="display mt-4 text-3xl text-foreground">
           Connect. Watch. Cut. Prove.
         </h2>
         <p className="mt-4 text-secondary">

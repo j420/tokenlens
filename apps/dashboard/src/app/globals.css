@@ -25,6 +25,7 @@
 
   --accent: #f0573f;          /* coral, deepened for paper legibility */
   --accent-text: #d8442f;     /* coral as text/icon on paper */
+  --accent-hover: #e0533c;
   --on-accent: #ffffff;
   --accent-dim: rgba(240, 87, 63, 0.1);
   --accent-line: rgba(240, 87, 63, 0.3);
@@ -59,16 +60,17 @@
   --foreground: #f5f5f5;
   --secondary: #a1a1a1;
   --muted: #6f6f6f;
-  --card: #1d1d1d;
-  --card-hover: #232323;
+  --card: #1f1f1f;
+  --card-hover: #262626;
   --border: #333333;        /* Coral's 1px #333 hairline */
   --line: #333333;
-  --panel: #1d1d1d;
-  --panel-2: #222222;
-  --code-bg: #202020;
+  --panel: #1f1f1f;
+  --panel-2: #262626;
+  --code-bg: #1f1f1f;
 
   --accent: #ff6b5c;         /* warm coral */
   --accent-text: #ff6b5c;
+  --accent-hover: #ff7f72;
   --on-accent: #191919;      /* dark ink on coral fills */
   --accent-dim: rgba(255, 107, 92, 0.12);
   --accent-line: rgba(255, 107, 92, 0.34);
@@ -176,8 +178,11 @@ h1, h2, h3, h4, h5, h6 {
 .term-card {
   background-color: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 12px;
 }
+
+/* clean connector arrow between flow stages */
+.flow-arrow { color: var(--muted); }
 
 /* glass card — Cogent (backdrop-blur, soft border, rounded-2xl) */
 .glass {
