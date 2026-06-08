@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { GeistSans } from "geist/font/sans";
-import { GeistMono } from "geist/font/mono";
+import "@fontsource-variable/inter";
+import "@fontsource/ibm-plex-mono/400.css";
+import "@fontsource/ibm-plex-mono/500.css";
+import "@fontsource/ibm-plex-mono/600.css";
 import { ToastProvider } from "@/components/toast";
 import "./globals.css";
 
@@ -21,8 +23,8 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0b0b0c" },
-    { media: "(prefers-color-scheme: light)", color: "#f4f1ea" },
+    { media: "(prefers-color-scheme: dark)", color: "#191919" },
+    { media: "(prefers-color-scheme: light)", color: "#f6f4ef" },
   ],
   width: "device-width",
   initialScale: 1,
@@ -43,11 +45,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={`${GeistSans.variable} ${GeistMono.variable} dark`}
-    >
+    <html lang="en" suppressHydrationWarning className="dark">
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
