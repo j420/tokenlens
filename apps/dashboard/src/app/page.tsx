@@ -16,6 +16,11 @@ import { ExecutionModeShowcase } from "@/components/execution-modes";
 import { Reveal, RevealGroup, RevealItem } from "@/components/reveal";
 import { TcrpCatalog } from "@/components/tcrp-catalog";
 import { TCRP_COUNT } from "@/lib/tcrp-catalog";
+import { InstallTabs } from "@/components/install-tabs";
+import { ResultLedger } from "@/components/result-ledger";
+import { IntegrationsMarquee, IntegrationsGrid } from "@/components/integrations";
+import { Walkthrough } from "@/components/walkthrough";
+import { StatTiles } from "@/components/stat-tiles";
 
 type OnboardStep = 1 | 2 | 3;
 
@@ -144,32 +149,6 @@ const FEATURES: Feature[] = [
   },
 ];
 
-const PROOF_METRICS = [
-  { value: "52.7%", label: "cost cut at flat solve-rate", src: 'Observation masking — "The Complexity Trap", arXiv:2508.21433' },
-  { value: "76.1%", label: "of agent tokens are reads", src: "SWE-Pruner, arXiv:2601.16746" },
-  { value: "70–90%", label: "Smart Copy token reduction", src: "Signatures-only copy, CLAUDE.md" },
-  { value: "null", label: "fabricated numbers", src: "Unknown model ⇒ null. By construction.", muted: true },
-];
-
-const PILLARS = [
-  {
-    title: "Deterministic core",
-    body: "Every gating decision is AST, hash, graph, or control-math — no model call, no regex classification. Two runs never disagree.",
-  },
-  {
-    title: "Fail-safe",
-    body: "Hooks ship shadow-by-default and can never hang, throw, or block the agent. If the intelligence layer trips, token counting still works.",
-  },
-  {
-    title: "Local-first",
-    body: "Tokenization, AST parsing, and the SQLite read-side run on your machine. Code never leaves it to be counted. Zero API keys.",
-  },
-  {
-    title: "Auditable",
-    body: "Counterfactual savings are netted of overhead and Ed25519-signed. Export to OpenTelemetry GenAI + FOCUS for the FinOps stack you already run.",
-  },
-];
-
 function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
   const uri = getIDEUri(ide, feature.id);
   const ideName = ide === "cursor" ? "Cursor" : ide === "vscode" ? "Claude Code" : "Codex";
@@ -210,40 +189,6 @@ function FeatureCard({ feature, ide }: { feature: Feature; ide: IDEType }) {
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return <p className="eyebrow">{children}</p>;
-}
-
-function HeroTerminal() {
-  return (
-    <div className="overflow-hidden rounded-xl border border-line bg-panel shadow-lift">
-      <div className="flex items-center justify-between border-b border-line bg-panel-2 px-4 py-2.5">
-        <span className="flex items-center gap-2 font-mono text-xs text-secondary">
-          <span className="flex gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-full border border-line" />
-            <span className="h-2.5 w-2.5 rounded-full border border-line" />
-            <span className="h-2.5 w-2.5 rounded-full border border-line" />
-          </span>
-          <span className="ml-2">read-gate.mjs · PreToolUse</span>
-        </span>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-muted">autonomous</span>
-      </div>
-      <div className="space-y-1.5 p-5 font-mono text-[13px] leading-relaxed">
-        <div className="text-foreground">▸ Read(auth.ts) — agent re-reads a file it saw</div>
-        <div className="text-secondary">content-sha 9f3c…e1 (unchanged)</div>
-        <div className="text-secondary">resident turn 1 · epoch 2 · live epoch 2</div>
-        <div className="flex gap-2 text-foreground">
-          <span className="text-accent-text">⇒</span>
-          <span>identical bytes already in context</span>
-        </div>
-        <div className="mt-3 flex items-center gap-3 border-t border-line pt-3">
-          <span className="inline-flex items-center gap-2 rounded-md border border-status-red px-3 py-1.5 font-semibold tracking-wider text-status-red">
-            <span className="h-1.5 w-1.5 rounded-full bg-status-red" /> DENY
-          </span>
-          <span className="numeric text-foreground">−2,400 tokens</span>
-          <span className="caret ml-auto text-muted" />
-        </div>
-      </div>
-    </div>
-  );
 }
 
 export default function Home() {
@@ -309,14 +254,12 @@ export default function Home() {
       <SiteHeader />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b border-line">
-        <div className="pointer-events-none absolute inset-0 bg-grid opacity-60" />
-        <div className="pointer-events-none absolute -top-32 right-0 h-[420px] w-[420px] rounded-full bg-accent-dim blur-[120px]" />
-        <div className="relative mx-auto max-w-content px-5 py-20 sm:px-8 lg:py-28">
-          <div className="grid items-center gap-12 lg:grid-cols-[1.05fr_0.95fr]">
+      <section className="border-b border-line">
+        <div className="mx-auto max-w-content px-5 py-20 sm:px-8 lg:py-28">
+          <div className="grid items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
             <Reveal>
               <Eyebrow>Token-cost reduction program</Eyebrow>
-              <h1 className="display mt-5 text-[clamp(2.4rem,5.4vw,4rem)] text-foreground">
+              <h1 className="display mt-5 text-[clamp(2.5rem,5.6vw,4.1rem)] text-foreground">
                 Make every token count.
               </h1>
               <p className="mt-5 max-w-xl text-lg leading-relaxed text-secondary">
@@ -339,7 +282,14 @@ export default function Home() {
                   <span aria-hidden>▸</span>
                 </a>
               </div>
-              <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-2 font-mono text-xs text-muted">
+              <div className="mt-8">
+                <InstallTabs />
+              </div>
+            </Reveal>
+
+            <Reveal delay={0.1} className="lg:pl-2">
+              <ResultLedger />
+              <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 px-1 font-mono text-xs text-muted">
                 <span>deterministic</span>
                 <span className="text-line">/</span>
                 <span>fail-safe</span>
@@ -349,40 +299,32 @@ export default function Home() {
                 <span className="text-accent-text">{TCRP_COUNT} levers shipped</span>
               </div>
             </Reveal>
-
-            <Reveal delay={0.1}>
-              <HeroTerminal />
-            </Reveal>
           </div>
         </div>
       </section>
 
-      {/* ── Works-with strip ─────────────────────────────────── */}
-      <div className="border-b border-line bg-panel-2/40">
-        <div className="mx-auto flex max-w-content flex-wrap items-center justify-center gap-x-8 gap-y-2 px-5 py-5 font-mono text-xs uppercase tracking-wider text-muted sm:px-8">
-          <span className="text-secondary">Provider-neutral · works with</span>
-          <span>Claude Code</span>
-          <span className="text-line">·</span>
-          <span>Cursor</span>
-          <span className="text-line">·</span>
-          <span>OpenAI Codex</span>
-          <span className="text-line">·</span>
-          <span>any VS Code editor</span>
+      {/* ── Works-with marquee ───────────────────────────────── */}
+      <IntegrationsMarquee />
+
+      {/* ── 01–04 walkthrough ────────────────────────────────── */}
+      <section className="border-b border-line py-20 sm:py-24">
+        <div className="mx-auto max-w-content px-5 sm:px-8">
+          <Walkthrough />
         </div>
-      </div>
+      </section>
 
       {/* ── Execution modes (the centerpiece) ────────────────── */}
       <section id="modes" className="border-b border-line py-20 sm:py-24">
         <div className="mx-auto max-w-content px-5 sm:px-8">
           <Reveal className="max-w-2xl">
-            <Eyebrow>How it runs</Eyebrow>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+            <Eyebrow>See it run</Eyebrow>
+            <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
               Four surfaces. One discipline.
             </h2>
             <p className="mt-4 text-secondary">
-              The same deterministic core fires wherever the spend happens — as an
+              The same deterministic core fires wherever the spend happens — an
               autonomous hook, a tool the agent calls on itself, an in-editor command,
-              or at request assembly. Each example below is literally what runs.
+              or at request assembly. Every example below is literally what runs.
             </p>
           </Reveal>
           <Reveal delay={0.08} className="mt-10">
@@ -397,7 +339,7 @@ export default function Home() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <Reveal>
               <Eyebrow>In your editor</Eyebrow>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
                 Commands you drive
               </h2>
               <p className="mt-4 max-w-xl text-secondary">
@@ -431,48 +373,26 @@ export default function Home() {
       {/* ── Proof / credibility ──────────────────────────────── */}
       <section id="proof" className="border-b border-line py-20 sm:py-24">
         <div className="mx-auto max-w-content px-5 sm:px-8">
+          <StatTiles />
+        </div>
+      </section>
+
+      {/* ── Integrations ─────────────────────────────────────── */}
+      <section className="border-b border-line py-20 sm:py-24">
+        <div className="mx-auto max-w-content px-5 sm:px-8">
           <Reveal className="max-w-2xl">
-            <Eyebrow>Why it's credible</Eyebrow>
-            <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
-              Honest by construction.
+            <Eyebrow>Integrations</Eyebrow>
+            <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
+              Plugs into the stack you already run.
             </h2>
             <p className="mt-4 text-secondary">
-              Enterprise buyers and diligence teams ask the same question: how do you
-              know the savings are real? Because nothing that gates is a guess.
+              Provider-neutral by design — agents, editors, providers, sinks, and the
+              open standards your FinOps team already speaks.
             </p>
           </Reveal>
-
-          <RevealGroup className="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line sm:grid-cols-2 lg:grid-cols-4">
-            {PROOF_METRICS.map((m) => (
-              <RevealItem key={m.label} className="bg-panel p-6">
-                <div
-                  className={cn(
-                    "numeric text-3xl font-semibold",
-                    m.muted ? "text-muted" : "text-accent-text"
-                  )}
-                >
-                  {m.value}
-                </div>
-                <div className="mt-1 text-sm font-medium text-foreground">{m.label}</div>
-                <div className="mt-2 text-xs leading-relaxed text-muted">{m.src}</div>
-              </RevealItem>
-            ))}
-          </RevealGroup>
-
-          <RevealGroup className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {PILLARS.map((p) => (
-              <RevealItem
-                key={p.title}
-                className="rounded-lg border border-line bg-card p-5"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-accent" />
-                  <h3 className="font-semibold text-foreground">{p.title}</h3>
-                </div>
-                <p className="mt-3 text-sm leading-relaxed text-secondary">{p.body}</p>
-              </RevealItem>
-            ))}
-          </RevealGroup>
+          <Reveal delay={0.08} className="mt-10">
+            <IntegrationsGrid />
+          </Reveal>
         </div>
       </section>
 
@@ -482,7 +402,7 @@ export default function Home() {
           <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
             <Reveal>
               <Eyebrow>Quick setup</Eyebrow>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
                 Running in under a minute.
               </h2>
               <p className="mt-4 text-secondary">

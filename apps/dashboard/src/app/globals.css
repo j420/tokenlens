@@ -3,40 +3,43 @@
 @tailwind utilities;
 
 /* ═══════════════════════════════════════════════════════════════
-   PRUNE — design tokens (dark-first, technical-editorial)
-   Light = refined paper · Dark = the hero canvas the brand lives on.
-   All theming flows through these CSS vars (no `dark:` utilities).
+   PRUNE — design tokens  (Coral × Cogent, 50/50 blend)
+   Coral neutral #191919 terminal base · Cogent navy+cyan cinematic depth.
+   Accent: coral #ff6b5c (primary, sparing) + cyan #40b2e0 (secondary/data).
+   Type: Inter (UI/display) · IBM Plex Mono (all code/CLI/result/numerals).
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
   /* ── Light / paper (secondary mode) ───────────────────────── */
-  --background: #f4f1ea; /* warm paper */
-  --foreground: #16140f; /* deep ink   */
-  --secondary: #514b3e;
-  --muted: #76705f;
-  --card: #fffdf8;
-  --card-hover: #ece8dd;
-  --border: #e2dccd;
-  --line: #e2dccd; /* hairline */
-  --panel: #fffdf8;
-  --panel-2: #f4f1ea;
-  --code-bg: #ece8dd;
+  --background: #f6f4ef;
+  --foreground: #17150f;
+  --secondary: #55503f;
+  --muted: #837c69;
+  --card: #fffefb;
+  --card-hover: #efece2;
+  --border: #e3ddcd;
+  --line: #e3ddcd;
+  --panel: #fffefb;
+  --panel-2: #efece2;
+  --code-bg: #efece2;
 
-  /* ownable accent — signal lime */
-  --accent: #5fb709; /* fill on paper (legible) */
-  --accent-text: #3f7a00; /* accent as text/icon on paper */
-  --on-accent: #0b0b0c;
-  --accent-dim: rgba(95, 183, 9, 0.12);
-  --accent-line: rgba(95, 183, 9, 0.32);
-  --cool: #2f6ad0; /* secondary data tone */
+  --accent: #f0573f;          /* coral, deepened for paper legibility */
+  --accent-text: #d8442f;     /* coral as text/icon on paper */
+  --on-accent: #ffffff;
+  --accent-dim: rgba(240, 87, 63, 0.1);
+  --accent-line: rgba(240, 87, 63, 0.3);
 
-  /* semantic status */
+  --cyan: #1f88c2;
+  --cyan-dim: rgba(31, 136, 194, 0.1);
+  --cyan-line: rgba(31, 136, 194, 0.3);
+  --navy: #002856;
+  --critical: #e0381f;
+
   --status-green: #2e9e5b;
   --status-amber: #c98a00;
   --status-orange: #e0651a;
   --status-red: #d23b3b;
 
-  /* legacy aliases (kept so old in-app refs render unchanged & white-text-safe) */
   --prune-green: #10b981;
   --prune-amber: var(--status-amber);
   --prune-red: var(--status-red);
@@ -44,29 +47,37 @@
 
   --ring: var(--accent-text);
   --ring-offset: var(--background);
-  --grid-line: rgba(22, 20, 15, 0.04);
+  --grid-line: rgba(23, 21, 15, 0.045);
+
+  --font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 .dark {
-  /* ── Dark / ink (PRIMARY canvas) ──────────────────────────── */
-  --background: #0b0b0c; /* warm near-black */
-  --foreground: #f5f5f4;
-  --secondary: #a1a1a6;
-  --muted: #6e6e76;
-  --card: #111113; /* panel */
-  --card-hover: #16161a; /* raised */
-  --border: #1f1f24; /* hairline */
-  --line: #1f1f24;
-  --panel: #111113;
-  --panel-2: #16161a;
-  --code-bg: #16161a;
+  /* ── Dark / ink (PRIMARY canvas — Coral #191919) ──────────── */
+  --background: #191919;
+  --foreground: #f5f5f5;
+  --secondary: #a1a1a1;
+  --muted: #6f6f6f;
+  --card: #1d1d1d;
+  --card-hover: #232323;
+  --border: #333333;        /* Coral's 1px #333 hairline */
+  --line: #333333;
+  --panel: #1d1d1d;
+  --panel-2: #222222;
+  --code-bg: #202020;
 
-  --accent: #b8ff4f; /* signal lime glows on ink */
-  --accent-text: #b8ff4f;
-  --on-accent: #0b0b0c;
-  --accent-dim: rgba(184, 255, 79, 0.13);
-  --accent-line: rgba(184, 255, 79, 0.28);
-  --cool: #6ea8fe;
+  --accent: #ff6b5c;         /* warm coral */
+  --accent-text: #ff6b5c;
+  --on-accent: #191919;      /* dark ink on coral fills */
+  --accent-dim: rgba(255, 107, 92, 0.12);
+  --accent-line: rgba(255, 107, 92, 0.34);
+
+  --cyan: #40b2e0;           /* electric cyan — secondary/data/glow */
+  --cyan-dim: rgba(64, 178, 224, 0.12);
+  --cyan-line: rgba(64, 178, 224, 0.3);
+  --navy: #002856;
+  --critical: #ff492c;
 
   --status-green: #34d399;
   --status-amber: #f5b133;
@@ -79,76 +90,81 @@
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   TYPOGRAPHY — Geist Sans (UI) + Geist Mono (every numeral/token)
+   TYPOGRAPHY
    ═══════════════════════════════════════════════════════════════ */
 
 body {
-  font-family: var(--font-geist-sans), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background-color: var(--background);
   color: var(--foreground);
   line-height: 1.6;
-  font-feature-settings: "ss01", "cv01";
+  letter-spacing: -0.011em;
 }
 
 code,
 kbd,
 pre,
+samp,
 .numeric {
-  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-mono);
 }
 
 code,
 kbd {
-  font-size: 0.9em;
+  font-size: 0.88em;
 }
 
 code {
-  padding: 0.15em 0.4em;
+  padding: 0.12em 0.4em;
   border-radius: 5px;
   background-color: var(--code-bg);
   border: 1px solid var(--line);
 }
 
-/* tabular monospace numerals — the signature treatment */
+/* tabular mono numerals — used for every token / cost / hash / metric */
 .numeric {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
+h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
-  line-height: 1.08;
-  letter-spacing: -0.022em;
+  line-height: 1.1;
+  letter-spacing: -0.02em;   /* Coral brief: tight tracking */
 }
 
-/* big editorial display headings */
+/* large display headlines (Inter Display feel via opsz + tight tracking) */
 .display {
-  font-weight: 620;
+  font-weight: 600;
   letter-spacing: -0.035em;
-  line-height: 0.98;
+  line-height: 1.02;
   text-wrap: balance;
 }
 
 .eyebrow {
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.72rem;
-  letter-spacing: 0.14em;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent-text);
 }
 
+.mono-label {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 /* ═══════════════════════════════════════════════════════════════
-   SURFACES & MOTIFS
+   SURFACES & MOTIFS  (Coral terminal cards · Cogent glass + orbs)
    ═══════════════════════════════════════════════════════════════ */
 
-/* faint engineering grid (terminal motif) */
 .bg-grid {
   background-image:
     linear-gradient(var(--grid-line) 1px, transparent 1px),
@@ -156,38 +172,62 @@ h6 {
   background-size: 32px 32px;
 }
 
-.bg-grid-sm {
-  background-image:
-    linear-gradient(var(--grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
-  background-size: 16px 16px;
-}
-
-/* hairline panel */
-.panel {
+/* rounded terminal card — Coral (1px #333 borders, 10–16px radius) */
+.term-card {
   background-color: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
-/* accent glow for active/interactive emphasis (not a drop-shadow) */
-.glow {
-  box-shadow: 0 0 0 1px var(--accent-line), 0 0 28px -6px var(--accent-dim);
+/* glass card — Cogent (backdrop-blur, soft border, rounded-2xl) */
+.glass {
+  background-color: color-mix(in srgb, var(--panel) 72%, transparent);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  border: 1px solid var(--line);
+  border-radius: 16px;
 }
 
-.accent-bar {
-  background: linear-gradient(90deg, var(--accent), transparent);
+/* cinematic gradient orb — navy → cyan glow (Cogent) */
+.orb {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(90px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+.orb-cyan { background: radial-gradient(circle, var(--cyan) 0%, transparent 70%); }
+.orb-navy { background: radial-gradient(circle, var(--navy) 0%, transparent 70%); }
+.orb-coral { background: radial-gradient(circle, var(--accent) 0%, transparent 70%); }
+
+/* accent glow ring for active/interactive emphasis */
+.glow { box-shadow: 0 0 0 1px var(--accent-line), 0 0 30px -8px var(--accent-dim); }
+.glow-cyan { box-shadow: 0 0 0 1px var(--cyan-line), 0 0 30px -8px var(--cyan-dim); }
+
+/* status badge — Cogent (CRITICAL / IN PROGRESS / MATCH / DENY / ACT) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  padding: 0.15rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
-/* a value the product could not price — must look unpriced, never green */
+/* a value the product could not price — must look unpriced, never accent */
 .null-value {
   color: var(--muted);
-  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   ANIMATIONS (kept for toast / skeleton / video components)
+   ANIMATIONS  (kept for toast / skeleton / video; + marquee + caret)
    ═══════════════════════════════════════════════════════════════ */
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -199,6 +239,7 @@ h6 {
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
 @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
 .animate-in { animation-duration: 150ms; animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1); animation-fill-mode: forwards; }
 .fade-in-0 { animation-name: fadeIn; }
@@ -209,8 +250,10 @@ h6 {
 .duration-200 { animation-duration: 200ms; }
 .duration-300 { animation-duration: 300ms; }
 
-/* terminal caret */
 .caret::after { content: "▋"; margin-left: 1px; color: var(--accent-text); animation: blink 1.05s step-end infinite; }
+
+.marquee-track { animation: marquee 32s linear infinite; }
+.marquee-mask { -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
 
 .shimmer {
   background: linear-gradient(90deg, var(--border) 0%, var(--card-hover) 50%, var(--border) 100%);
@@ -218,7 +261,7 @@ h6 {
   animation: shimmer 1.5s ease-in-out infinite;
 }
 
-/* ── video player animations (unchanged; video components retained) ── */
+/* ── video player animations (unchanged) ── */
 @keyframes videoFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
 @keyframes videoProgress { from { width: 0%; } to { width: 100%; } }
 @keyframes audioWave { 0%, 100% { height: 8px; } 50% { height: 16px; } }
@@ -252,16 +295,14 @@ html { transition: background-color 0.2s ease, color 0.2s ease; }
 ::selection { background-color: var(--accent); color: var(--on-accent); }
 
 /* ═══════════════════════════════════════════════════════════════
-   REDUCED MOTION — collapse every animation to its final state
+   REDUCED MOTION — collapse animation to final state
    ═══════════════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
-  .caret::after { animation: none; }
+  .caret::after, .marquee-track { animation: none; }
 }

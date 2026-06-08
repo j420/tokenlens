@@ -22,7 +22,7 @@ const config: Config = {
         panel: "var(--panel)",
         "panel-2": "var(--panel-2)",
         "code-bg": "var(--code-bg)",
-        // Ownable accent — signal lime
+        // Accent — coral (primary)
         accent: {
           DEFAULT: "var(--accent)",
           text: "var(--accent-text)",
@@ -30,7 +30,14 @@ const config: Config = {
           dim: "var(--accent-dim)",
           line: "var(--accent-line)",
         },
-        cool: "var(--cool)",
+        // Cyan (secondary / data / glow), navy (cinematic), critical
+        cyan: {
+          DEFAULT: "var(--cyan)",
+          dim: "var(--cyan-dim)",
+          line: "var(--cyan-line)",
+        },
+        navy: "var(--navy)",
+        critical: "var(--critical)",
         // Semantic status
         status: {
           green: "var(--status-green)",
@@ -38,7 +45,7 @@ const config: Config = {
           orange: "var(--status-orange)",
           red: "var(--status-red)",
         },
-        // Legacy prune aliases (mapped; not used as accents anymore)
+        // Legacy prune aliases (mapped; not used as accents)
         prune: {
           green: "var(--prune-green)",
           amber: "var(--prune-amber)",
@@ -47,33 +54,24 @@ const config: Config = {
         },
       },
       fontFamily: {
-        sans: [
-          "var(--font-geist-sans)",
-          "system-ui",
-          "-apple-system",
-          "Segoe UI",
-          "sans-serif",
-        ],
-        mono: [
-          "var(--font-geist-mono)",
-          "ui-monospace",
-          "SFMono-Regular",
-          "Menlo",
-          "monospace",
-        ],
+        sans: ["var(--font-sans)"],
+        mono: ["var(--font-mono)"],
       },
       borderRadius: {
+        "2xl": "16px",
+        xl: "14px",
         lg: "12px",
         md: "9px",
         sm: "6px",
       },
       boxShadow: {
-        glow: "0 0 0 1px var(--accent-line), 0 0 28px -6px var(--accent-dim)",
+        glow: "0 0 0 1px var(--accent-line), 0 0 30px -8px var(--accent-dim)",
+        "glow-cyan": "0 0 0 1px var(--cyan-line), 0 0 30px -8px var(--cyan-dim)",
         panel: "0 1px 0 0 var(--line)",
-        lift: "0 12px 40px -16px rgba(0,0,0,0.45)",
+        lift: "0 16px 50px -24px rgba(0,0,0,0.6)",
       },
       maxWidth: {
-        content: "1180px",
+        content: "1200px",
       },
       transitionTimingFunction: {
         "out-expo": "cubic-bezier(0.16, 1, 0.3, 1)",

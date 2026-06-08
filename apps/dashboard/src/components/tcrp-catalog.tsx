@@ -61,7 +61,7 @@ export function TcrpCatalog({ compact = false }: { compact?: boolean }) {
       {!compact && (
         <div className="max-w-2xl">
           <p className="eyebrow">The program</p>
-          <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+          <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
             Token-Cost Reduction Program
           </h2>
           <p className="mt-4 text-secondary">

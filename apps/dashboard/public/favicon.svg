@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="#0b0b0c" stroke="#1f1f24"/>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="7" fill="#191919" stroke="#333333"/>
   <!-- descending staircase: cost coming down, deterministically -->
-  <path d="M7 8.5 H12 V14.5 H17 V20.5 H22" stroke="#b8ff4f" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="7" cy="8.5" r="2.1" fill="#b8ff4f"/>
-  <circle cx="24.5" cy="22.5" r="1.6" fill="#b8ff4f" fill-opacity="0.5"/>
+  <path d="M7 8.5 H12 V14.5 H17 V20.5 H22" stroke="#ff6b5c" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="7" cy="8.5" r="2.1" fill="#ff6b5c"/>
+  <circle cx="24.5" cy="22.5" r="1.6" fill="#40b2e0" fill-opacity="0.8"/>
 </svg>

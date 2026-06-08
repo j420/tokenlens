@@ -26,7 +26,7 @@ export function PruneMark({ className }: { className?: string }) {
         strokeLinejoin="round"
       />
       <circle cx="7" cy="8.5" r="2.1" fill="var(--accent)" />
-      <circle cx="24.5" cy="22.5" r="1.6" fill="var(--accent)" fillOpacity="0.5" />
+      <circle cx="24.5" cy="22.5" r="1.6" fill="var(--cyan)" fillOpacity="0.85" />
     </svg>
   );
 }

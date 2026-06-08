@@ -601,13 +601,13 @@ function OverviewSection({ period, data }: { period: TimePeriod; data: OverviewD
                   itemStyle={{ color: "#f5f5f4" }}
                   cursor={{ stroke: "rgba(127,127,127,0.3)" }}
                 />
-                <Area type="monotone" dataKey="productive" stackId="1" stroke="#84cc16" fill="#84cc16" fillOpacity={0.5} />
+                <Area type="monotone" dataKey="productive" stackId="1" stroke="#40b2e0" fill="#40b2e0" fillOpacity={0.45} />
                 <Area type="monotone" dataKey="waste" stackId="1" stroke="#ef4444" fill="#ef4444" fillOpacity={0.45} />
               </AreaChart>
             </ResponsiveContainer>
             <div className="mt-2 flex justify-center gap-4 text-xs">
               <div className="flex items-center gap-1.5">
-                <div className="h-2.5 w-2.5 rounded-sm bg-accent" />
+                <div className="h-2.5 w-2.5 rounded-sm bg-cyan" />
                 <span className="text-secondary">Productive</span>
               </div>
               <div className="flex items-center gap-1.5">
