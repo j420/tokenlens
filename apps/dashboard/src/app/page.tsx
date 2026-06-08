@@ -21,7 +21,6 @@ import { ResultLedger } from "@/components/result-ledger";
 import { IntegrationsMarquee, IntegrationsGrid } from "@/components/integrations";
 import { Walkthrough } from "@/components/walkthrough";
 import { StatTiles } from "@/components/stat-tiles";
-import { Orb } from "@/components/orb";
 
 type OnboardStep = 1 | 2 | 3;
 
@@ -255,11 +254,8 @@ export default function Home() {
       <SiteHeader />
 
       {/* ── Hero ─────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b border-line">
-        <div className="pointer-events-none absolute inset-0 bg-grid opacity-50" />
-        <Orb color="navy" className="-left-40 -top-40 h-[520px] w-[520px] opacity-60" />
-        <Orb color="cyan" className="-bottom-48 right-[-10%] h-[460px] w-[460px] opacity-40" />
-        <div className="relative mx-auto max-w-content px-5 py-20 sm:px-8 lg:py-28">
+      <section className="border-b border-line">
+        <div className="mx-auto max-w-content px-5 py-20 sm:px-8 lg:py-28">
           <div className="grid items-center gap-12 lg:grid-cols-[1.02fr_0.98fr]">
             <Reveal>
               <Eyebrow>Token-cost reduction program</Eyebrow>
@@ -311,9 +307,8 @@ export default function Home() {
       <IntegrationsMarquee />
 
       {/* ── 01–04 walkthrough ────────────────────────────────── */}
-      <section className="relative overflow-hidden border-b border-line py-20 sm:py-24">
-        <Orb color="coral" className="-right-32 top-10 h-[360px] w-[360px] opacity-25" />
-        <div className="relative mx-auto max-w-content px-5 sm:px-8">
+      <section className="border-b border-line py-20 sm:py-24">
+        <div className="mx-auto max-w-content px-5 sm:px-8">
           <Walkthrough />
         </div>
       </section>
@@ -344,7 +339,7 @@ export default function Home() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <Reveal>
               <Eyebrow>In your editor</Eyebrow>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
                 Commands you drive
               </h2>
               <p className="mt-4 max-w-xl text-secondary">
@@ -376,9 +371,8 @@ export default function Home() {
       </section>
 
       {/* ── Proof / credibility ──────────────────────────────── */}
-      <section id="proof" className="relative overflow-hidden border-b border-line py-20 sm:py-24">
-        <Orb color="cyan" className="-left-32 bottom-0 h-[400px] w-[400px] opacity-25" />
-        <div className="relative mx-auto max-w-content px-5 sm:px-8">
+      <section id="proof" className="border-b border-line py-20 sm:py-24">
+        <div className="mx-auto max-w-content px-5 sm:px-8">
           <StatTiles />
         </div>
       </section>
@@ -408,7 +402,7 @@ export default function Home() {
           <div className="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
             <Reveal>
               <Eyebrow>Quick setup</Eyebrow>
-              <h2 className="mt-4 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
+              <h2 className="display mt-4 text-3xl text-foreground sm:text-[2.6rem]">
                 Running in under a minute.
               </h2>
               <p className="mt-4 text-secondary">

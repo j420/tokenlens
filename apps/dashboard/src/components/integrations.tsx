@@ -17,18 +17,22 @@ const TOOLS: { name: string; kind: string }[] = [
 ];
 
 export function IntegrationsMarquee() {
-  const row = [...TOOLS, ...TOOLS];
+  const primary = TOOLS.slice(0, 6);
   return (
-    <div className="marquee-mask overflow-hidden border-y border-line bg-panel-2/40 py-4">
-      <div className="marquee-track flex w-max items-center gap-10 whitespace-nowrap">
-        {row.map((t, i) => (
-          <span
-            key={i}
-            className="font-mono text-xs uppercase tracking-wider text-muted"
-          >
-            {t.name}
+    <div className="border-b border-line bg-panel-2/40">
+      <div className="mx-auto flex max-w-content flex-wrap items-center justify-center gap-x-6 gap-y-2 px-5 py-4 sm:px-8">
+        <span className="mono-label">Works with</span>
+        {primary.map((t, i) => (
+          <span key={t.name} className="flex items-center gap-x-6">
+            {i > 0 && <span className="text-line" aria-hidden>·</span>}
+            <span className="font-mono text-xs uppercase tracking-wider text-secondary">
+              {t.name}
+            </span>
           </span>
         ))}
+        <span className="font-mono text-xs uppercase tracking-wider text-muted">
+          + 6 more
+        </span>
       </div>
     </div>
   );

@@ -58,15 +58,13 @@ export function Walkthrough() {
         {STEPS.map((s) => (
           <RevealItem
             key={s.n}
-            className="glass flex flex-col p-5"
+            className="term-card flex flex-col p-5 transition-colors hover:border-accent-line"
           >
             <div className="flex items-baseline justify-between">
               <span className="numeric text-2xl font-semibold text-accent-text">
                 {s.n}
               </span>
-              <StatusBadge tone={s.badge.tone} glow>
-                {s.badge.label}
-              </StatusBadge>
+              <StatusBadge tone={s.badge.tone}>{s.badge.label}</StatusBadge>
             </div>
             <h3 className="mt-4 text-lg font-semibold text-foreground">{s.title}</h3>
             <p className="mt-2 flex-1 text-sm leading-relaxed text-secondary">

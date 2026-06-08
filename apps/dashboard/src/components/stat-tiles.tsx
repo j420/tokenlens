@@ -71,7 +71,7 @@ export function StatTiles() {
 
       <RevealGroup className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {STATS.map((s) => (
-          <RevealItem key={s.label} className="glass relative overflow-hidden p-6">
+          <RevealItem key={s.label} className="term-card p-6">
             <div
               className={cn(
                 "numeric text-[2.6rem] font-semibold leading-none",
