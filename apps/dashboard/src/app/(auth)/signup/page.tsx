@@ -89,7 +89,7 @@ export default function SignupPage() {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-accent-on transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-lg bg-accent px-4 py-3 font-medium text-accent-on transition hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? "Signing up..." : "Continue with Email"}
             </button>

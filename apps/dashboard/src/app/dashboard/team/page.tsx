@@ -634,7 +634,7 @@ export default function TeamDashboardPage() {
             <button
               onClick={handleSaveSlack}
               disabled={savingSlack}
-              className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-on hover:brightness-95 disabled:opacity-50 sm:w-auto"
+              className="w-full rounded-md bg-accent px-4 py-2 text-sm font-medium text-accent-on hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:w-auto"
             >
               {savingSlack ? "Saving..." : "Configure"}
             </button>

@@ -29,7 +29,7 @@ function VsCodeBanner({ onDismiss, ideName }: { onDismiss: () => void; ideName: 
         <div className="flex shrink-0 gap-2">
           <a
             href="vscode:extension/delimit.prune"
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-on transition hover:brightness-95"
+            className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium text-accent-on transition hover:bg-[var(--accent-hover)]"
           >
             Install for {ideName}
           </a>

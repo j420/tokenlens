@@ -57,21 +57,29 @@ const config: Config = {
         sans: ["var(--font-sans)"],
         mono: ["var(--font-mono)"],
       },
+      fontSize: {
+        // Coral scale
+        "2xl": ["2rem", { lineHeight: "1.15", letterSpacing: "-0.02em" }],
+        "3xl": ["2.75rem", { lineHeight: "1.08", letterSpacing: "-0.025em" }],
+        "4xl": ["3.75rem", { lineHeight: "1.02", letterSpacing: "-0.03em" }],
+      },
       borderRadius: {
         "2xl": "16px",
-        xl: "14px",
+        xl: "16px",
         lg: "12px",
-        md: "9px",
+        md: "10px",
         sm: "6px",
       },
       boxShadow: {
+        sm: "0 1px 2px rgba(0,0,0,0.4)",
+        md: "0 8px 24px rgba(0,0,0,0.5)",
         glow: "0 0 0 1px var(--accent-line), 0 0 30px -8px var(--accent-dim)",
         "glow-cyan": "0 0 0 1px var(--cyan-line), 0 0 30px -8px var(--cyan-dim)",
         panel: "0 1px 0 0 var(--line)",
         lift: "0 16px 50px -24px rgba(0,0,0,0.6)",
       },
       maxWidth: {
-        content: "1200px",
+        content: "1120px",
       },
       transitionTimingFunction: {
         "out-expo": "cubic-bezier(0.16, 1, 0.3, 1)",
