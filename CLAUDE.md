@@ -4,14 +4,14 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **~67-workspace monorepo** (64 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **68-workspace monorepo** (65 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
 **What ships today, beyond the original extension:**
 
 - **TCRP feature library (f1–f13 + Phase-8 Tier-1):** trajectory diet, tool-def auditing, semantic cache, QpD bench, context health, lazy-schema MCP proxy, what-if replay-cost, skill library, speculative tool pipeline, plus the five Phase-8 features (tool-result pruner, max_tokens calibrator, diff-vs-rewrite enforcer, reasoning-effort router, open-tab auditor). See **TCRP Feature Map** below.
-- **MCP tool surface (~30 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
+- **MCP tool surface (70 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
 - **Hooks system:** `apps/extension/hooks/*.mjs` — Claude Code lifecycle hooks (advisors, recorders, breakers, forwarders) with a flag system and an auto-installer.
 - **Persistence + telemetry:** local SQLite + a real Postgres sink (`@prune/persistence`), with open-standard exporters (OpenTelemetry GenAI + FOCUS FinOps).
   - **Known limitation (tracked follow-up #1):** the event schema's `estimated_cost_usd` column is `number` (non-nullable), and two hooks coerce an unknown cost with `?? 0` (`cache-habits-advisor.mjs`, `cost-guard.mjs`). So an UNPRICED-model event is persisted as `$0`, indistinguishable from a genuinely-free one — a dashboard `SUM(estimated_cost)` under-counts true spend. The package-level discipline is honest (unknown model ⇒ `null`); the masking is only at the telemetry boundary. Fix = make `estimatedCostUsd` `number | null` end-to-end (`feature-event.ts` + `EventRow` + SQLite/Postgres bindings + the two hook masks + persistence tests) so the dashboards never show a fabricated `$0`. Deferred as its own focused change (touches ~141 persistence tests).
@@ -52,8 +52,8 @@ tokenlens/
 │   │   │   └── prune-intelligence.ts # v2 engine: symbol-level DAG analysis
 │   │   └── hooks/             # Claude Code lifecycle hooks (.mjs) + flags + installer
 │   ├── dashboard/              # Next.js web dashboard + telemetry read-side
-│   └── mcp-server/             # MCP server: ~30 tools for AI self-regulation
-├── packages/                   # 34 workspaces — grouped by role below
+│   └── mcp-server/             # MCP server: 70 tools for AI self-regulation
+├── packages/                   # 65 workspaces — grouped by role below
 │   # --- Core / foundation ---
 │   ├── shared/                 # Shared types + STRICT pricing (unknown model → null)
 │   ├── tokenizer/              # Local token counting (OpenAI + Anthropic)
@@ -164,7 +164,7 @@ fail-safe, and never fabricate a token/cost number.
 
 ## MCP Tool Surface
 
-`apps/mcp-server` registers ~59 tools (names from `src/index.ts` / `src/tcrp-tools.ts` / `src/value-tools.ts`),
+`apps/mcp-server` registers 70 tools (names from `src/index.ts` / `src/tcrp-tools.ts` / `src/value-tools.ts`),
 including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
 `routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
@@ -198,11 +198,12 @@ source is `null`, never guessed.
 
 `apps/extension/hooks/*.mjs` are Claude Code lifecycle hooks, installable via the
 `prune.installHooks` command (`install.mjs`) and gated by a flag system
-(`flags.mjs`; features f7–f13 currently ship in `mode: shadow`). Hooks include
-advisors (`cache-habits-advisor`, `context-health-advisor`, `skill-advisor`,
-`trajectory-diet`), recorders (`replay-recorder`, `skill-capture`,
+(`flags.mjs`; features f7–f13 currently ship in `mode: shadow`). The 28 functional
+hooks include advisors (`cache-habits-advisor`, `context-health-advisor`,
+`skill-advisor`, `trajectory-diet`), recorders (`replay-recorder`, `skill-capture`,
 `speculative-record`), breakers (`loop-breaker`, `slo-breaker`,
-`subagent-warden`), safety (`sentinel-prompt`, `sentinel-mcp`), cache
+`subagent-warden`), safety (`sentinel-prompt`, `sentinel-mcp`), integrity
+(`reward-integrity`), context governors (`observation-mask`, `read-gate`), cache
 (`cache-stabilize`, `speculative-prune`), recovery (`compaction-recover`), budget
 (`budget-gate`), cost-security (`cost-guard`, `thrash-detector`, `injection-cost`,
 `fanout-acceleration`, `edit-amplification`, `preturn-forecast`, plus the List3

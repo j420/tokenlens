@@ -19,7 +19,7 @@
 | Deduped ledger | 50 entries (5 exact cross-generator duplicates merged at ledger build; 6 seeds absorbed into generator clusters) |
 | Evaluators | 2 (E1: L4-01..25, E2: L4-26..50), disjoint slices, never the generator, mandatory `packages/` + `apps/` greps per entry, verdicts cite evidence |
 | Gate outcome | 27 SURVIVES · 12 REVISE · 1 MERGE · 10 REJECT (20% hard-kill + 24% revise) |
-| Shippable features | **38** (after merging L4-37 into L4-09) |
+| Shippable features | **39** (27 SURVIVES + 12 REVISE; the 1 MERGE — L4-37 into L4-09 — was a separate ledger entry and is not in this count) |
 | Caveats | Single-model generation (all generators were the same model family — persona partitioning substituted for model diversity); all provider rates marked RE-VERIFY must be re-confirmed against primary sources before any constant ships; forbidden-set = L1 ∪ L2 ∪ L3 ∪ shipped code ∪ prior-wave themes |
 
 **N0 discipline observed working:** G3 dropped 3 of its 10 literature seeds as already covered;
@@ -46,7 +46,7 @@ had already rejected 5 candidates. The reject log (§8) adds 10 more kills with 
 Recurrence raised rank within a confidence band; it did not save L4-15 from a structural
 waterbed objection — convergent popularity is not soundness.
 
-## 2. Ranked index of the 38 shippable features
+## 2. Ranked index of the 39 shippable features
 
 **Tier A — build first (verified gap + S effort + high evaluator confidence):**
 L4-03 per-call-fee-meter · L4-23 multiedit-amplification-gate · L4-07 truncation-retry-meter ·

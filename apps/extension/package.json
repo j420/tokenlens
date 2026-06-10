@@ -4,6 +4,14 @@
   "description": "Real-time AI token counting for VS Code. See token costs as you code.",
   "version": "0.1.0",
   "publisher": "delimit",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/j420/tokenlens"
+  },
+  "bugs": {
+    "url": "https://github.com/j420/tokenlens/issues"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },

@@ -2,6 +2,15 @@
   "name": "@prune/mcp-server",
   "version": "0.1.0",
   "description": "MCP server for AI self-regulation with Prune tools",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/j420/tokenlens",
+    "directory": "apps/mcp-server"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "exports": {
