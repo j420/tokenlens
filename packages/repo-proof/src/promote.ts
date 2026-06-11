@@ -24,6 +24,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { z } from "zod";
 import {
   resolveFeatureId,
   validateFlags,
@@ -47,58 +48,88 @@ import { persistAtomic } from "./prove.js";
 /**
  * Structural check of exactly the fields the gate reads, so a corrupt or
  * hand-edited analysis.json/attestation.json produces a typed REFUSAL
- * ("re-run prove") instead of a TypeError inside the gate. Deliberately not
- * a full schema: the gate must not silently depend on fields it never reads.
+ * ("re-run prove") instead of a TypeError inside the gate. Zod (the
+ * package's boundary convention) is validation-ONLY here: the original
+ * objects are returned untouched (`.passthrough()` everywhere), never
+ * stripped — the gate must see exactly what is on disk. Deliberately not a
+ * full schema: the gate must not silently depend on fields it never reads.
+ *
+ * Four-eyes finding closed here: the previous hand-rolled checks tested
+ * `=== undefined` only, so `{wilcoxon: null}` (valid JSON, plausible
+ * hand-edit) passed the guard and crashed on `.reject` — exactly the
+ * TypeError this function exists to prevent.
  */
+const finiteNumber = z.number().refine(Number.isFinite, "must be finite");
+const testResultShape = z
+  .object({ reject: z.boolean(), pValue: finiteNumber })
+  .passthrough();
+const gateAnalysisShape = z
+  .object({
+    fixtureData: z.boolean(),
+    metricUsed: z.string(),
+    wilcoxon: testResultShape,
+    nonInferiority: testResultShape,
+    preRegistration: z
+      .object({ alpha: finiteNumber, niMargin: finiteNumber })
+      .passthrough(),
+    power: z
+      .object({
+        adequatelyPowered: z.boolean().nullable(),
+        actualPerArm: finiteNumber,
+        requiredPerArm: finiteNumber.nullable(),
+      })
+      .passthrough(),
+    medianSavingsPct: finiteNumber.nullable(),
+  })
+  .passthrough();
+const gateAttestationShape = z
+  .object({
+    canonical: z.string(),
+    signature: z.string(),
+    publicKeyPem: z.string(),
+    manifest: z
+      .object({
+        slo: z
+          .object({
+            ok: z.boolean(),
+            reason: z.string(),
+            budget: finiteNumber,
+            overheadRatio: finiteNumber.nullable(),
+          })
+          .passthrough(),
+      })
+      .passthrough(),
+  })
+  .passthrough();
+
+function issuesOf(error: z.ZodError): string {
+  return error.issues
+    .slice(0, 3)
+    .map((i) => `${i.path.join(".")}: ${i.message}`)
+    .join("; ");
+}
+
 export function parseGateInputs(
   analysisRaw: unknown,
   attestationRaw: unknown
 ):
   | { analysis: OutcomeAnalysis; attestation: SignedAttestation }
   | { error: string } {
-  const a = analysisRaw as Partial<OutcomeAnalysis> | null;
-  const finite = (x: unknown): x is number =>
-    typeof x === "number" && Number.isFinite(x);
-  if (
-    a === null ||
-    typeof a !== "object" ||
-    typeof a.fixtureData !== "boolean" ||
-    typeof a.metricUsed !== "string" ||
-    a.wilcoxon === undefined ||
-    typeof a.wilcoxon.reject !== "boolean" ||
-    !finite(a.wilcoxon.pValue) ||
-    a.nonInferiority === undefined ||
-    typeof a.nonInferiority.reject !== "boolean" ||
-    !finite(a.nonInferiority.pValue) ||
-    a.preRegistration === undefined ||
-    !finite(a.preRegistration.alpha) ||
-    !finite(a.preRegistration.niMargin) ||
-    a.power === undefined ||
-    !(a.medianSavingsPct === null || finite(a.medianSavingsPct))
-  ) {
+  const a = gateAnalysisShape.safeParse(analysisRaw);
+  if (!a.success) {
     return {
-      error:
-        "analysis.json is missing or malformed in a gate-relevant field — re-run prove",
+      error: `analysis.json is malformed in a gate-relevant field (${issuesOf(a.error)}) — re-run prove`,
     };
   }
-  const t = attestationRaw as Partial<SignedAttestation> | null;
-  if (
-    t === null ||
-    typeof t !== "object" ||
-    typeof t.canonical !== "string" ||
-    typeof t.signature !== "string" ||
-    t.manifest === undefined ||
-    t.manifest.slo === undefined ||
-    typeof t.manifest.slo.ok !== "boolean"
-  ) {
+  const t = gateAttestationShape.safeParse(attestationRaw);
+  if (!t.success) {
     return {
-      error:
-        "attestation.json is missing or malformed in a gate-relevant field — re-run prove",
+      error: `attestation.json is malformed in a gate-relevant field (${issuesOf(t.error)}) — re-run prove`,
     };
   }
   return {
-    analysis: a as OutcomeAnalysis,
-    attestation: t as SignedAttestation,
+    analysis: analysisRaw as OutcomeAnalysis,
+    attestation: attestationRaw as SignedAttestation,
   };
 }
 

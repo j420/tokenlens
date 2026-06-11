@@ -308,17 +308,14 @@ async function cmdMap(
     tokenBudget: cmd.tokenBudget,
     query: cmd.query ?? undefined,
   });
-  // The map IS the screen output; the file is the durable copy.
+  // The map IS the screen output; the file is the durable copy. Coverage
+  // caveats (truncation, budget floor, no-symbols) live in the artifact
+  // text itself — single source of truth, no second notice path to drift.
   io.out(artifact.text);
   const outPath = cmd.out ?? paths.repoMap;
   persistAtomic(outPath, artifact.text + "\n");
   io.out("");
   io.out(`wrote ${outPath}`);
-  if (!artifact.hasSymbols) {
-    io.out(
-      "note: no symbols indexed — see the artifact for the language-coverage limitation"
-    );
-  }
   return 0;
 }
 

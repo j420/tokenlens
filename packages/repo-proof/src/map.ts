@@ -33,6 +33,13 @@ export interface RepoMapArtifact {
   tokens: number;
   filesScanned: number;
   bytesScanned: number;
+  /** True when the scan stopped at the file/byte cap (partial coverage). */
+  scanTruncated: boolean;
+  /**
+   * True when even a one-symbol map exceeds the budget (the honest floor):
+   * `tokens` is the real measured size, larger than the requested budget.
+   */
+  exceedsBudget: boolean;
   /** False when no parseable sources were found (artifact explains why). */
   hasSymbols: boolean;
 }
@@ -72,7 +79,12 @@ function renderOutline(symbols: RankedSymbol[]): string {
 function header(
   repoRoot: string,
   generatedAt: string,
-  scan: { filesScanned: number; bytesScanned: number; totalSymbols: number },
+  scan: {
+    filesScanned: number;
+    bytesScanned: number;
+    totalSymbols: number;
+    truncated: boolean;
+  },
   fitted: { shown: number; available: number; tokens: number; budget: number },
   query: string | undefined
 ): string {
@@ -80,12 +92,16 @@ function header(
   L.push(`# Repo map — ${repoRoot}`);
   L.push("");
   L.push(
-    `Generated ${generatedAt} · ${scan.filesScanned} files scanned (${scan.bytesScanned} bytes) · ` +
-      `${scan.totalSymbols} symbols indexed`
+    `Generated ${generatedAt} · ${scan.filesScanned} files scanned (${scan.bytesScanned} bytes)` +
+      (scan.truncated ? " — **scan TRUNCATED at the file/byte cap; coverage is partial**" : "") +
+      ` · ${scan.totalSymbols} symbols indexed`
   );
   L.push(
     `Showing ${fitted.shown} of ${fitted.available} ranked symbols — fitted to a ` +
-      `${fitted.budget}-token budget (measured: ${fitted.tokens} tokens, local BPE count)`
+      `${fitted.budget}-token budget (measured: ${fitted.tokens} tokens, local BPE count)` +
+      (fitted.tokens > fitted.budget
+        ? " — **exceeds budget: minimum one-symbol map**"
+        : "")
   );
   L.push(
     `Ranking: PageRank over the symbol dependency graph` +
@@ -110,6 +126,7 @@ export async function buildRepoMapArtifact(
     filesScanned: map.filesScanned,
     bytesScanned: map.bytesScanned,
     totalSymbols: map.symbols.length,
+    truncated: map.truncated,
   };
 
   if (ranked.length === 0) {
@@ -126,6 +143,8 @@ export async function buildRepoMapArtifact(
       tokens: countTokens(text).tokens,
       filesScanned: scan.filesScanned,
       bytesScanned: scan.bytesScanned,
+      scanTruncated: scan.truncated,
+      exceedsBudget: false,
       hasSymbols: false,
     };
   }
@@ -167,6 +186,8 @@ export async function buildRepoMapArtifact(
     tokens: bodyTokens,
     filesScanned: scan.filesScanned,
     bytesScanned: scan.bytesScanned,
+    scanTruncated: scan.truncated,
+    exceedsBudget: bodyTokens > tokenBudget,
     hasSymbols: true,
   };
 }

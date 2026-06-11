@@ -104,6 +104,13 @@ export interface RepoMap {
   graph: SymbolGraph;
   filesScanned: number;
   bytesScanned: number;
+  /**
+   * True when the walk stopped at maxFiles/maxBytes: the map covers a
+   * PREFIX of the repo, not all of it. Consumers must be able to tell
+   * "scanned exactly N files" apart from "hit the cap at N" — rendering a
+   * capped scan as a complete one would overclaim coverage.
+   */
+  truncated: boolean;
 }
 
 export async function indexRepo(
@@ -135,6 +142,7 @@ export async function indexRepo(
     graph,
     filesScanned: state.files,
     bytesScanned: state.bytes,
+    truncated: state.files >= maxFiles || state.bytes >= maxBytes,
   };
 }
 

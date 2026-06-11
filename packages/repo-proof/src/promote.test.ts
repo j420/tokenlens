@@ -155,13 +155,25 @@ describe("parseGateInputs", () => {
       42,
       {},
       { ...a, wilcoxon: { ...a.wilcoxon, pValue: null } }, // the JSON-null trap
+      { ...a, wilcoxon: null }, // null OBJECT (typeof null === "object" trap)
+      { ...a, nonInferiority: null },
+      { ...a, power: null },
+      { ...a, power: {} }, // present but field-less
       { ...a, fixtureData: "no" },
       { ...a, nonInferiority: undefined },
+      { ...a, wilcoxon: { ...a.wilcoxon, pValue: Number.NaN } }, // non-finite
     ]) {
       const r = parseGateInputs(broken, t);
-      expect(r).toHaveProperty("error");
+      expect(r, JSON.stringify(broken)?.slice(0, 80)).toHaveProperty("error");
     }
-    for (const broken of [null, {}, { ...t, canonical: 7 }, { ...t, manifest: {} }]) {
+    for (const broken of [
+      null,
+      {},
+      { ...t, canonical: 7 },
+      { ...t, manifest: {} },
+      { ...t, manifest: null }, // null OBJECT again
+      { ...t, manifest: { ...t.manifest, slo: null } },
+    ]) {
       const r = parseGateInputs(a, broken);
       expect(r).toHaveProperty("error");
     }

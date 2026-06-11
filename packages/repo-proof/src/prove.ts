@@ -167,24 +167,21 @@ class StopLossAbort extends Error {
  * logged (it happened and was paid for); the NEXT trial never starts.
  */
 class StopLossRunner implements TrialRunner {
-  /** Records seen so far (prior + completed); spend is summed incrementally. */
+  /** Records seen so far (prior + completed). */
   private readonly seen: TrialRecord[];
   pendingAbort: StopLossCheck | null = null;
 
   constructor(
-    inner: TrialRunner,
+    private readonly inner: TrialRunner,
     priorRecords: TrialRecord[],
     private readonly budgetUsd: number
   ) {
-    this.inner = inner;
     this.seen = [...priorRecords];
     // Prior records from a resumed run go through the same wire immediately:
     // a log already over budget (or already poisoned) must refuse to resume.
     const prior = checkStopLoss(this.seen, budgetUsd);
     if (!prior.ok) this.pendingAbort = prior;
   }
-
-  private readonly inner: TrialRunner;
 
   async runTrial(spec: TrialSpec): Promise<TrialRecord> {
     if (this.pendingAbort) {

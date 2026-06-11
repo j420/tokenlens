@@ -67,11 +67,28 @@ describe("buildRepoMapArtifact", () => {
     expect(tight.tokens).toBeLessThanOrEqual(60);
     expect(tight.symbolCount).toBeLessThan(generous.symbolCount);
     // A budget below even ONE symbol's line still yields a one-symbol map —
-    // the documented honest floor (never an empty shell) — and the header
-    // reports the real measured size, which may exceed the budget.
+    // the documented honest floor (never an empty shell) — flagged both
+    // programmatically and in the header text.
     const tiny = await buildRepoMapArtifact(repo, { tokenBudget: 1 });
     expect(tiny.symbolCount).toBe(1);
     expect(tiny.tokens).toBeGreaterThan(1); // measured truthfully, not clamped
+    expect(tiny.exceedsBudget).toBe(true);
+    expect(tiny.text).toContain("exceeds budget: minimum one-symbol map");
+    expect(tight.exceedsBudget).toBe(false);
+  });
+
+  it("flags a truncated scan instead of presenting partial coverage as complete", async () => {
+    // maxFiles isn't exposed through the artifact options, so exercise the
+    // upstream flag directly: indexRepo must report truncation at the cap.
+    const { indexRepo } = await import("@prune/repo-map");
+    const capped = await indexRepo(repo, { maxFiles: 1 });
+    expect(capped.truncated).toBe(true);
+    const full = await indexRepo(repo);
+    expect(full.truncated).toBe(false);
+    // And the artifact surfaces it: a non-truncated scan never shows the flag.
+    const a = await buildRepoMapArtifact(repo, { tokenBudget: 512 });
+    expect(a.scanTruncated).toBe(false);
+    expect(a.text).not.toContain("TRUNCATED");
   });
 
   it("personalizes ranking toward a query", async () => {
