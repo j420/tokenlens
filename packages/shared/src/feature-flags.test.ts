@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_TCRP_FLAGS,
+  TCRP_FEATURE_IDS,
+  TCRP_FEATURE_NAMES,
   isFeatureEnabled,
   isFeatureInShadow,
   resolveFeatureId,
@@ -15,11 +17,11 @@ describe("TCRP feature flags", () => {
       expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, "f5")).toBe(true);
     });
 
-    it("keeps F1-F4, F6, and the F7-F19 features in shadow (not user-visible)", () => {
+    it("keeps F1-F4, F6, and the F7-F20 features in shadow (not user-visible)", () => {
       for (const id of [
         "f1", "f2", "f3", "f4", "f6",
         "f7", "f8", "f9", "f10", "f11", "f12", "f13",
-        "f14", "f15", "f16", "f17", "f18", "f19",
+        "f14", "f15", "f16", "f17", "f18", "f19", "f20",
       ] as const) {
         expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, id)).toBe(false);
         expect(isFeatureInShadow(DEFAULT_TCRP_FLAGS, id)).toBe(true);
@@ -27,13 +29,15 @@ describe("TCRP feature flags", () => {
     });
 
     it("defines a state + name for every id in TCRP_FEATURE_IDS (no gaps)", () => {
-      for (const id of [
-        "f1", "f2", "f3", "f4", "f5", "f6", "f7",
-        "f8", "f9", "f10", "f11", "f12", "f13",
-        "f14", "f15", "f16", "f17", "f18", "f19",
-      ] as const) {
+      // Exhaustive over the registry itself, so adding an id without a
+      // default state or name can never pass silently.
+      for (const id of TCRP_FEATURE_IDS) {
         expect(DEFAULT_TCRP_FLAGS.features[id]).toBeDefined();
+        expect(TCRP_FEATURE_NAMES[id]).toBeTruthy();
       }
+      expect(Object.keys(DEFAULT_TCRP_FLAGS.features).sort()).toEqual(
+        [...TCRP_FEATURE_IDS].sort()
+      );
     });
   });
 

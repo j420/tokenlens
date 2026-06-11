@@ -103,6 +103,10 @@
       {
         "command": "prune.installHooks",
         "title": "Prune: Install Claude Code Hooks"
+      },
+      {
+        "command": "prune.repoProof",
+        "title": "Prune: Repo Proof (f20) — status / mine / prove"
       }
     ],
     "configuration": {

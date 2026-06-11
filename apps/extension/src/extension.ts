@@ -220,7 +220,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("prune.disableFeature", disableFeatureCommand),
     vscode.commands.registerCommand("prune.enableFeature", enableFeatureCommand),
     vscode.commands.registerCommand("prune.listFeatures", listFeaturesCommand),
-    vscode.commands.registerCommand("prune.installHooks", () => installHooksCommand(context))
+    vscode.commands.registerCommand("prune.installHooks", () => installHooksCommand(context)),
+    vscode.commands.registerCommand("prune.repoProof", repoProofCommand)
   );
 
   // Register URI handler for dashboard -> IDE interaction
@@ -1663,6 +1664,31 @@ async function listFeaturesCommand(): Promise<void> {
   outputChannel.appendLine(`Flag file: ${FLAG_PATH}`);
   for (const line of lines) outputChannel.appendLine(line);
   outputChannel.show(true);
+}
+
+/**
+ * f20 repo-proof launcher. The proof lifecycle is a long-running,
+ * spend-capable CLI job, so the extension deliberately does NOT embed it:
+ * it opens an integrated terminal running `prune-proof status` (always free)
+ * and leaves mine/verify/prove/promote to be typed there, where output is
+ * live and Ctrl+C works. Spend still requires the CLI's explicit --budget.
+ */
+function repoProofCommand(): void {
+  try {
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+      vscode.window.showWarningMessage("Prune Repo Proof: open a folder first.");
+      return;
+    }
+    const terminal = vscode.window.createTerminal("Prune Repo Proof");
+    terminal.show();
+    terminal.sendText(`npx prune-proof status --repo "${workspaceRoot}"`, true);
+    vscode.window.showInformationMessage(
+      "Repo Proof: status opened in the terminal. Next: mine → verify → prove --budget <usd> → promote (prove is the only step that spends)."
+    );
+  } catch (e) {
+    logError("repoProofCommand failed", e);
+  }
 }
 
 async function installHooksCommand(context: vscode.ExtensionContext): Promise<void> {

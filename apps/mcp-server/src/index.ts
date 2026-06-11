@@ -88,6 +88,7 @@ import {
   handleAntiSynergy,
   handleCacheReconcile,
 } from "./value-tools.js";
+import { handleRepoProofStatus } from "./repo-proof-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
 // ============================================================================
@@ -2197,6 +2198,25 @@ const TOOLS = [
       required: [],
     },
   },
+  {
+    name: "repo_proof_status",
+    description:
+      "f20 repo-proof: read-only proof state for a target repository — mined-candidate " +
+      "and task counts, three-state verification verdicts, trial-log summary, the " +
+      "promotion gate decision, freshly RE-verified attestation, and repo-local flag " +
+      "provenance (why each promoted feature is enabled). Mutating stages " +
+      "(mine/verify/prove/promote) are operator-only via the prune-proof CLI.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        repoRoot: {
+          type: "string" as const,
+          description: "Absolute path to the repository the proof targets.",
+        },
+      },
+      required: ["repoRoot"],
+    },
+  },
 ];
 
 // ============================================================================
@@ -3660,6 +3680,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "cache_reconcile":
         result = handleCacheReconcile(args);
+        break;
+      case "repo_proof_status":
+        result = handleRepoProofStatus(args);
         break;
       case "tool_audit":
         result = handleToolAudit(

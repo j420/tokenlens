@@ -4,14 +4,14 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **69-workspace monorepo** (66 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **70-workspace monorepo** (67 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
 **What ships today, beyond the original extension:**
 
 - **TCRP feature library (f1–f13 + Phase-8 Tier-1):** trajectory diet, tool-def auditing, semantic cache, QpD bench, context health, lazy-schema MCP proxy, what-if replay-cost, skill library, speculative tool pipeline, plus the five Phase-8 features (tool-result pruner, max_tokens calibrator, diff-vs-rewrite enforcer, reasoning-effort router, open-tab auditor). See **TCRP Feature Map** below.
-- **MCP tool surface (70 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
+- **MCP tool surface (71 tools):** `apps/mcp-server` exposes the feature library as MCP tools for AI self-regulation.
 - **Hooks system:** `apps/extension/hooks/*.mjs` — Claude Code lifecycle hooks (advisors, recorders, breakers, forwarders) with a flag system and an auto-installer.
 - **Persistence + telemetry:** local SQLite + a real Postgres sink (`@prune/persistence`), with open-standard exporters (OpenTelemetry GenAI + FOCUS FinOps).
   - **Known limitation (tracked follow-up #1):** the event schema's `estimated_cost_usd` column is `number` (non-nullable), and two hooks coerce an unknown cost with `?? 0` (`cache-habits-advisor.mjs`, `cost-guard.mjs`). So an UNPRICED-model event is persisted as `$0`, indistinguishable from a genuinely-free one — a dashboard `SUM(estimated_cost)` under-counts true spend. The package-level discipline is honest (unknown model ⇒ `null`); the masking is only at the telemetry boundary. Fix = make `estimatedCostUsd` `number | null` end-to-end (`feature-event.ts` + `EventRow` + SQLite/Postgres bindings + the two hook masks + persistence tests) so the dashboards never show a fabricated `$0`. Deferred as its own focused change (touches ~141 persistence tests).
@@ -52,8 +52,8 @@ tokenlens/
 │   │   │   └── prune-intelligence.ts # v2 engine: symbol-level DAG analysis
 │   │   └── hooks/             # Claude Code lifecycle hooks (.mjs) + flags + installer
 │   ├── dashboard/              # Next.js web dashboard + telemetry read-side
-│   └── mcp-server/             # MCP server: 70 tools for AI self-regulation
-├── packages/                   # 66 workspaces — grouped by role below
+│   └── mcp-server/             # MCP server: 71 tools for AI self-regulation
+├── packages/                   # 67 workspaces — grouped by role below
 │   # --- Core / foundation ---
 │   ├── shared/                 # Shared types + STRICT pricing (unknown model → null)
 │   ├── tokenizer/              # Local token counting (OpenAI + Anthropic)
@@ -64,6 +64,7 @@ tokenlens/
 │   ├── equivalence/            # Output-equivalence relations (gate for cost transforms)
 │   ├── quality/                # Statistical non-inferiority testing for TCRP
 │   ├── outcome-bench/          # Benchmark v2: paired A/B outcome benchmark (oracle-graded, zero-spend dry-run)
+│   ├── repo-proof/             # f20 — evidence-gated repo-local proof + flag promotion (prune-proof CLI)
 │   # --- TCRP features f1–f13 ---
 │   ├── trajectory-diet/        # f1  — low-influence retrieval-step advisor
 │   ├── tab-auditor/            # (Phase-8) IDE open-tab relevance auditor
@@ -160,12 +161,13 @@ fail-safe, and never fabricate a token/cost number.
 | **f18** Clearing-Price Controller | `clearing-price` | One PID-paced price λ every actuator bids against (`act iff qualityGain ≥ λ·tokenCost`); null quote ⇒ no-op. The coordinator the actuators bid into. |
 | **f19** WasteBench + Attestations | `wastebench` | Counterfactual net-savings accounting (overhead subtracted), reflexive overhead SLO, Ed25519-signed tamper-evident manifests. |
 | **(f12)** Cross-Session Prefix Warm | `prefix-warm` | TTL-aware prompt-cache prefix warming (keep-alive / prime decisions + read-discount savings); completes cross-session reuse alongside the skill library. |
+| **f20** Repo-Proof | `repo-proof` | Evidence-gated, repo-local outcome proof: mines SWE-bench-style tasks from the target repo's history (prompts human-curated), three-state-verifies them, runs the outcome-bench paired matrix under an explicit budget, and promotes flags `shadow → general` for that repo only on a passing Ed25519-attested proof. Surfaces: `prune-proof` CLI bin, `prune.repoProof` extension command (terminal launcher), `repo_proof_status` MCP tool (read-only). |
 
 ---
 
 ## MCP Tool Surface
 
-`apps/mcp-server` registers 70 tools (names from `src/index.ts` / `src/tcrp-tools.ts` / `src/value-tools.ts`),
+`apps/mcp-server` registers 71 tools (names from `src/index.ts` / `src/tcrp-tools.ts` / `src/value-tools.ts` / `src/repo-proof-tools.ts`),
 including: `analyze_context`, `squeeze_files`, `check_budget`, `cache_report`,
 `cache_copilot`, `cache_habits`, `loop_status`, `routing_suggestion`,
 `routing_decide`, `diff_context`, `diff_vs_rewrite`, `slo_define` / `slo_check` /
@@ -186,7 +188,7 @@ The full List1/List2/List3 value/economics/paradigm lever set is also MCP-expose
 `allowance_market` (F15), `futures_desk` (F16), `bounty_evaluate` (F17), `batch_route`,
 `prefix_align`, `ttl_regression_check`, `retry_reframe_advise` (F5), `ci_fix_context` (F6),
 `fleet_cache` (F7), `marginal_value` (F8), `cache_poison_check` (F21), `anti_synergy_check`
-(G1/G2/G3), `cache_reconcile` (U3).
+(G1/G2/G3), `cache_reconcile` (U3), `repo_proof_status` (f20, read-only).
 
 Some tools are **caller-fed**: they require typed inputs (e.g. a proposed-action
 diff) that a Claude Code hook payload doesn't carry; `@prune/host-adapters`
