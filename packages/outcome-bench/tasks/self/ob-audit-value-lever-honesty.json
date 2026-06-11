@@ -1,0 +1,28 @@
+{
+  "taskId": "ob-audit-value-lever-honesty",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "a495019759bcbb1dd7dfbeaeabae9f2c7bf9f80f",
+  "testRefCommit": "6834c8007370f028a8787ba4a04f7b8594572efc",
+  "testPaths": [
+    "packages/allowance-market/src/market.test.ts",
+    "packages/bounty/src/bounty.test.ts",
+    "packages/price-tag/src/price-tag.test.ts",
+    "packages/task-ledger/src/ledger.test.ts",
+    "packages/waterbed/src/gate.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/allowance-market --filter=@prune/bounty --filter=@prune/price-tag --filter=@prune/task-ledger --filter=@prune/waterbed"
+  ],
+  "prompt": "An audit across the deterministic value-lever packages found correctness and honesty bugs in @prune/allowance-market, @prune/bounty, @prune/price-tag, @prune/task-ledger, and @prune/waterbed. Each package has updated tests; some currently fail. Fix every finding so all five packages' updated suites pass.",
+  "oracleCmd": "(cd packages/allowance-market && npx vitest run src/market.test.ts) && (cd packages/bounty && npx vitest run src/bounty.test.ts) && (cd packages/price-tag && npx vitest run src/price-tag.test.ts) && (cd packages/task-ledger && npx vitest run src/ledger.test.ts) && (cd packages/waterbed && npx vitest run src/gate.test.ts)",
+  "oracleCwd": ".",
+  "intentClass": "refactor",
+  "referenceCommit": "6834c8007370f028a8787ba4a04f7b8594572efc",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: fix audit findings batch 1+2 2026-06-07, restricted to the five packages with paired impl+test changes. Wide-but-shallow cross-package task."
+}

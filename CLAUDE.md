@@ -4,7 +4,7 @@
 
 ## What is this project
 
-TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **68-workspace monorepo** (65 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
+TokenLens (internally: Prune) started as an extension for AI coding assistants (Cursor, Claude Code, OpenAI Codex) that gives developers real-time visibility into token usage, and has grown into a **69-workspace monorepo** (66 `packages/*` + 3 `apps/*`) implementing a full **Token-Cost Reduction Program (TCRP)**. It works with any VS Code-based editor and is provider-neutral. It solves the invisible token burn problem — developers have zero visibility into what they're spending, where the waste is, and what they're about to spend — and then actively reduces that spend.
 
 **The core philosophy:** Help developers reduce token consumption while maintaining the same context quality. Make every token count.
 
@@ -53,7 +53,7 @@ tokenlens/
 │   │   └── hooks/             # Claude Code lifecycle hooks (.mjs) + flags + installer
 │   ├── dashboard/              # Next.js web dashboard + telemetry read-side
 │   └── mcp-server/             # MCP server: 70 tools for AI self-regulation
-├── packages/                   # 65 workspaces — grouped by role below
+├── packages/                   # 66 workspaces — grouped by role below
 │   # --- Core / foundation ---
 │   ├── shared/                 # Shared types + STRICT pricing (unknown model → null)
 │   ├── tokenizer/              # Local token counting (OpenAI + Anthropic)
@@ -63,6 +63,7 @@ tokenlens/
 │   ├── telemetry/              # Telemetry event types / recording path
 │   ├── equivalence/            # Output-equivalence relations (gate for cost transforms)
 │   ├── quality/                # Statistical non-inferiority testing for TCRP
+│   ├── outcome-bench/          # Benchmark v2: paired A/B outcome benchmark (oracle-graded, zero-spend dry-run)
 │   # --- TCRP features f1–f13 ---
 │   ├── trajectory-diet/        # f1  — low-influence retrieval-step advisor
 │   ├── tab-auditor/            # (Phase-8) IDE open-tab relevance auditor

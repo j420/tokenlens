@@ -1,0 +1,25 @@
+{
+  "taskId": "ob-equivalence-semantic-safety",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "2d882435e4c21efe4724dd6d2dc6f548a9e6c1b7",
+  "testRefCommit": "48ec0489d3345f666bbfaf1781b74926038a3dc4",
+  "testPaths": [
+    "packages/equivalence/src/equivalence.test.ts",
+    "packages/equivalence/src/semantic-safety.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/equivalence"
+  ],
+  "prompt": "The AST output-equivalence relation in @prune/equivalence is semantically blind in several cases: code transforms that actually change behavior are still judged equivalent. The package's test suite currently has failing tests covering these cases. Fix the equivalence logic so behavior-changing transforms are no longer considered equivalent, choosing the safer default where the relation cannot be sure.",
+  "oracleCmd": "npx vitest run src/equivalence.test.ts src/semantic-safety.test.ts",
+  "oracleCwd": "packages/equivalence",
+  "intentClass": "debug",
+  "referenceCommit": "48ec0489d3345f666bbfaf1781b74926038a3dc4",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: tcrp harden AST equivalence (5 semantic-blindness bugs) 2026-06-01."
+}

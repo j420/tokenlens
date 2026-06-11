@@ -1,0 +1,24 @@
+{
+  "taskId": "ob-speculative-cache-write-safety",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "48ec0489d3345f666bbfaf1781b74926038a3dc4",
+  "testRefCommit": "9cc8e9a67c4cf1b788e86a9b39bf8f40c050ad5e",
+  "testPaths": [
+    "packages/intelligence/src/speculative-cache.safety.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/intelligence"
+  ],
+  "prompt": "In @prune/intelligence, the speculative action cache misclassifies some write-capable commands as safe to serve from cache, and its freshness logic can serve stale entries. Fix the write-capability misclassification and make the freshness check sound. The package's test suite currently has failing safety tests specifying the expected behavior.",
+  "oracleCmd": "npx vitest run src/speculative-cache.safety.test.ts",
+  "oracleCwd": "packages/intelligence",
+  "intentClass": "debug",
+  "referenceCommit": "9cc8e9a67c4cf1b788e86a9b39bf8f40c050ad5e",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: tcrp harden F3 (write-capable command misclassification + freshness soundness) 2026-06-01."
+}

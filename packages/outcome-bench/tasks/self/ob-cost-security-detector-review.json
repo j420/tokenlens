@@ -1,0 +1,25 @@
+{
+  "taskId": "ob-cost-security-detector-review",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "2e625f70bd6549c3bbbb55e21898cfd58fb01d9e",
+  "testRefCommit": "1297dd066bbaf5100b89910d16b9e04a027afd6c",
+  "testPaths": [
+    "packages/cost-security/src/tool-error.test.ts",
+    "packages/intelligence/src/identical-action.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/cost-security --filter=@prune/intelligence"
+  ],
+  "prompt": "A critical review of the cost-security detectors found correctness bugs in two places: the tool-error-rate breaker in @prune/cost-security, and the identical-action loop detector in @prune/intelligence. Both packages have failing tests specifying the corrected behavior; fix both detectors.",
+  "oracleCmd": "(cd packages/cost-security && npx vitest run src/tool-error.test.ts) && (cd packages/intelligence && npx vitest run src/identical-action.test.ts)",
+  "oracleCwd": ".",
+  "intentClass": "debug",
+  "referenceCommit": "1297dd066bbaf5100b89910d16b9e04a027afd6c",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: fix(cost-security) critical-review fixes 2026-06-07. Two-package debug task."
+}

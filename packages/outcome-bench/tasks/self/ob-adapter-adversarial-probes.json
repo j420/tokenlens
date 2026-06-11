@@ -1,0 +1,24 @@
+{
+  "taskId": "ob-adapter-adversarial-probes",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "5422b997eebb67d322c50fe25c9e916889aa5933",
+  "testRefCommit": "1d5a6134c861b2a2c0fe5d956f4899ac62ef18d9",
+  "testPaths": [
+    "packages/agent-sdk-adapter/src/edge-cases-2.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/agent-sdk-adapter"
+  ],
+  "prompt": "Adversarial probing of @prune/agent-sdk-adapter exposed several real edge-case bugs across input validation, message-apply semantics, cache-planner behavior, and client robustness. The package's test suite currently has a failing edge-case suite specifying the expected behavior; fix the underlying bugs.",
+  "oracleCmd": "npx vitest run src/edge-cases-2.test.ts",
+  "oracleCwd": "packages/agent-sdk-adapter",
+  "intentClass": "debug",
+  "referenceCommit": "1d5a6134c861b2a2c0fe5d956f4899ac62ef18d9",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: tcrp adapter adversarial-probe edge cases (5 real fixes) 2026-06-01. Larger task: reference adds validate.ts (+226)."
+}

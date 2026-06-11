@@ -1,0 +1,26 @@
+{
+  "taskId": "ob-cache-habits-transport-rules",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "1297dd066bbaf5100b89910d16b9e04a027afd6c",
+  "testRefCommit": "885d74a17e0fff48b2d411e8e998d9503eea6939",
+  "testPaths": [
+    "packages/cache-habits/src/rules.test.ts",
+    "packages/cache-habits/src/edge-cases.test.ts",
+    "packages/cache-habits/src/linter.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/cache-habits"
+  ],
+  "prompt": "Add two new cache-habit rules to @prune/cache-habits: CH-013 flags a stateful-to-stateless transport regression (a session that had been on a stateful transport reverting to stateless full re-sends), and CH-014 advises when a long-running stateless-transport session would benefit from switching to a stateful transport. Wire them into the linter so they surface like the existing rules. The package's test suite currently has failing tests specifying the exact expected behavior.",
+  "oracleCmd": "npx vitest run src/rules.test.ts src/edge-cases.test.ts src/linter.test.ts",
+  "oracleCwd": "packages/cache-habits",
+  "intentClass": "generate",
+  "referenceCommit": "885d74a17e0fff48b2d411e8e998d9503eea6939",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: feat(cache-habits) CH-013/CH-014 2026-06-07. Feature-against-test-spec; oracle restricted to the cache-habits package."
+}

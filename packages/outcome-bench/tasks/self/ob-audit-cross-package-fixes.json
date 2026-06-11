@@ -1,0 +1,26 @@
+{
+  "taskId": "ob-audit-cross-package-fixes",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "5d4a293c07300bf13cd3d778fe1ad2b285e31c31",
+  "testRefCommit": "e3145c7cd33608785174603ac332e08607597f89",
+  "testPaths": [
+    "packages/agent-sdk-adapter/src/invokers/openai.test.ts",
+    "packages/context-health/src/edge-cases.test.ts",
+    "packages/semantic-cache/src/edge-cases.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/agent-sdk-adapter --filter=@prune/context-health --filter=@prune/semantic-cache"
+  ],
+  "prompt": "An audit found real bugs in three packages: the OpenAI invoker in @prune/agent-sdk-adapter mishandles some responses, the effective-context-fullness computation in @prune/context-health breaks on edge-case inputs, and @prune/semantic-cache has cache-correctness bugs including in its lexical embedder. Each of the three packages has failing tests specifying the corrected behavior; fix all three.",
+  "oracleCmd": "(cd packages/agent-sdk-adapter && npx vitest run src/invokers/openai.test.ts) && (cd packages/context-health && npx vitest run src/edge-cases.test.ts) && (cd packages/semantic-cache && npx vitest run src/edge-cases.test.ts)",
+  "oracleCwd": ".",
+  "intentClass": "refactor",
+  "referenceCommit": "e3145c7cd33608785174603ac332e08607597f89",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: audit (4 real bugs) 2026-06-02, restricted to the three packages whose implementation changed. Cross-package navigation is the point of this task."
+}

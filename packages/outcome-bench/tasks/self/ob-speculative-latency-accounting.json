@@ -1,0 +1,25 @@
+{
+  "taskId": "ob-speculative-latency-accounting",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "dd1eb14d2ec4bc43e5dd1e8b6d024dac61db43bd",
+  "testRefCommit": "a22dbc3aae4fa3ee663775a6eb50dd327b969f53",
+  "testPaths": [
+    "packages/speculative-pipeline/src/host.test.ts",
+    "packages/speculative-pipeline/src/pipeline.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/speculative-pipeline"
+  ],
+  "prompt": "In @prune/speculative-pipeline, latency accounting on the default verify path is dishonest: the reported timings do not reflect what was actually executed on that path. Fix the accounting so reported latency is honest on the default path. The package's test suite currently has failing tests specifying the expected accounting.",
+  "oracleCmd": "npx vitest run src/host.test.ts src/pipeline.test.ts",
+  "oracleCwd": "packages/speculative-pipeline",
+  "intentClass": "debug",
+  "referenceCommit": "a22dbc3aae4fa3ee663775a6eb50dd327b969f53",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: fix(speculative-pipeline) HIGH-1 2026-06-03. Larger task: reference reworks host.ts (+304)."
+}

@@ -1,0 +1,32 @@
+{
+  "name": "@prune/outcome-bench",
+  "version": "0.1.0",
+  "description": "Benchmark v2 — outcomes, not tokens. Paired A/B harness that runs a real coding agent on oracle-graded tasks (revert-and-refix), with arm A naive and arm B TokenLens-governed, and reports task success rate alongside provider-reported token cost. Statistics from @prune/quality (Wilcoxon, NI, McNemar), accounting from @prune/telemetry + @prune/task-ledger (null-honest USD), attestation from @prune/wastebench. Dry-run mode replays canned fixture transcripts with zero model spend.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/quality": "0.1.0",
+    "@prune/repo-map": "0.1.0",
+    "@prune/shared": "0.1.0",
+    "@prune/task-ledger": "0.1.0",
+    "@prune/telemetry": "0.1.0",
+    "@prune/wastebench": "0.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

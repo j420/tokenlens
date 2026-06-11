@@ -1,0 +1,25 @@
+{
+  "taskId": "ob-adapter-idle-guard-delta-resend",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "9eac998d326670afec242bfa30198f4cdf9a1945",
+  "testRefCommit": "b6fee29f69e74fdcaddb5678b57076ca52cf3c1d",
+  "testPaths": [
+    "packages/agent-sdk-adapter/src/idle-guard.test.ts",
+    "packages/agent-sdk-adapter/src/delta-resend.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/agent-sdk-adapter"
+  ],
+  "prompt": "Add two cache-economics features to @prune/agent-sdk-adapter: (1) a session-idle cache guard that detects when a session has been idle long enough for its prompt-cache entries to have expired and plans accordingly, and (2) a delta cache-resend planner that re-sends only the delta beyond the still-cached prefix instead of the full context. Export both from the package index. The package's test suite currently has failing suites specifying the behavior.",
+  "oracleCmd": "npx vitest run src/idle-guard.test.ts src/delta-resend.test.ts",
+  "oracleCwd": "packages/agent-sdk-adapter",
+  "intentClass": "generate",
+  "referenceCommit": "b6fee29f69e74fdcaddb5678b57076ca52cf3c1d",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: agent-sdk-adapter N5+N2 2026-06-03. Two new modules (+476 impl lines) against test specs."
+}

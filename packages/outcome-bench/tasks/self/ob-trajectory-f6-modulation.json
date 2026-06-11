@@ -1,0 +1,25 @@
+{
+  "taskId": "ob-trajectory-f6-modulation",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "2053af646db92af72f120eb11c52961156f4b6ea",
+  "testRefCommit": "c4c02cb3a6f3b72a33d04ce15e82f45ad23eacd3",
+  "testPaths": [
+    "packages/context-health/src/state-reader.test.ts",
+    "packages/trajectory-diet/src/context-health-modulation.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/context-health --filter=@prune/trajectory-diet"
+  ],
+  "prompt": "Make @prune/trajectory-diet modulate its advice using context health: when effective context fullness is high, the diet should become more aggressive. This requires a state reader in @prune/context-health that exposes the current context-health state to other packages, and a modulation layer in @prune/trajectory-diet that consumes it. Export the new modules from each package index. Both packages have failing tests specifying the behavior.",
+  "oracleCmd": "(cd packages/context-health && npx vitest run src/state-reader.test.ts) && (cd packages/trajectory-diet && npx vitest run src/context-health-modulation.test.ts)",
+  "oracleCwd": ".",
+  "intentClass": "generate",
+  "referenceCommit": "c4c02cb3a6f3b72a33d04ce15e82f45ad23eacd3",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: trajectory-diet v2 (F6-aware modulation) 2026-06-02, restricted to the two library packages (MCP wiring excluded)."
+}
