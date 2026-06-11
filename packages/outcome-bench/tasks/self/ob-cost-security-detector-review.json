@@ -5,7 +5,7 @@
   "repoUrl": null,
   "baseCommit": "2e625f70bd6549c3bbbb55e21898cfd58fb01d9e",
   "testRefCommit": "1297dd066bbaf5100b89910d16b9e04a027afd6c",
-  "testPaths": [
+  "hiddenTestPaths": [
     "packages/cost-security/src/tool-error.test.ts",
     "packages/intelligence/src/identical-action.test.ts"
   ],
@@ -13,13 +13,14 @@
     "npm install",
     "npx turbo build --filter=@prune/cost-security --filter=@prune/intelligence"
   ],
-  "prompt": "A critical review of the cost-security detectors found correctness bugs in two places: the tool-error-rate breaker in @prune/cost-security, and the identical-action loop detector in @prune/intelligence. Both packages have failing tests specifying the corrected behavior; fix both detectors.",
-  "oracleCmd": "(cd packages/cost-security && npx vitest run src/tool-error.test.ts) && (cd packages/intelligence && npx vitest run src/identical-action.test.ts)",
+  "prompt": "Three correctness bugs in the cost-security detectors:\n\n1. @prune/cost-security tool-error-rate breaker: massive false positives. Per the tool_result contract, `is_error` is OMITTED on success and set only on failure — but the rate's denominator counts only TAGGED results, so it collapses to the error count: a session with 4 errors out of 104 calls reports a ~100% error rate. The denominator must be all results (absent tag = success); `insufficient_signal` is only for hosts that never tag anything.\n2. @prune/intelligence identical-action loop detector: it hard-blocks at the threshold, but the hook that consumes it is also registered on Stop, where a block FORCES the agent to continue — the opposite of breaking a loop — and 3 repetitions can be legitimate (re-reads). It should be advisory on live tool turns only and never fire on Stop.\n3. The canonical-key derivation in the same detector mis-identifies a shared acyclic sub-object (a DAG) as a cycle because the cycle guard uses a persistent seen-set instead of ancestor-only tracking, and its separator/sentinel literals contain raw NUL bytes. Distinct inputs sharing a sub-object must canonicalize distinctly, with printable-ASCII sentinels.",
+  "oracleCmd": "(cd packages/cost-security && npx vitest run) && (cd packages/intelligence && npx vitest run)",
   "oracleCwd": ".",
   "intentClass": "debug",
   "referenceCommit": "1297dd066bbaf5100b89910d16b9e04a027afd6c",
   "maxTurns": 60,
   "maxBudgetUsd": 3,
   "cutoffSafe": true,
-  "notes": "Reference: fix(cost-security) critical-review fixes 2026-06-07. Two-package debug task."
+  "notes": "Reference: fix(cost-security) critical-review fixes 2026-06-07. Two-package debug task.",
+  "difficulty": "15min-1hr"
 }

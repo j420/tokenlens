@@ -5,15 +5,21 @@
   "repoUrl": null,
   "baseCommit": "b60167b8dd8b9b1545c7ef3dc13d3ff32e066527",
   "testRefCommit": "f8c8d6594494ecabf777a564eb32c055da948583",
-  "testPaths": ["packages/tokenizer/src/anthropic.test.ts"],
-  "setupCmds": ["npm install", "npx turbo build --filter=@prune/tokenizer"],
-  "prompt": "In @prune/tokenizer, the Anthropic count cache can serve a cached token count for a DIFFERENT prompt: two distinct payloads can end up sharing the same cache key, so counts from unrelated earlier calls are returned. Fix the cache-key derivation so distinct payloads never collide while identical payloads still hit the cache. The package's test suite currently has a failing regression test specifying the behavior.",
-  "oracleCmd": "npx vitest run src/anthropic.test.ts",
+  "hiddenTestPaths": [
+    "packages/tokenizer/src/anthropic.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/tokenizer"
+  ],
+  "prompt": "The Anthropic token-count cache in @prune/tokenizer returns WRONG counts: two clearly different prompts can come back with the identical cached count of an unrelated earlier call. Observed behavior: change the content of a nested message field (e.g. the text inside messages[].content) and the reported token count does not change — the second call is served from the cache entry of the first. Counts must be cached per distinct payload: any change to nested message content must yield a different cache entry, while a byte-identical repeat payload still hits the cache.",
+  "oracleCmd": "npx vitest run",
   "oracleCwd": "packages/tokenizer",
   "intentClass": "debug",
   "referenceCommit": "f8c8d6594494ecabf777a564eb32c055da948583",
   "maxTurns": 40,
   "maxBudgetUsd": 2,
   "cutoffSafe": true,
-  "notes": "Reference: four-eyes review fix 2026-05-30, restricted to the tokenizer package (canonicalize() passed a keys array as JSON.stringify's property filter, stripping nested keys). Replaces the dropped ob-waterbed-usd-rounding task, whose reference regression test passed at base (verification caught it)."
+  "notes": "Reference: four-eyes review fix 2026-05-30, restricted to the tokenizer package (canonicalize() passed a keys array as JSON.stringify's property filter, stripping nested keys). Replaces the dropped ob-waterbed-usd-rounding task, whose reference regression test passed at base (verification caught it).",
+  "difficulty": "15min-1hr"
 }

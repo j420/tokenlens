@@ -5,7 +5,7 @@
   "repoUrl": "https://github.com/honojs/hono",
   "baseCommit": null,
   "testRefCommit": null,
-  "testPaths": [],
+  "hiddenTestPaths": [],
   "setupCmds": [],
   "prompt": "DRAFT — to be written from the curated fix-commit's message per tasks/external/README.md.",
   "oracleCmd": "echo draft && false",
@@ -15,5 +15,6 @@
   "maxTurns": 60,
   "maxBudgetUsd": 3,
   "cutoffSafe": false,
-  "notes": "Draft awaiting curation: pin a post-cutoff fix-commit with tests per the README procedure. The harness refuses drafts."
+  "notes": "Draft awaiting curation: pin a post-cutoff fix-commit with tests per the README procedure. The harness refuses drafts.",
+  "difficulty": null
 }

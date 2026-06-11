@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 /**
- * mine-tasks.mjs — propose revert-and-refix task candidates from git history.
+ * mine-tasks.mjs — propose SWE-bench-style task candidates from git history.
  *
  * A candidate is a non-merge commit that touches BOTH implementation files
- * and test files inside the same `packages/<pkg>/` workspace: reverting to
- * C~1 and re-applying C's test files yields a workspace where the new tests
- * fail and a known-achievable reference solution (C itself) exists.
+ * and test files inside the same `packages/<pkg>/` workspace: the agent
+ * works at C~1 (never seeing C's tests), C's test files become the hidden
+ * FAIL_TO_PASS patch applied at grading time, and a known-achievable
+ * reference solution (C itself) exists.
  *
  * Output: JSON lines, one candidate per line, for HUMAN curation into
  * `tasks/self/*.json` manifests. This script never writes a manifest itself —
- * prompts must be authored by a person so they describe the failing behavior
- * without leaking the oracle or the reference diff.
+ * prompts must be authored by a person, issue-style: they describe the
+ * observable failing behavior without leaking the oracle, the reference
+ * diff, or the existence of the hidden tests.
  *
  * Usage: node scripts/mine-tasks.mjs [--repo <root>] [--limit <n>]
  */

@@ -29,9 +29,27 @@ export const IntentClassSchema = z.enum([
 export type IntentClass = z.infer<typeof IntentClassSchema>;
 
 /**
+ * SWE-bench-style difficulty annotation: estimated time for an experienced
+ * developer (SWE-bench Verified buckets). null = not yet annotated.
+ */
+export const DifficultySchema = z.enum([
+  "<15min",
+  "15min-1hr",
+  "1-4hr",
+  ">4hr",
+]);
+export type Difficulty = z.infer<typeof DifficultySchema>;
+
+/**
  * A ready task pins every input needed to reproduce a trial. A draft task
  * (external corpus awaiting curation) may leave commits null — drafts are
  * never runnable and never fabricate a SHA.
+ *
+ * SWE-bench parity: the agent sees only `prompt` (issue-style symptom
+ * description) and the workspace at `baseCommit`. `hiddenTestPaths` is the
+ * FAIL_TO_PASS test patch — applied at GRADING time, never present while the
+ * agent works. `oracleCmd` runs the involved packages' FULL suites, so the
+ * pre-existing tests double as PASS_TO_PASS regression checks.
  */
 export const TaskManifestSchema = z
   .object({
@@ -42,13 +60,21 @@ export const TaskManifestSchema = z
     repoUrl: z.string().nullable(),
     /** Commit the workspace is created at (the broken state, typically C~1). */
     baseCommit: z.string().nullable(),
-    /** Commit whose TEST files are applied on top (typically C). */
+    /** Commit whose TEST files are applied at grading time (typically C). */
     testRefCommit: z.string().nullable(),
-    /** Repo-relative test files applied from `testRefCommit`. */
-    testPaths: z.array(z.string()),
+    /**
+     * Repo-relative FAIL_TO_PASS test files from `testRefCommit`. Hidden from
+     * the agent: applied (overwriting any agent edits to those paths) only
+     * when the oracle is run.
+     */
+    hiddenTestPaths: z.array(z.string()),
     /** Commands run once in the fresh workspace before the agent starts. */
     setupCmds: z.array(z.string()),
-    /** The natural-language ask given to the agent. Never names the oracle. */
+    /**
+     * The natural-language ask given to the agent, written like a GitHub
+     * issue: observable symptoms / required behavior, never "make the
+     * failing tests pass" and never the fix itself.
+     */
     prompt: z.string().min(1),
     /** Machine-checkable success oracle, run with cwd = `oracleCwd`. */
     oracleCmd: z.string().min(1),
@@ -57,6 +83,7 @@ export const TaskManifestSchema = z
     intentClass: IntentClassSchema,
     /** The known-achievable reference solution (commit C). */
     referenceCommit: z.string().nullable(),
+    difficulty: DifficultySchema.nullable(),
     maxTurns: z.number().int().positive(),
     maxBudgetUsd: z.number().positive(),
     /**

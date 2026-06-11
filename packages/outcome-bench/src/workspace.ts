@@ -1,6 +1,12 @@
 /**
- * Trial workspaces: fresh git worktree at the broken commit, with the
- * reference commit's TEST files applied on top (revert-and-refix).
+ * Trial workspaces and SWE-bench-style grading.
+ *
+ * The agent's workspace is a fresh git worktree at the BROKEN commit, with no
+ * trace of the reference tests — exactly what SWE-bench gives a model (the
+ * issue text plus the repo before the fix). The FAIL_TO_PASS test patch is
+ * applied only at grading time, overwriting any agent edits to those paths,
+ * and the oracle then runs the involved packages' full suites so pre-existing
+ * tests double as PASS_TO_PASS regression checks.
  *
  * Planning is PURE (argv arrays in, no side effects) so the exact commands a
  * trial will run are testable and auditable; `execPlan` is the thin impure
@@ -16,9 +22,6 @@ export interface WorkspacePlanInput {
   /** Absolute path the worktree will be created at. */
   worktreeDir: string;
   baseCommit: string;
-  testRefCommit: string;
-  /** Repo-relative test files applied from `testRefCommit`. */
-  testPaths: string[];
 }
 
 export interface CommandPlan {
@@ -26,32 +29,53 @@ export interface CommandPlan {
   commands: string[][];
 }
 
+/**
+ * The agent-visible workspace: the broken commit, nothing else. Hidden test
+ * files are deliberately NOT applied here.
+ */
 export function planCreateWorkspace(input: WorkspacePlanInput): CommandPlan {
-  const { repoRoot, worktreeDir, baseCommit, testRefCommit, testPaths } = input;
-  const commands: string[][] = [
-    [
-      "git",
-      "-C",
-      repoRoot,
-      "worktree",
-      "add",
-      "--detach",
-      worktreeDir,
-      baseCommit,
+  const { repoRoot, worktreeDir, baseCommit } = input;
+  return {
+    commands: [
+      [
+        "git",
+        "-C",
+        repoRoot,
+        "worktree",
+        "add",
+        "--detach",
+        worktreeDir,
+        baseCommit,
+      ],
     ],
-  ];
-  if (testPaths.length > 0) {
-    commands.push([
-      "git",
-      "-C",
-      worktreeDir,
-      "checkout",
-      testRefCommit,
-      "--",
-      ...testPaths,
-    ]);
-  }
-  return { commands };
+  };
+}
+
+/**
+ * Grading-time application of the hidden FAIL_TO_PASS tests. `git checkout`
+ * overwrites the working-tree paths unconditionally, so an agent that edited
+ * or tautologized a file at one of these paths is silently reset — the
+ * reference tests, not the agent, decide the outcome.
+ */
+export function planApplyHiddenTests(
+  worktreeDir: string,
+  testRefCommit: string,
+  hiddenTestPaths: string[]
+): CommandPlan {
+  if (hiddenTestPaths.length === 0) return { commands: [] };
+  return {
+    commands: [
+      [
+        "git",
+        "-C",
+        worktreeDir,
+        "checkout",
+        testRefCommit,
+        "--",
+        ...hiddenTestPaths,
+      ],
+    ],
+  };
 }
 
 export function planRemoveWorkspace(
@@ -114,4 +138,34 @@ export function runOracle(
     return { outcome: "fail", exitCode: r.status ?? null };
   }
   return { outcome: "pass", exitCode: 0 };
+}
+
+export interface GradeInput {
+  worktreeDir: string;
+  testRefCommit: string;
+  hiddenTestPaths: string[];
+  oracleCmd: string;
+  /** Workspace-relative cwd for the oracle. */
+  oracleCwd: string;
+  timeoutMs?: number;
+}
+
+/**
+ * Full grading sequence: pin the hidden tests, then run the oracle. A failure
+ * to apply the test patch grades as `fail` (never silently passes).
+ */
+export function gradeWorkspace(input: GradeInput): OracleResult {
+  const applied = execPlan(
+    planApplyHiddenTests(
+      input.worktreeDir,
+      input.testRefCommit,
+      input.hiddenTestPaths
+    )
+  );
+  if (!applied.ok) return { outcome: "fail", exitCode: null };
+  const cwd =
+    input.oracleCwd === "." || input.oracleCwd === ""
+      ? input.worktreeDir
+      : `${input.worktreeDir}/${input.oracleCwd}`;
+  return runOracle(input.oracleCmd, cwd, input.timeoutMs);
 }

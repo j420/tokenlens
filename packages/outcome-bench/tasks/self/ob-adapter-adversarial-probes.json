@@ -5,20 +5,21 @@
   "repoUrl": null,
   "baseCommit": "5422b997eebb67d322c50fe25c9e916889aa5933",
   "testRefCommit": "1d5a6134c861b2a2c0fe5d956f4899ac62ef18d9",
-  "testPaths": [
+  "hiddenTestPaths": [
     "packages/agent-sdk-adapter/src/edge-cases-2.test.ts"
   ],
   "setupCmds": [
     "npm install",
     "npx turbo build --filter=@prune/agent-sdk-adapter"
   ],
-  "prompt": "Adversarial probing of @prune/agent-sdk-adapter exposed several real edge-case bugs across input validation, message-apply semantics, cache-planner behavior, and client robustness. The package's test suite currently has a failing edge-case suite specifying the expected behavior; fix the underlying bugs.",
-  "oracleCmd": "npx vitest run src/edge-cases-2.test.ts",
+  "prompt": "Several boundary bugs in @prune/agent-sdk-adapter produce silent dollar leaks or wire-level provider errors:\n\n1. The cache planner accepts nonsense maxBreakpoints: Infinity yields 8 breakpoints (the provider hard-caps at 4 and errors), NaN and -1 silently yield 0.\n2. Two semantically identical tool input_schemas that differ only in object key insertion order ({a,b} vs {b,a}) serialize to different wire bytes, so the provider's prompt cache (which hashes wire bytes) misses on every turn — a silent cache-economics leak. Wire JSON must be byte-identical regardless of how the caller constructed the schema objects (nested objects too; arrays must keep order; cyclic inputs must not hang).\n3. No boundary validation: an unknown provider id (\"fake-provider\") sails through, a negative maxOutputTokens is forwarded to guaranteed provider rejection, and cyclic metadata crashes serialization.\n\nFix all three areas with clear, early errors for invalid inputs.",
+  "oracleCmd": "npx vitest run",
   "oracleCwd": "packages/agent-sdk-adapter",
   "intentClass": "debug",
   "referenceCommit": "1d5a6134c861b2a2c0fe5d956f4899ac62ef18d9",
   "maxTurns": 80,
   "maxBudgetUsd": 5,
   "cutoffSafe": true,
-  "notes": "Reference: tcrp adapter adversarial-probe edge cases (5 real fixes) 2026-06-01. Larger task: reference adds validate.ts (+226)."
+  "notes": "Reference: tcrp adapter adversarial-probe edge cases (5 real fixes) 2026-06-01. Larger task: reference adds validate.ts (+226).",
+  "difficulty": "1-4hr"
 }

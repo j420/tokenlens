@@ -5,7 +5,7 @@
   "repoUrl": null,
   "baseCommit": "2053af646db92af72f120eb11c52961156f4b6ea",
   "testRefCommit": "c4c02cb3a6f3b72a33d04ce15e82f45ad23eacd3",
-  "testPaths": [
+  "hiddenTestPaths": [
     "packages/context-health/src/state-reader.test.ts",
     "packages/trajectory-diet/src/context-health-modulation.test.ts"
   ],
@@ -13,13 +13,14 @@
     "npm install",
     "npx turbo build --filter=@prune/context-health --filter=@prune/trajectory-diet"
   ],
-  "prompt": "Make @prune/trajectory-diet modulate its advice using context health: when effective context fullness is high, the diet should become more aggressive. This requires a state reader in @prune/context-health that exposes the current context-health state to other packages, and a modulation layer in @prune/trajectory-diet that consumes it. Export the new modules from each package index. Both packages have failing tests specifying the behavior.",
-  "oracleCmd": "(cd packages/context-health && npx vitest run src/state-reader.test.ts) && (cd packages/trajectory-diet && npx vitest run src/context-health-modulation.test.ts)",
+  "prompt": "Make @prune/trajectory-diet modulate its advice by context health (f6): when effective context fullness degrades, the diet should advise more aggressively.\n\n1. In @prune/context-health add `src/state-reader.ts` (exported from the index) with `statePathFor(transcriptPath)` — a deterministic state-file path for a given transcript — and `readPersistedRegime(transcriptPath)` returning the persisted CUSUM regime (\"healthy\" | \"warning\" | \"critical\") or \"insufficient_data\" for an empty path, a missing file, corrupt JSON, a missing cusum block, or an unknown regime value. Never throw.\n\n2. In @prune/trajectory-diet add `src/context-health-modulation.ts` (exported from the index) with `modulateAdvisorOptions(baseOptions, regime)`, a `REGIME_MODULATION` table, and `THRESHOLD_CEILING = 0.5`: \"healthy\" and \"insufficient_data\" leave the baseline advisor options untouched; \"warning\" raises the confidence threshold 1.5× and keeps the redundancy-signal requirement; \"critical\" raises it 2.5× and drops the redundancy requirement; any raised threshold is clamped to the ceiling. Pure function — never mutate the input options.",
+  "oracleCmd": "(cd packages/context-health && npx vitest run) && (cd packages/trajectory-diet && npx vitest run)",
   "oracleCwd": ".",
   "intentClass": "generate",
   "referenceCommit": "c4c02cb3a6f3b72a33d04ce15e82f45ad23eacd3",
   "maxTurns": 80,
   "maxBudgetUsd": 5,
   "cutoffSafe": true,
-  "notes": "Reference: trajectory-diet v2 (F6-aware modulation) 2026-06-02, restricted to the two library packages (MCP wiring excluded)."
+  "notes": "Reference: trajectory-diet v2 (F6-aware modulation) 2026-06-02, restricted to the two library packages (MCP wiring excluded).",
+  "difficulty": "1-4hr"
 }

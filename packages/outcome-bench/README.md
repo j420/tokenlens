@@ -8,13 +8,19 @@ tokens provider-reported, statistics pre-registered.
 
 ## Design
 
-- **Tasks (20):** revert-and-refix. Each task pins a real commit `C` that
-  fixed/added something WITH tests; the workspace is a fresh worktree at
-  `C~1` with `C`'s test files applied (tests fail); the oracle is the test
-  command (exit 0 = success). No human grading, no LLM judging. 12 tasks are
-  mined from this repo's history (`tasks/self/`, all `ready`); 8 external
-  tasks are committed as `draft` until commits are pinned post-cutoff
-  (`tasks/external/README.md` documents the procedure — no fabricated SHAs).
+- **Tasks (20), SWE-bench-parity semantics.** Each task pins a real commit
+  `C` that fixed/added something WITH tests. Like a SWE-bench instance, the
+  agent gets only an issue-style prompt (observable symptoms / required
+  behavior) and a fresh worktree at `C~1` — `C`'s test files
+  (`hiddenTestPaths`, the FAIL_TO_PASS patch) are applied at **grading time
+  only**, overwriting any agent edits to those paths, and the oracle then
+  runs the involved packages' FULL suites so pre-existing tests double as
+  PASS_TO_PASS regression checks (exit 0 = success). No human grading, no
+  LLM judging. Difficulty is annotated per task in SWE-bench Verified's
+  human-time buckets. 12 tasks are mined from this repo's history
+  (`tasks/self/`, all `ready`); 8 external tasks are committed as `draft`
+  until commits are pinned post-cutoff (`tasks/external/README.md` documents
+  the procedure — no fabricated SHAs).
 - **Arms:** `naive` = headless Claude Code alone. `governed` = identical
   invocation + TokenLens: read-gate (f16) and observation-mask (f15) hooks
   promoted to `general` in the workspace's project settings, plus a

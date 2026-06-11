@@ -5,7 +5,7 @@
   "repoUrl": null,
   "baseCommit": "dd1eb14d2ec4bc43e5dd1e8b6d024dac61db43bd",
   "testRefCommit": "a22dbc3aae4fa3ee663775a6eb50dd327b969f53",
-  "testPaths": [
+  "hiddenTestPaths": [
     "packages/speculative-pipeline/src/host.test.ts",
     "packages/speculative-pipeline/src/pipeline.test.ts"
   ],
@@ -13,13 +13,14 @@
     "npm install",
     "npx turbo build --filter=@prune/speculative-pipeline"
   ],
-  "prompt": "In @prune/speculative-pipeline, latency accounting on the default verify path is dishonest: the reported timings do not reflect what was actually executed on that path. Fix the accounting so reported latency is honest on the default path. The package's test suite currently has failing tests specifying the expected accounting.",
-  "oracleCmd": "npx vitest run src/host.test.ts src/pipeline.test.ts",
+  "prompt": "@prune/speculative-pipeline overstates latency savings on its DEFAULT path. The default sync-verify flow awaits a fresh shadow execution on the critical path before serving a speculative hit, yet reports the speculation's own elapsed time as `latencySavedMs` — the caller actually waited for the shadow run, so net saved latency is ~0. The overclaim flows into quality proofs and the dashboard's \"latency saved\" card.\n\nRequired accounting:\n- The pipeline layer should report the speculation's elapsed as a clearly-labeled GROSS potential (rename `ReconcileOutcome.latencySavedMs` → `speculativeElapsedMs`, `PipelineStats.totalLatencySavedMs` → `totalSpeculativeElapsedMs`).\n- `SpeculativeHost.resolve` reports NET savings per serve mode: sync-verify (default) → `latencySavedMs = max(0, gross − shadowElapsedMs)` with result source \"verified-no-latency-saved\" and the gross carried separately in `speculativeElapsedMs`; a new opt-in async-serve mode → serves immediately (gross genuinely saved), verifies out of band, records mismatches, source \"speculative-hit-async\"; verifyBeforeServe=false keeps full credit as today.",
+  "oracleCmd": "npx vitest run",
   "oracleCwd": "packages/speculative-pipeline",
   "intentClass": "debug",
   "referenceCommit": "a22dbc3aae4fa3ee663775a6eb50dd327b969f53",
   "maxTurns": 80,
   "maxBudgetUsd": 5,
   "cutoffSafe": true,
-  "notes": "Reference: fix(speculative-pipeline) HIGH-1 2026-06-03. Larger task: reference reworks host.ts (+304)."
+  "notes": "Reference: fix(speculative-pipeline) HIGH-1 2026-06-03. Larger task: reference reworks host.ts (+304).",
+  "difficulty": "1-4hr"
 }

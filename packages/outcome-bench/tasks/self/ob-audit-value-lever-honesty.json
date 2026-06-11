@@ -5,7 +5,7 @@
   "repoUrl": null,
   "baseCommit": "a495019759bcbb1dd7dfbeaeabae9f2c7bf9f80f",
   "testRefCommit": "6834c8007370f028a8787ba4a04f7b8594572efc",
-  "testPaths": [
+  "hiddenTestPaths": [
     "packages/allowance-market/src/market.test.ts",
     "packages/bounty/src/bounty.test.ts",
     "packages/price-tag/src/price-tag.test.ts",
@@ -16,13 +16,14 @@
     "npm install",
     "npx turbo build --filter=@prune/allowance-market --filter=@prune/bounty --filter=@prune/price-tag --filter=@prune/task-ledger --filter=@prune/waterbed"
   ],
-  "prompt": "An audit across the deterministic value-lever packages found correctness and honesty bugs in @prune/allowance-market, @prune/bounty, @prune/price-tag, @prune/task-ledger, and @prune/waterbed. Each package has updated tests; some currently fail. Fix every finding so all five packages' updated suites pass.",
-  "oracleCmd": "(cd packages/allowance-market && npx vitest run src/market.test.ts) && (cd packages/bounty && npx vitest run src/bounty.test.ts) && (cd packages/price-tag && npx vitest run src/price-tag.test.ts) && (cd packages/task-ledger && npx vitest run src/ledger.test.ts) && (cd packages/waterbed && npx vitest run src/gate.test.ts)",
+  "prompt": "An audit of the deterministic value-lever packages found number-honesty bugs; all five must hold the repo's discipline that an unknown/garbage quantity is null (insufficient data), never a fabricated or non-finite number:\n\n1. @prune/bounty: a submission with NaN or Infinity costUsd is accepted and poisons the sort comparator — the WINNER becomes nondeterministic. A non-finite costUsd must be treated as unpriced (token basis) so selection stays deterministic.\n2. @prune/allowance-market: a fractional allowance envelope plus the integer remainder loop OVER-allocates: allocate(100.5, ...) hands out 101 units, leaking past the cap. The cap must be exact.\n3. @prune/waterbed: occurrences × unit price can overflow to Infinity and leak out as a numeric induced-cost field; a non-finite induced cost must poison the verdict to insufficient_data (null).\n4. @prune/price-tag and @prune/task-ledger: token-count × rate can overflow at astronomical counts and leak Infinity as a cost; non-finite results must become null and mark the cost incomplete.",
+  "oracleCmd": "(cd packages/allowance-market && npx vitest run) && (cd packages/bounty && npx vitest run) && (cd packages/price-tag && npx vitest run) && (cd packages/task-ledger && npx vitest run) && (cd packages/waterbed && npx vitest run)",
   "oracleCwd": ".",
   "intentClass": "refactor",
   "referenceCommit": "6834c8007370f028a8787ba4a04f7b8594572efc",
   "maxTurns": 80,
   "maxBudgetUsd": 5,
   "cutoffSafe": true,
-  "notes": "Reference: fix audit findings batch 1+2 2026-06-07, restricted to the five packages with paired impl+test changes. Wide-but-shallow cross-package task."
+  "notes": "Reference: fix audit findings batch 1+2 2026-06-07, restricted to the five packages with paired impl+test changes. Wide-but-shallow cross-package task.",
+  "difficulty": "1-4hr"
 }

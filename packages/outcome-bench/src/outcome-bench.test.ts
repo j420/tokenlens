@@ -14,9 +14,10 @@ import { loadManifestDir, runnableTasks } from "./manifest.js";
 import { priceUsage, readTrialUsage, totalOf } from "./accounting.js";
 import {
   planCreateWorkspace,
+  planApplyHiddenTests,
   planRemoveWorkspace,
   execPlan,
-  runOracle,
+  gradeWorkspace,
 } from "./workspace.js";
 import { planArmSetup, GOVERNED_FLAGS } from "./arm-setup.js";
 import { briefEligibility, renderBrief } from "./brief.js";
@@ -147,21 +148,26 @@ describe("accounting", () => {
 // ============================================================================
 
 describe("workspace", () => {
-  it("plans worktree-add + test-file checkout as auditable argv arrays", () => {
+  it("plans an agent workspace with NO trace of the hidden tests", () => {
     const plan = planCreateWorkspace({
       repoRoot: "/repo",
       worktreeDir: "/tmp/wt",
       baseCommit: "abc",
-      testRefCommit: "def",
-      testPaths: ["pkg/src/x.test.ts"],
     });
     expect(plan.commands).toEqual([
       ["git", "-C", "/repo", "worktree", "add", "--detach", "/tmp/wt", "abc"],
-      ["git", "-C", "/tmp/wt", "checkout", "def", "--", "pkg/src/x.test.ts"],
     ]);
   });
 
-  it("executes the revert-and-refix layout on a real temp repo", () => {
+  it("plans hidden-test application as an auditable argv array", () => {
+    const plan = planApplyHiddenTests("/tmp/wt", "def", ["pkg/src/x.test.ts"]);
+    expect(plan.commands).toEqual([
+      ["git", "-C", "/tmp/wt", "checkout", "def", "--", "pkg/src/x.test.ts"],
+    ]);
+    expect(planApplyHiddenTests("/tmp/wt", "def", []).commands).toEqual([]);
+  });
+
+  it("hides the tests from the agent and grades SWE-bench-style on a real temp repo", () => {
     const repo = join(dir, "mini-repo");
     mkdirSync(repo, { recursive: true });
     const git = (...args: string[]) => {
@@ -189,23 +195,39 @@ describe("workspace", () => {
 
     const wt = join(dir, "mini-wt");
     const created = execPlan(
-      planCreateWorkspace({
-        repoRoot: repo,
-        worktreeDir: wt,
-        baseCommit: base,
-        testRefCommit: ref,
-        testPaths: ["check.test.txt"],
-      })
+      planCreateWorkspace({ repoRoot: repo, worktreeDir: wt, baseCommit: base })
     );
     expect(created.ok).toBe(true);
-    // The workspace has the BROKEN impl but the NEW test — revert-and-refix.
-    expect(existsSync(join(wt, "check.test.txt"))).toBe(true);
+    // The agent sees the BROKEN impl and NO reference test (SWE-bench parity).
+    expect(existsSync(join(wt, "check.test.txt"))).toBe(false);
     const impl = spawnSync("cat", [join(wt, "impl.txt")], { encoding: "utf8" });
     expect(impl.stdout).toBe("broken\n");
 
-    // Oracle wiring: exit 0 = pass, non-zero = fail.
-    expect(runOracle("grep -q fixed impl.txt", wt).outcome).toBe("fail");
-    expect(runOracle("grep -q broken impl.txt", wt).outcome).toBe("pass");
+    // Grading applies the hidden test, then runs the oracle: the unfixed
+    // workspace fails (FAIL_TO_PASS is real)…
+    const grade = (oracleCmd: string) =>
+      gradeWorkspace({
+        worktreeDir: wt,
+        testRefCommit: ref,
+        hiddenTestPaths: ["check.test.txt"],
+        oracleCmd,
+        oracleCwd: ".",
+      });
+    expect(grade("grep -q fixed impl.txt").outcome).toBe("fail");
+    expect(existsSync(join(wt, "check.test.txt"))).toBe(true);
+
+    // …an agent tampering with the hidden-test path is overwritten at the
+    // next grading (the reference tests decide, not the agent)…
+    writeFileSync(join(wt, "check.test.txt"), "tautology\n");
+    grade("true");
+    const pinned = spawnSync("cat", [join(wt, "check.test.txt")], {
+      encoding: "utf8",
+    });
+    expect(pinned.stdout).toBe("expects fixed\n");
+
+    // …and the "agent" fixing the impl makes the same oracle pass.
+    writeFileSync(join(wt, "impl.txt"), "fixed\n");
+    expect(grade("grep -q fixed impl.txt").outcome).toBe("pass");
 
     expect(execPlan(planRemoveWorkspace(repo, wt)).ok).toBe(true);
   });
