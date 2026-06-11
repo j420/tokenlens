@@ -55,6 +55,7 @@
     "@prune/futures-desk": "0.1.0",
     "@prune/host-adapters": "0.1.0",
     "@prune/intelligence": "0.1.0",
+    "@prune/knowledge": "0.1.0",
     "@prune/known-knowledge": "0.1.0",
     "@prune/lsp-graph": "0.1.0",
     "@prune/marginal-value": "0.1.0",

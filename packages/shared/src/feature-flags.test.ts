@@ -21,7 +21,7 @@ describe("TCRP feature flags", () => {
       for (const id of [
         "f1", "f2", "f3", "f4", "f6",
         "f7", "f8", "f9", "f10", "f11", "f12", "f13",
-        "f14", "f15", "f16", "f17", "f18", "f19", "f20",
+        "f14", "f15", "f16", "f17", "f18", "f19", "f20", "f21", "f22",
       ] as const) {
         expect(isFeatureEnabled(DEFAULT_TCRP_FLAGS, id)).toBe(false);
         expect(isFeatureInShadow(DEFAULT_TCRP_FLAGS, id)).toBe(true);
@@ -69,6 +69,8 @@ describe("TCRP feature flags", () => {
       expect(resolveFeatureId("clearingPrice")).toBe("f18");
       expect(resolveFeatureId("wasteBench")).toBe("f19");
       expect(resolveFeatureId("repoProof")).toBe("f20");
+      expect(resolveFeatureId("knowledgeCompiler")).toBe("f21");
+      expect(resolveFeatureId("assetStore")).toBe("f22");
     });
 
     it("returns undefined for unknown ids", () => {

@@ -89,6 +89,13 @@ import {
   handleCacheReconcile,
 } from "./value-tools.js";
 import { handleRepoProofStatus } from "./repo-proof-tools.js";
+import {
+  handleKnowledgeCompile,
+  handleMemoryGet,
+  handleMemorySearch,
+  handleMemoryStore,
+  handleMemoryValidate,
+} from "./knowledge-tools.js";
 import { recordToolFeatureEventBestEffort } from "./feature-telemetry.js";
 
 // ============================================================================
@@ -2199,6 +2206,82 @@ const TOOLS = [
     },
   },
   {
+    name: "knowledge_compile",
+    description:
+      "f21 Repository Knowledge Compiler: (re)compiles the repo into a deterministic, " +
+      "content-SHA-keyed knowledge asset (symbols, dependency edges, CODEOWNERS ownership, " +
+      "churn signals) under .prune/knowledge/. Incremental when a prior asset exists. " +
+      "Reports truncation and skipped CODEOWNERS lines honestly.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { repoRoot: { type: "string" as const } },
+      required: ["repoRoot"],
+    },
+  },
+  {
+    name: "memory_search",
+    description:
+      "f22 Verified Repo Memory: deterministic token-overlap search over the repo's " +
+      "knowledge entries. Provenance is re-validated at read time — stale entries are " +
+      "excluded unless includeStale, and always labeled.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        repoRoot: { type: "string" as const },
+        query: { type: "string" as const },
+        limit: { type: "number" as const },
+        includeStale: { type: "boolean" as const },
+      },
+      required: ["repoRoot", "query"],
+    },
+  },
+  {
+    name: "memory_get",
+    description:
+      "f22 Verified Repo Memory: retrieve one entry by content hash. Validity is " +
+      "re-checked NOW; a stale entry is only returned with includeStale and is labeled " +
+      "with exactly which source files changed.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        repoRoot: { type: "string" as const },
+        id: { type: "string" as const },
+        includeStale: { type: "boolean" as const },
+      },
+      required: ["repoRoot", "id"],
+    },
+  },
+  {
+    name: "memory_store",
+    description:
+      "f22 Verified Repo Memory: store a discovery WITH mandatory provenance " +
+      "(sourcePaths; SHAs are computed from the current tree, never caller-supplied). " +
+      "Writes are sentinel-screened (injection + secrets, fail-closed) and a new entry " +
+      "for the same key demotes the previous one (no contradictory truths).",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        repoRoot: { type: "string" as const },
+        key: { type: "string" as const, description: "Logical subject, e.g. auth/token-refresh" },
+        content: { type: "string" as const },
+        sourcePaths: { type: "array" as const, items: { type: "string" as const } },
+      },
+      required: ["repoRoot", "key", "content", "sourcePaths"],
+    },
+  },
+  {
+    name: "memory_validate",
+    description:
+      "f22 Verified Repo Memory: re-validate every entry's provenance against the " +
+      "current working tree; status flips (valid↔stale) are persisted. Returns fresh/" +
+      "stale counts and per-entry verdicts naming moved sources.",
+    inputSchema: {
+      type: "object" as const,
+      properties: { repoRoot: { type: "string" as const } },
+      required: ["repoRoot"],
+    },
+  },
+  {
     name: "repo_proof_status",
     description:
       "f20 repo-proof: read-only proof state for a target repository — mined-candidate " +
@@ -3683,6 +3766,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         break;
       case "repo_proof_status":
         result = handleRepoProofStatus(args);
+        break;
+      case "knowledge_compile":
+        result = handleKnowledgeCompile(args);
+        break;
+      case "memory_search":
+        result = handleMemorySearch(args);
+        break;
+      case "memory_get":
+        result = handleMemoryGet(args);
+        break;
+      case "memory_store":
+        result = handleMemoryStore(args);
+        break;
+      case "memory_validate":
+        result = handleMemoryValidate(args);
         break;
       case "tool_audit":
         result = handleToolAudit(
