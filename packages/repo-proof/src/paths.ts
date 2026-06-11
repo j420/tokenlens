@@ -26,8 +26,12 @@ export interface ProofPaths {
   analysis: string;
   /** SignedAttestation JSON from the last prove run. */
   attestation: string;
+  /** Prove run metadata (governed feature ids, abort label, model pins). */
+  proveMeta: string;
   /** Verbatim governed-arm context briefs, one file per task. */
   briefsDir: string;
+  /** Rendered repo-map artifact (`prune-proof map`). */
+  repoMap: string;
   /** Rendered markdown report. */
   report: string;
   /** PromotionRecord (written on pass AND fail). */
@@ -51,7 +55,9 @@ export function proofPaths(repoRoot: string): ProofPaths {
     trialLog: join(root, "trials.jsonl"),
     analysis: join(root, "analysis.json"),
     attestation: join(root, "attestation.json"),
+    proveMeta: join(root, "prove-meta.json"),
     briefsDir: join(root, "briefs"),
+    repoMap: join(root, "repo-map.md"),
     report: join(root, "report.md"),
     promotion: join(root, "promotion.json"),
     flagsFile: join(abs, ".prune", "feature-flags.json"),

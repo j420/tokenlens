@@ -67,6 +67,16 @@ describe("classifyFiles", () => {
     expect([...m.keys()]).toEqual(["packages"]);
   });
 
+  it("normalizes a prefix without a trailing slash (no sibling substring matches)", () => {
+    // Without normalization, prefix "packages" would substring-match
+    // "packages-extra/x.ts" into a phantom group "packages-extra".
+    const m = classifyFiles(
+      ["packages/foo/a.ts", "packages-extra/b.ts"],
+      { limit: 1, groupPrefixes: ["packages"] }
+    );
+    expect([...m.keys()].sort()).toEqual(["packages-extra", "packages/foo"]);
+  });
+
   it("default suffix/dir tables are used when none are supplied", () => {
     const m = classifyFiles(["a.test.ts", "lib/util.ts"], { limit: 1 });
     expect(m.get(".")?.tests).toEqual(["a.test.ts"]);

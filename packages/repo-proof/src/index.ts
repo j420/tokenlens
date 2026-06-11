@@ -13,6 +13,7 @@
 export * from "./types.js";
 export * from "./paths.js";
 export * from "./mine.js";
+export * from "./map.js";
 export * from "./verify.js";
 export * from "./prove.js";
 export * from "./promote.js";

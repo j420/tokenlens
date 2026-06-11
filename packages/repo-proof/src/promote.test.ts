@@ -16,6 +16,7 @@ import { proofPaths } from "./paths.js";
 import {
   evaluatePromoteGate,
   executePromotion,
+  parseGateInputs,
   planPromotion,
 } from "./promote.js";
 import { syntheticMatrix } from "./synthetic-records.js";
@@ -128,6 +129,42 @@ describe("evaluatePromoteGate", () => {
     const d = evaluatePromoteGate(analysis, attestation, { now: NOW });
     expect(d.checks.find((c) => c.id === "overheadSloPass")?.pass).toBe(false);
     expect(d.pass).toBe(false);
+  });
+});
+
+// ============================================================================
+// Gate-input validation (disk artifacts)
+// ============================================================================
+
+describe("parseGateInputs", () => {
+  it("accepts a real analysis+attestation pair (JSON round-trip safe)", () => {
+    const { analysis, attestation } = realPassingProof();
+    const r = parseGateInputs(
+      JSON.parse(JSON.stringify(analysis)),
+      JSON.parse(JSON.stringify(attestation))
+    );
+    expect("error" in r).toBe(false);
+  });
+
+  it("refuses corrupt/hand-edited artifacts with a typed error, never a TypeError", () => {
+    const { analysis, attestation } = realPassingProof();
+    const a = JSON.parse(JSON.stringify(analysis));
+    const t = JSON.parse(JSON.stringify(attestation));
+    for (const broken of [
+      null,
+      42,
+      {},
+      { ...a, wilcoxon: { ...a.wilcoxon, pValue: null } }, // the JSON-null trap
+      { ...a, fixtureData: "no" },
+      { ...a, nonInferiority: undefined },
+    ]) {
+      const r = parseGateInputs(broken, t);
+      expect(r).toHaveProperty("error");
+    }
+    for (const broken of [null, {}, { ...t, canonical: 7 }, { ...t, manifest: {} }]) {
+      const r = parseGateInputs(a, broken);
+      expect(r).toHaveProperty("error");
+    }
   });
 });
 

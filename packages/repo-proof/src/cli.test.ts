@@ -66,6 +66,25 @@ describe("parseArgs", () => {
     expect(parseArgs(["prove", "--repo", ".", "--budget", "--model"])).toHaveProperty("error");
   });
 
+  it("rejects an empty-string flag value (the unset-shell-variable trap)", () => {
+    // --repo "$VAR" with VAR unset must error, not resolve to cwd.
+    expect(parseArgs(["mine", "--repo", ""])).toHaveProperty("error");
+    expect(parseArgs(["map", "--repo", ".", "--query", ""])).toHaveProperty("error");
+  });
+
+  it("map parses with budget/query and validates --map-tokens", () => {
+    expect(parseArgs(["map", "--repo", "/r"])).toMatchObject({
+      kind: "map",
+      tokenBudget: 1024,
+      query: null,
+      out: null,
+    });
+    expect(parseArgs(["map", "--repo", "/r", "--map-tokens", "0"])).toHaveProperty("error");
+    expect(
+      parseArgs(["map", "--repo", "/r", "--map-tokens", "2048", "--query", "auth bug"])
+    ).toMatchObject({ kind: "map", tokenBudget: 2048, query: "auth bug" });
+  });
+
   it("status --json parses; defaults are explicit", () => {
     expect(parseArgs(["status", "--repo", "/r", "--json"])).toEqual({
       kind: "status",
@@ -322,8 +341,35 @@ process.exit(failed === 0 ? 0 : 1);
         }),
       }
     );
-    // worst case: 1 task × $0.5 × 2 trials × 2 arms = $2 > $0.5
-    expect(code).toBe(0); // honest refusal, not an error
+    // worst case: 1 task × $0.5 × 2 trials × 2 arms = $2 > $0.5.
+    // Exit 2 (honest refusal), distinct from success: `prove && promote`
+    // in a script must stop here instead of promoting stale artifacts.
+    expect(code).toBe(2);
     expect(lines.some((l) => l.includes("budget pre-flight refused"))).toBe(true);
+  });
+
+  it("map renders the repo floor plan on screen and persists it; status reports it", async () => {
+    // The e2e repo has lib.mjs/runner.mjs (.mjs is parseable JS) — write a
+    // small TS file too so the symbol graph has signatures to rank.
+    write(
+      "src/service.ts",
+      `export function loadUser(id: string): string { return helper(id); }
+export function helper(id: string): string { return "u:" + id; }
+`
+    );
+    reset();
+    const code = await run(["map", "--repo", repo, "--map-tokens", "256"], io);
+    expect(code).toBe(0);
+    const screen = lines.join("\n");
+    expect(screen).toContain("# Repo map —");
+    expect(screen).toContain("token budget");
+    expect(screen).toContain("loadUser"); // a real symbol, on screen
+    const paths = proofPaths(repo);
+    expect(existsSync(paths.repoMap)).toBe(true);
+
+    reset();
+    await run(["status", "--repo", repo, "--json"], io);
+    const state = JSON.parse(lines.join("\n"));
+    expect(state.repoMapPresent).toBe(true);
   });
 });

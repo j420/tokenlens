@@ -138,7 +138,16 @@ export interface RunThreeStateDeps {
   now?: () => string;
 }
 
-function runSetupCmd(cmd: string, cwd: string, timeoutMs: number): ExecResult {
+/**
+ * Run one shell command (setup steps from a task manifest). Shared by the
+ * three-state verifier and the live prove runner so spawn semantics
+ * (timeout, buffer cap, stderr truncation) can never drift between them.
+ */
+export function runShellCmd(
+  cmd: string,
+  cwd: string,
+  timeoutMs = 15 * 60 * 1000
+): ExecResult {
   const r = spawnSync(cmd, {
     shell: true,
     cwd,
@@ -194,7 +203,7 @@ export function runThreeState(
       }
       let setupOk = true;
       for (const cmd of state.setupCmds) {
-        const r = runSetupCmd(cmd, state.worktreeDir, setupTimeoutMs);
+        const r = runShellCmd(cmd, state.worktreeDir, setupTimeoutMs);
         if (!r.ok) {
           failures.push({
             state: state.state,

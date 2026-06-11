@@ -68,6 +68,7 @@ describe("TCRP feature flags", () => {
       expect(resolveFeatureId("programSlice")).toBe("f17");
       expect(resolveFeatureId("clearingPrice")).toBe("f18");
       expect(resolveFeatureId("wasteBench")).toBe("f19");
+      expect(resolveFeatureId("repoProof")).toBe("f20");
     });
 
     it("returns undefined for unknown ids", () => {

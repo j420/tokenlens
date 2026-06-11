@@ -52,9 +52,12 @@ export interface ProofState {
   }> | null;
   /** Verbatim brief artifacts persisted by prove (task ids). */
   briefs: string[];
+  /** True when a rendered repo-map artifact exists (`prune-proof map`). */
+  repoMapPresent: boolean;
 }
 
-function readJsonSafe(path: string): unknown | null {
+/** Parse a JSON file, returning null for missing/corrupt — never throws. */
+export function readJsonSafe(path: string): unknown | null {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
   } catch {
@@ -161,6 +164,7 @@ export function readProofState(repoRoot: string): ProofState {
     attestationVerify,
     flagProvenance,
     briefs,
+    repoMapPresent: existsSync(paths.repoMap),
   };
 }
 
@@ -186,6 +190,9 @@ export function renderStatusMd(
   );
   L.push(
     `- Candidates mined: ${state.candidates === null ? "mining has not run" : state.candidates}`
+  );
+  L.push(
+    `- Repo map: ${state.repoMapPresent ? "rendered (.prune/proof/repo-map.md)" : "not rendered — run \`prune-proof map\` (free)"}`
   );
   L.push("");
 

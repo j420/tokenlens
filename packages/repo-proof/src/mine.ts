@@ -115,7 +115,12 @@ export function classifyFiles(
 ): Map<string, { impl: string[]; tests: string[] }> {
   const suffixes = opts.testSuffixes ?? DEFAULT_TEST_SUFFIXES;
   const dirs = opts.testDirs ?? DEFAULT_TEST_DIRS;
-  const prefixes = opts.groupPrefixes ?? [];
+  // Normalize to directory prefixes: without the trailing slash, "packages"
+  // would substring-match the sibling "packages-foo/x.ts" into a phantom
+  // group.
+  const prefixes = (opts.groupPrefixes ?? []).map((p) =>
+    p.endsWith("/") ? p : p + "/"
+  );
   const byGroup = new Map<string, { impl: string[]; tests: string[] }>();
   for (const file of files) {
     if (file.length === 0) continue;

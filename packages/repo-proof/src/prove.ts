@@ -23,9 +23,10 @@
  * composed here but only the CLI ever constructs it with real spawn deps.
  */
 
-import { spawnSync } from "node:child_process";
 import { mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { countTokens } from "@prune/tokenizer";
+import { runShellCmd } from "./verify.js";
 import {
   ARMS,
   PRE_REGISTRATION,
@@ -120,6 +121,18 @@ export function checkStopLoss(
           "trial returned billedUsd: null under a USD budget — an unpriced model cannot be honestly metered; aborting rather than guessing",
       };
     }
+    // Fail-CLOSED on garbage: NaN poisons every later comparison (NaN > x is
+    // always false, silently disarming the wire) and a negative bill cannot
+    // be honest. A spend guard that can be disarmed by bad input is not a
+    // guard.
+    if (!Number.isFinite(r.billedUsd) || r.billedUsd < 0) {
+      return {
+        ok: false,
+        spentUsd: spent,
+        unpricedTrial: `${r.taskId}/${r.arm}/${r.trialIndex}`,
+        reason: `trial returned a non-finite or negative billedUsd (${r.billedUsd}) — the spend guard cannot meter this; aborting`,
+      };
+    }
     spent += r.billedUsd;
   }
   if (spent > budgetUsd) {
@@ -154,25 +167,36 @@ class StopLossAbort extends Error {
  * logged (it happened and was paid for); the NEXT trial never starts.
  */
 class StopLossRunner implements TrialRunner {
-  private readonly completed: TrialRecord[] = [];
+  /** Records seen so far (prior + completed); spend is summed incrementally. */
+  private readonly seen: TrialRecord[];
   pendingAbort: StopLossCheck | null = null;
 
   constructor(
-    private readonly inner: TrialRunner,
-    private readonly priorRecords: TrialRecord[],
+    inner: TrialRunner,
+    priorRecords: TrialRecord[],
     private readonly budgetUsd: number
-  ) {}
+  ) {
+    this.inner = inner;
+    this.seen = [...priorRecords];
+    // Prior records from a resumed run go through the same wire immediately:
+    // a log already over budget (or already poisoned) must refuse to resume.
+    const prior = checkStopLoss(this.seen, budgetUsd);
+    if (!prior.ok) this.pendingAbort = prior;
+  }
+
+  private readonly inner: TrialRunner;
 
   async runTrial(spec: TrialSpec): Promise<TrialRecord> {
     if (this.pendingAbort) {
       throw new StopLossAbort(this.pendingAbort);
     }
     const record = await this.inner.runTrial(spec);
-    this.completed.push(record);
-    const check = checkStopLoss(
-      [...this.priorRecords, ...this.completed],
-      this.budgetUsd
-    );
+    this.seen.push(record);
+    // checkStopLoss is O(n) but re-validates EVERY record's finiteness each
+    // time; n here is the trial count (≤ a few hundred), so the simplicity
+    // of one auditable function beats an incremental-sum micro-optimization
+    // that would skip re-validation.
+    const check = checkStopLoss(this.seen, this.budgetUsd);
     if (!check.ok) {
       this.pendingAbort = check;
     }
@@ -306,7 +330,7 @@ export async function runProve(
   );
   persistAtomic(opts.paths.report, reportMd);
   persistAtomic(
-    join(dirname(opts.paths.analysis), "prove-meta.json"),
+    opts.paths.proveMeta,
     JSON.stringify(
       {
         governedFeatureIds: opts.governedFeatureIds,
@@ -399,8 +423,10 @@ export function makeLiveRunner(opts: LiveRunnerOptions): TrialRunner {
         );
       }
       for (const cmd of task.setupCmds) {
-        const r = runShell(cmd, worktreeDir);
-        if (!r.ok) throw new Error(`setup failed [${cmd}]: ${r.detail}`);
+        const r = runShellCmd(cmd, worktreeDir);
+        if (!r.ok) {
+          throw new Error(`setup failed [${cmd}]: ${r.failure?.stderr ?? ""}`);
+        }
       }
       return worktreeDir;
     },
@@ -427,11 +453,7 @@ export function makeLiveRunner(opts: LiveRunnerOptions): TrialRunner {
         const brief = await buildContextBrief(workspaceDir, spec.task.prompt);
         if (brief.eligible) {
           prompt = `${brief.text}\n\n${spec.task.prompt}`;
-          // Conservative char→token bound (4 chars/token floor on the divisor
-          // side, i.e. an over-count of tokens). Overhead feeds the
-          // attestation's cost side, where rounding UP is the honest
-          // direction; the provider-reported totals carry the true cost.
-          overheadTokens = Math.ceil(brief.chars / 4);
+          overheadTokens = briefOverheadTokens(brief.text);
         }
         // Verbatim transparency artifact: the exact bytes injected, or the
         // reason none were.
@@ -457,19 +479,16 @@ export function makeLiveRunner(opts: LiveRunnerOptions): TrialRunner {
   });
 }
 
-function runShell(cmd: string, cwd: string): { ok: boolean; detail: string } {
-  const r = spawnSync(cmd, {
-    shell: true,
-    cwd,
-    encoding: "utf8",
-    timeout: 15 * 60 * 1000,
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (r.error || r.status !== 0) {
-    return {
-      ok: false,
-      detail: r.error ? String(r.error.message) : (r.stderr ?? "").slice(-2000),
-    };
-  }
-  return { ok: true, detail: "" };
+/**
+ * Tokens the governed arm's brief injection costs, for the attestation's
+ * OVERHEAD side. Counted with the local tokenizer (gpt-tokenizer BPE — a
+ * labeled local count, not a provider report) and then padded by 10%:
+ * provider tokenizers differ, and the overhead side must only ever err
+ * AGAINST the governance layer. Four-eyes finding: the previous chars/4
+ * estimate could UNDER-count (signature-dense text runs below 4 chars per
+ * token), flattering the SLO gate — the one direction this system promises
+ * never to err in.
+ */
+export function briefOverheadTokens(briefText: string): number {
+  return Math.ceil(countTokens(briefText).tokens * 1.1);
 }

@@ -20,7 +20,9 @@
   },
   "dependencies": {
     "@prune/outcome-bench": "0.1.0",
+    "@prune/repo-map": "0.1.0",
     "@prune/shared": "0.1.0",
+    "@prune/tokenizer": "0.1.0",
     "@prune/wastebench": "0.1.0",
     "zod": "^3.24.0"
   },

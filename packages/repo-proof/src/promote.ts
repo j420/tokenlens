@@ -41,6 +41,68 @@ import type {
 import { persistAtomic } from "./prove.js";
 
 // ============================================================================
+// Gate-input validation (artifacts read back from disk)
+// ============================================================================
+
+/**
+ * Structural check of exactly the fields the gate reads, so a corrupt or
+ * hand-edited analysis.json/attestation.json produces a typed REFUSAL
+ * ("re-run prove") instead of a TypeError inside the gate. Deliberately not
+ * a full schema: the gate must not silently depend on fields it never reads.
+ */
+export function parseGateInputs(
+  analysisRaw: unknown,
+  attestationRaw: unknown
+):
+  | { analysis: OutcomeAnalysis; attestation: SignedAttestation }
+  | { error: string } {
+  const a = analysisRaw as Partial<OutcomeAnalysis> | null;
+  const finite = (x: unknown): x is number =>
+    typeof x === "number" && Number.isFinite(x);
+  if (
+    a === null ||
+    typeof a !== "object" ||
+    typeof a.fixtureData !== "boolean" ||
+    typeof a.metricUsed !== "string" ||
+    a.wilcoxon === undefined ||
+    typeof a.wilcoxon.reject !== "boolean" ||
+    !finite(a.wilcoxon.pValue) ||
+    a.nonInferiority === undefined ||
+    typeof a.nonInferiority.reject !== "boolean" ||
+    !finite(a.nonInferiority.pValue) ||
+    a.preRegistration === undefined ||
+    !finite(a.preRegistration.alpha) ||
+    !finite(a.preRegistration.niMargin) ||
+    a.power === undefined ||
+    !(a.medianSavingsPct === null || finite(a.medianSavingsPct))
+  ) {
+    return {
+      error:
+        "analysis.json is missing or malformed in a gate-relevant field — re-run prove",
+    };
+  }
+  const t = attestationRaw as Partial<SignedAttestation> | null;
+  if (
+    t === null ||
+    typeof t !== "object" ||
+    typeof t.canonical !== "string" ||
+    typeof t.signature !== "string" ||
+    t.manifest === undefined ||
+    t.manifest.slo === undefined ||
+    typeof t.manifest.slo.ok !== "boolean"
+  ) {
+    return {
+      error:
+        "attestation.json is missing or malformed in a gate-relevant field — re-run prove",
+    };
+  }
+  return {
+    analysis: a as OutcomeAnalysis,
+    attestation: t as SignedAttestation,
+  };
+}
+
+// ============================================================================
 // Pure gate
 // ============================================================================
 

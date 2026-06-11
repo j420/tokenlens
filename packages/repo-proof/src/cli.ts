@@ -41,14 +41,14 @@ import {
 } from "./mine.js";
 import { applyVerdict, planThreeState, runThreeState } from "./verify.js";
 import { makeLiveRunner, persistAtomic, runProve } from "./prove.js";
+import { buildRepoMapArtifact } from "./map.js";
 import {
   evaluatePromoteGate,
   executePromotion,
+  parseGateInputs,
   planPromotion,
 } from "./promote.js";
-import { readProofState, renderStatusMd } from "./status.js";
-import type { OutcomeAnalysis } from "@prune/outcome-bench";
-import type { SignedAttestation } from "@prune/wastebench";
+import { readJsonSafe, readProofState, renderStatusMd } from "./status.js";
 
 // ============================================================================
 // Pure argument parsing
@@ -56,6 +56,7 @@ import type { SignedAttestation } from "@prune/wastebench";
 
 export type Command =
   | { kind: "mine"; repo: string; limit: number; groupPrefixes: string[]; oracleTemplate: string | null }
+  | { kind: "map"; repo: string; tokenBudget: number; query: string | null; out: string | null }
   | { kind: "verify"; repo: string; task: string | null; scratch: string | null }
   | { kind: "prove"; repo: string; budgetUsd: number; model: string; trials: number; hooksDir: string | null; workDir: string | null }
   | { kind: "promote"; repo: string; hooksDir: string | null }
@@ -67,10 +68,14 @@ export interface ParseError {
 
 const USAGE = `Usage:
   prune-proof mine    --repo <path> [--limit N] [--group-prefix P]... [--oracle-template T]
+  prune-proof map     --repo <path> [--map-tokens N] [--query TEXT] [--out FILE]
   prune-proof verify  --repo <path> [--task <id>] [--scratch <dir>]
   prune-proof prove   --repo <path> --budget <usd> [--model M] [--trials K] [--hooks-dir D] [--work-dir D]
   prune-proof promote --repo <path> [--hooks-dir D]
-  prune-proof status  --repo <path> [--json]`;
+  prune-proof status  --repo <path> [--json]
+
+Exit codes: 0 done · 1 usage/infrastructure error · 2 honest refusal/abort
+(budget pre-flight refused, stop-loss tripped) — chain with && safely.`;
 
 export function parseArgs(argv: string[]): Command | ParseError {
   const [kind, ...rest] = argv;
@@ -86,8 +91,10 @@ export function parseArgs(argv: string[]): Command | ParseError {
         continue;
       }
       const value = rest[i + 1];
-      if (value === undefined || value.startsWith("--")) {
-        return { error: `flag ${a} requires a value` };
+      if (value === undefined || value === "" || value.startsWith("--")) {
+        // "" guards the unset-shell-variable case: --repo "$VAR" with VAR
+        // empty must error, not silently resolve to the current directory.
+        return { error: `flag ${a} requires a non-empty value` };
       }
       flags.set(a, [...(flags.get(a) ?? []), value]);
       i++;
@@ -127,6 +134,22 @@ export function parseArgs(argv: string[]): Command | ParseError {
         limit,
         groupPrefixes: flags.get("--group-prefix") ?? [],
         oracleTemplate: one("--oracle-template"),
+      };
+    }
+    case "map": {
+      const bad = known(["--repo", "--map-tokens", "--query", "--out"]);
+      if (bad) return bad;
+      const budgetRaw = one("--map-tokens") ?? "1024";
+      const tokenBudget = Number(budgetRaw);
+      if (!Number.isInteger(tokenBudget) || tokenBudget <= 0) {
+        return { error: `--map-tokens must be a positive integer, got "${budgetRaw}"` };
+      }
+      return {
+        kind: "map",
+        repo,
+        tokenBudget,
+        query: one("--query"),
+        out: one("--out"),
       };
     }
     case "verify": {
@@ -276,6 +299,29 @@ async function cmdMine(
   return 0;
 }
 
+async function cmdMap(
+  cmd: Extract<Command, { kind: "map" }>,
+  io: CliIo
+): Promise<number> {
+  const paths = proofPaths(cmd.repo);
+  const artifact = await buildRepoMapArtifact(paths.repoRoot, {
+    tokenBudget: cmd.tokenBudget,
+    query: cmd.query ?? undefined,
+  });
+  // The map IS the screen output; the file is the durable copy.
+  io.out(artifact.text);
+  const outPath = cmd.out ?? paths.repoMap;
+  persistAtomic(outPath, artifact.text + "\n");
+  io.out("");
+  io.out(`wrote ${outPath}`);
+  if (!artifact.hasSymbols) {
+    io.out(
+      "note: no symbols indexed — see the artifact for the language-coverage limitation"
+    );
+  }
+  return 0;
+}
+
 async function cmdVerify(
   cmd: Extract<Command, { kind: "verify" }>,
   io: CliIo
@@ -395,10 +441,11 @@ async function cmdProve(
     io.out(`wrote ${paths.attestation}`);
     io.out(`wrote ${paths.report}`);
   }
-  // An aborted run is still exit 0 when the abort was the HONEST outcome
-  // (budget refusal / stop-loss): the tool did its job. Only infra errors
-  // (thrown) produce exit 1, via the run() catch.
-  return 0;
+  // Exit-code contract (four-eyes finding): an honest refusal/abort is exit
+  // 2, NOT 0 — `prove && promote` in a script must stop on a refused prove
+  // instead of promoting whatever artifacts a PRIOR run left behind. Exit 1
+  // stays reserved for usage/infrastructure errors (the run() catch).
+  return result.aborted === null ? 0 : 2;
 }
 
 async function cmdPromote(
@@ -407,13 +454,20 @@ async function cmdPromote(
   deps: CliDeps
 ): Promise<number> {
   const paths = proofPaths(cmd.repo);
-  const analysisRaw = readJson(paths.analysis);
-  const attestationRaw = readJson(paths.attestation);
+  const analysisRaw = readJsonSafe(paths.analysis);
+  const attestationRaw = readJsonSafe(paths.attestation);
   if (analysisRaw === null || attestationRaw === null) {
     io.err("no proof artifacts (analysis.json / attestation.json); run prove first");
     return 1;
   }
-  const metaRaw = readJson(join(paths.root, "prove-meta.json"));
+  // Disk artifacts are structurally validated before the gate touches them:
+  // a corrupt/hand-edited file is a typed refusal, not a TypeError.
+  const inputs = parseGateInputs(analysisRaw, attestationRaw);
+  if ("error" in inputs) {
+    io.err(inputs.error);
+    return 1;
+  }
+  const metaRaw = readJsonSafe(paths.proveMeta);
   const governedFeatureIds =
     metaRaw !== null &&
     typeof metaRaw === "object" &&
@@ -427,18 +481,16 @@ async function cmdPromote(
     return 1;
   }
 
-  const decision = evaluatePromoteGate(
-    analysisRaw as OutcomeAnalysis,
-    attestationRaw as SignedAttestation,
-    { now: deps.now }
-  );
+  const decision = evaluatePromoteGate(inputs.analysis, inputs.attestation, {
+    now: deps.now,
+  });
 
   io.out("gate check:");
   for (const c of decision.checks) {
     io.out(`  ${c.pass ? "✓" : "✗"} ${c.id.padEnd(20)} ${c.detail}`);
   }
 
-  let settingsAfterHooks: unknown = readJson(paths.settingsFile) ?? {};
+  let settingsAfterHooks: unknown = readJsonSafe(paths.settingsFile) ?? {};
   if (decision.pass) {
     if (cmd.hooksDir === null) {
       io.err("promote requires --hooks-dir to wire the project hook settings");
@@ -454,7 +506,7 @@ async function cmdPromote(
   const plan = planPromotion(
     decision,
     governedFeatureIds,
-    readJson(paths.flagsFile),
+    readJsonSafe(paths.flagsFile),
     settingsAfterHooks,
     paths
   );
@@ -490,14 +542,6 @@ async function cmdStatus(
   return 0;
 }
 
-function readJson(path: string): unknown | null {
-  try {
-    return JSON.parse(readFileSync(path, "utf8"));
-  } catch {
-    return null;
-  }
-}
-
 // ============================================================================
 // Entry
 // ============================================================================
@@ -516,6 +560,8 @@ export async function run(
     switch (cmd.kind) {
       case "mine":
         return await cmdMine(cmd, io, deps);
+      case "map":
+        return await cmdMap(cmd, io);
       case "verify":
         return await cmdVerify(cmd, io);
       case "prove":

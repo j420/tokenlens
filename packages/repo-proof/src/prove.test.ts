@@ -98,6 +98,16 @@ describe("checkStopLoss", () => {
     expect(c.unpricedTrial).toBe("t/naive/0");
     expect(c.reason).toContain("unpriced");
   });
+
+  it("fails CLOSED on non-finite or negative billedUsd (NaN would disarm the wire forever)", () => {
+    // NaN poisons every later `spent > budget` comparison to false; without
+    // this guard a single garbage record silently disables the stop-loss.
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, -0.01]) {
+      const c = checkStopLoss([rec(0.1), rec(bad)], 100);
+      expect(c.ok).toBe(false);
+      expect(c.reason).toContain("non-finite or negative");
+    }
+  });
 });
 
 // ============================================================================
