@@ -84,3 +84,5 @@ export {
   type ToolErrorOptions,
   type ToolErrorReport,
 } from "./tool-error.js";
+export * from "./tier-drift.js";
+export * from "./coalesce.js";

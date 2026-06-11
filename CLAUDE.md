@@ -205,7 +205,7 @@ source is `null`, never guessed.
 
 `apps/extension/hooks/*.mjs` are Claude Code lifecycle hooks, installable via the
 `prune.installHooks` command (`install.mjs`) and gated by a flag system
-(`flags.mjs`; features f7–f13 currently ship in `mode: shadow`). The 28 functional
+(`flags.mjs`; features f7–f13 currently ship in `mode: shadow`). The 30 functional
 hooks include advisors (`cache-habits-advisor`, `context-health-advisor`,
 `skill-advisor`, `trajectory-diet`), recorders (`replay-recorder`, `skill-capture`,
 `speculative-record`), breakers (`loop-breaker`, `slo-breaker`,
@@ -214,7 +214,9 @@ hooks include advisors (`cache-habits-advisor`, `context-health-advisor`,
 (`cache-stabilize`, `speculative-prune`), recovery (`compaction-recover`), budget
 (`budget-gate`), cost-security (`cost-guard`, `thrash-detector`, `injection-cost`,
 `fanout-acceleration`, `edit-amplification`, `preturn-forecast`, plus the List3
-runtime-neutral detectors `navigation-ratio` and `tool-error-rate`), and the
+runtime-neutral detectors `navigation-ratio` and `tool-error-rate`, plus the List4 picks
+`tool-call-coalescing` (L4-27, PreToolUse within-turn duplicate advisor) and
+`billing-tier-drift` (L4-35, Stop-hook service_tier flip advisor)), and the
 telemetry forwarder (`telemetry-forward`). Hooks are fail-safe: they must never
 hang, throw uncaught, or block the agent.
 
@@ -228,8 +230,11 @@ vocabulary (Claude Code / Cursor / Codex) and is overridable per host:
 | Navigation-to-edit ratio | `assessNavigationRatio` (cost-security) | `navigation-ratio.mjs` (PostToolUse) | a window of read-only turns re-visits a file with zero edits (post-localization over-exploration) |
 | Tool-error-rate breaker | `assessToolErrorRate` (cost-security) | `tool-error-rate.mjs` (PostToolUse) | host-tagged `is_error` rate ≥ threshold over enough tagged calls; `insufficient_signal` no-op when absent |
 | Identical-action loop | `evaluateIdenticalActionLoop` (intelligence) | `loop-breaker.mjs` (2nd trip) | same tool + canonical input returns an identical result-SHA ≥ N times (provable no-progress) |
+| Within-turn duplicate call | `assessDuplicateParallelCall` (cost-security) | `tool-call-coalescing.mjs` (PreToolUse) | the SAME tool + canonical input (loop-breaker's pinned canonicalization) is dispatched twice inside one turn's parallel block |
+| Billing-tier drift | `assessTierDrift` (cost-security) | `billing-tier-drift.mjs` (Stop) | usage.service_tier flips mid-session (string equality; absent tier = no signal; differential priced only when both tier rates are known, else null) |
 
 Config: `PRUNE_NAV_RATIO_*`, `PRUNE_TOOL_ERROR_*`, `PRUNE_IDENTICAL_ACTION_*`,
+`PRUNE_COALESCE_DISABLED`, `PRUNE_TIER_DRIFT_DISABLED` / `PRUNE_EXPECTED_TIER`,
 `PRUNE_NAV_TOOLS` / `PRUNE_MUT_TOOLS` (per-runtime vocabulary overrides).
 
 ---
