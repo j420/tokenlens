@@ -20,6 +20,7 @@
  *    implicitly.
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -58,7 +59,7 @@ export type Command =
   | { kind: "mine"; repo: string; limit: number; groupPrefixes: string[]; oracleTemplate: string | null }
   | { kind: "map"; repo: string; tokenBudget: number; query: string | null; out: string | null }
   | { kind: "verify"; repo: string; task: string | null; scratch: string | null }
-  | { kind: "prove"; repo: string; budgetUsd: number; model: string; trials: number; hooksDir: string | null; workDir: string | null }
+  | { kind: "prove"; repo: string; budgetUsd: number; model: string; trials: number; hooksDir: string | null; workDir: string | null; tasksDir: string | null; taskIds: string[] }
   | { kind: "promote"; repo: string; hooksDir: string | null }
   | { kind: "status"; repo: string; json: boolean };
 
@@ -70,7 +71,8 @@ const USAGE = `Usage:
   prune-proof mine    --repo <path> [--limit N] [--group-prefix P]... [--oracle-template T]
   prune-proof map     --repo <path> [--map-tokens N] [--query TEXT] [--out FILE]
   prune-proof verify  --repo <path> [--task <id>] [--scratch <dir>]
-  prune-proof prove   --repo <path> --budget <usd> [--model M] [--trials K] [--hooks-dir D] [--work-dir D]
+  prune-proof prove   --repo <path> --budget <usd> [--model M] [--trials K] [--hooks-dir D]
+                      [--work-dir D] [--tasks-dir D] [--task <id>]...
   prune-proof promote --repo <path> [--hooks-dir D]
   prune-proof status  --repo <path> [--json]
 
@@ -158,7 +160,7 @@ export function parseArgs(argv: string[]): Command | ParseError {
       return { kind: "verify", repo, task: one("--task"), scratch: one("--scratch") };
     }
     case "prove": {
-      const bad = known(["--repo", "--budget", "--model", "--trials", "--hooks-dir", "--work-dir"]);
+      const bad = known(["--repo", "--budget", "--model", "--trials", "--hooks-dir", "--work-dir", "--tasks-dir", "--task"]);
       if (bad) return bad;
       const budgetRaw = one("--budget");
       if (budgetRaw === null) {
@@ -183,6 +185,8 @@ export function parseArgs(argv: string[]): Command | ParseError {
         trials,
         hooksDir: one("--hooks-dir"),
         workDir: one("--work-dir"),
+        tasksDir: one("--tasks-dir"),
+        taskIds: flags.get("--task") ?? [],
       };
     }
     case "promote": {
@@ -378,14 +382,58 @@ async function cmdVerify(
   return 0;
 }
 
+/**
+ * Pre-flight before any spend-capable work: the Claude CLI must exist and
+ * answer --version. Catches the two cheapest failure modes of a live run
+ * (binary missing, PATH wrong) at $0 instead of after worktree+npm setup.
+ * Auth itself is only verifiable by a real call, so the runbook's smoke run
+ * is the auth check — this guard just ensures the smoke can start.
+ */
+export function preflightClaudeCli(
+  claudeBin = "claude"
+): { ok: boolean; detail: string } {
+  const r = spawnSync(claudeBin, ["--version"], {
+    encoding: "utf8",
+    timeout: 15_000,
+  });
+  if (r.error) {
+    return {
+      ok: false,
+      detail: `cannot execute "${claudeBin}": ${r.error.message} — install Claude Code or pass a PATH that contains it`,
+    };
+  }
+  if (r.status !== 0) {
+    return {
+      ok: false,
+      detail: `"${claudeBin} --version" exited ${r.status}: ${(r.stderr ?? "").trim().slice(0, 200)}`,
+    };
+  }
+  return { ok: true, detail: (r.stdout ?? "").trim() };
+}
+
 async function cmdProve(
   cmd: Extract<Command, { kind: "prove" }>,
   io: CliIo,
   deps: CliDeps
 ): Promise<number> {
   const paths = proofPaths(cmd.repo);
-  const tasks = loadReadyTasks(paths.tasksDir, io);
-  if (tasks === null) return 1;
+  const tasksDir = cmd.tasksDir ?? paths.tasksDir;
+  const allTasks = loadReadyTasks(tasksDir, io);
+  if (allTasks === null) return 1;
+  let tasks = allTasks;
+  if (cmd.taskIds.length > 0) {
+    const wanted = new Set(cmd.taskIds);
+    tasks = allTasks.filter((t) => wanted.has(t.taskId));
+    const missing = cmd.taskIds.filter(
+      (id) => !allTasks.some((t) => t.taskId === id)
+    );
+    if (missing.length > 0) {
+      io.err(
+        `--task id(s) not found among ready tasks in ${tasksDir}: ${missing.join(", ")}`
+      );
+      return 1;
+    }
+  }
 
   let runner: TrialRunner;
   if (deps.makeRunner) {
@@ -395,6 +443,12 @@ async function cmdProve(
       io.err("prove (live) requires --hooks-dir pointing at the Prune hooks directory");
       return 1;
     }
+    const cli = preflightClaudeCli();
+    if (!cli.ok) {
+      io.err(`pre-flight failed: ${cli.detail}`);
+      return 1;
+    }
+    io.out(`claude CLI: ${cli.detail}`);
     const loadInstall = deps.loadInstallHooks ?? defaultLoadInstallHooks;
     const installHooks = await loadInstall(cmd.hooksDir);
     const workDir =

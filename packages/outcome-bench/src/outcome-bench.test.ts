@@ -24,6 +24,7 @@ import { briefEligibility, renderBrief } from "./brief.js";
 import { analyzeCiteback } from "./citeback.js";
 import {
   FixtureRunner,
+  defaultSessionTimeoutMs,
   loadTrialLog,
   runMatrix,
   trialKey,
@@ -481,5 +482,24 @@ describe("trial log", () => {
     const torn = '{"taskId":"fx-cache-rule","arm":"gov';
     writeFileSync(logPath, (await import("node:fs")).readFileSync(logPath, "utf8") + torn);
     expect(loadTrialLog(logPath)).toHaveLength(3);
+  });
+});
+
+// ============================================================================
+// Session timeout derivation (Gate-0: the clock must never beat the oracle)
+// ============================================================================
+
+describe("defaultSessionTimeoutMs", () => {
+  it("scales with maxTurns and never drops below the 20-minute floor", () => {
+    const spec = (maxTurns: number) =>
+      ({ task: { ...fixtureTask("t", "p"), maxTurns }, arm: "naive", trialIndex: 0 }) as never;
+    // 10-turn task: floor applies (20 min), not 10 min.
+    expect(defaultSessionTimeoutMs(spec(10))).toBe(20 * 60 * 1000);
+    // 80-turn task: 80 minutes — a legitimate long task is not clock-failed.
+    expect(defaultSessionTimeoutMs(spec(80))).toBe(80 * 60 * 1000);
+    // Identical across arms by construction: the function reads task only.
+    const naive = { task: { ...fixtureTask("t", "p"), maxTurns: 40 }, arm: "naive", trialIndex: 0 } as never;
+    const governed = { task: { ...fixtureTask("t", "p"), maxTurns: 40 }, arm: "governed", trialIndex: 1 } as never;
+    expect(defaultSessionTimeoutMs(naive)).toBe(defaultSessionTimeoutMs(governed));
   });
 });

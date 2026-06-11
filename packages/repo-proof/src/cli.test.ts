@@ -13,7 +13,7 @@ import { spawnSync } from "node:child_process";
 import type { TrialRunner, TrialSpec } from "@prune/outcome-bench";
 import { isFeatureEnabled, validateFlags } from "@prune/shared";
 
-import { parseArgs, run, type CliIo } from "./cli.js";
+import { parseArgs, preflightClaudeCli, run, type CliIo } from "./cli.js";
 import { proofPaths } from "./paths.js";
 import { syntheticTrial } from "./synthetic-records.js";
 
@@ -83,6 +83,19 @@ describe("parseArgs", () => {
     expect(
       parseArgs(["map", "--repo", "/r", "--map-tokens", "2048", "--query", "auth bug"])
     ).toMatchObject({ kind: "map", tokenBudget: 2048, query: "auth bug" });
+  });
+
+  it("prove parses --tasks-dir and repeatable --task (smoke-subset selection)", () => {
+    expect(
+      parseArgs([
+        "prove", "--repo", "/r", "--budget", "10",
+        "--tasks-dir", "/elsewhere/tasks",
+        "--task", "t1", "--task", "t2",
+      ])
+    ).toMatchObject({ kind: "prove", tasksDir: "/elsewhere/tasks", taskIds: ["t1", "t2"] });
+    expect(
+      parseArgs(["prove", "--repo", "/r", "--budget", "10"])
+    ).toMatchObject({ tasksDir: null, taskIds: [] });
   });
 
   it("status --json parses; defaults are explicit", () => {
@@ -326,6 +339,47 @@ process.exit(failed === 0 ? 0 : 1);
     const state = JSON.parse(lines.join("\n"));
     expect(state.tasks.ready).toBe(1);
     expect(state.flagProvenance.some((f: { id: string }) => f.id === "f15")).toBe(true);
+  });
+
+  it("prove --task filters the matrix; an unknown id is an error before any trial", async () => {
+    const runnerCalls: string[] = [];
+    const runner: TrialRunner = {
+      runTrial: async (spec: TrialSpec) => {
+        runnerCalls.push(`${spec.task.taskId}/${spec.arm}`);
+        return syntheticTrial({
+          taskId: spec.task.taskId,
+          arm: spec.arm,
+          trialIndex: spec.trialIndex,
+          inputTokens: 1000,
+          oracle: "pass",
+          billedUsd: 0.01,
+          fixture: false,
+        });
+      },
+    };
+    reset();
+    // Fresh work area for the filtered run (the earlier e2e already filled
+    // the default trial log; a separate repo keeps cells disjoint).
+    const code = await run(
+      ["prove", "--repo", repo, "--budget", "5", "--trials", "1",
+       "--tasks-dir", join(proofPaths(repo).tasksDir),
+       "--task", "no-such-task"],
+      io,
+      { makeRunner: () => runner }
+    );
+    expect(code).toBe(1);
+    expect(errs.some((l) => l.includes("no-such-task"))).toBe(true);
+    expect(runnerCalls).toHaveLength(0); // refused before any trial
+  });
+
+  it("preflightClaudeCli reports a usable binary and a missing one distinctly", () => {
+    // "node" stands in for a working CLI (answers --version, exit 0).
+    const ok = preflightClaudeCli("node");
+    expect(ok.ok).toBe(true);
+    expect(ok.detail.length).toBeGreaterThan(0);
+    const missing = preflightClaudeCli("definitely-not-a-binary-xyz");
+    expect(missing.ok).toBe(false);
+    expect(missing.detail).toContain("cannot execute");
   });
 
   it("prove against a budget below the worst case refuses before any trial", async () => {

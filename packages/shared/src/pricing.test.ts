@@ -39,6 +39,34 @@ describe("strict pricing API (unknown model → null, never a default)", () => {
     // ...while the strict variant refuses to fabricate.
     expect(getModelPricingStrict("openai", "unknown-x")).toBeNull();
   });
+
+  it("benchmark model pins carry doc-verified rates incl. the 0.1× cache-hit rate", () => {
+    // Verified against platform.claude.com pricing docs, 2026-06-11. These
+    // four entries gate Phase 2: an unpinned/unpriced model aborts a live
+    // prove run by design, so these rates ARE the run's billing basis.
+    expect(getModelPricingStrictByName("claude-opus-4-8")).toMatchObject({
+      input: 5,
+      output: 25,
+      cached_input: 0.5,
+    });
+    expect(getModelPricingStrictByName("claude-sonnet-4-6")).toMatchObject({
+      input: 3,
+      output: 15,
+      cached_input: 0.3,
+    });
+    expect(getModelPricingStrictByName("claude-haiku-4-5-20251001")).toMatchObject({
+      input: 1,
+      output: 5,
+      cached_input: 0.1,
+    });
+    // Cache-hit rate is exactly 0.1 × input for every pin (the official
+    // multiplier) — a typo in one of the constants cannot pass silently.
+    for (const id of ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]) {
+      const p = getModelPricingStrictByName(id);
+      expect(p).not.toBeNull();
+      expect(p!.cached_input).toBeCloseTo(p!.input * 0.1, 10);
+    }
+  });
 });
 
 // ============================================================================
