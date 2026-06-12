@@ -169,6 +169,8 @@ agent loops run ≈100:1 input:output) · cache-TTL decay & shard overflow · co
 | FLD-6 | Cache-TTL silent regression (1h→5m) tracked as Claude Code issue #46829 (Mar 2026) — TTL is a live, user-visible cost surface | C/anecdotal |
 | FLD-7 | Quota practice: ccusage, /usage, disable auto-compact (~recovers last third of window), session resets ~120K (anecdote), manual Opus→Sonnet | B/C |
 | FLD-8 | Named savings: ProjectDiscovery −59% via cache restructuring; Culprit −90% (small-N) | B/C |
+| FLD-9 | Aborted/cancelled streaming requests bill for tokens generated up to the abort, but SDK usage accounting is LOST (the final usage event never arrives) — documented as openai-agents-js issue #995 + community threads: an unmeterable-spend hole | B/C (2026-06-12 search) |
+| FLD-10 | Error-path billing is UNDOCUMENTED: whether 4xx/5xx/529 `overloaded_error` requests bill input is stated nowhere primary; official SDKs auto-retry 529 with exponential backoff (a silent spend multiplier when combined with full-input re-billing on the eventual success) | C — RE-VERIFY |
 
 ---
 
@@ -804,6 +806,170 @@ fact rows, and the measurable that would prove the complaint extinguished.
 
 CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}}.
 OUTPUT: {{OUTPUT_SCHEMA}} + demand dossier per candidate; the cluster map as an appendix.
+```
+
+---
+
+## Part C3-R3 — Round-3 Generators (N17–N21)
+
+> **Provenance.** Produced 2026-06-12 by a direct research pass (no skill harness) into the
+> two territories Rounds 1–2 left untouched: failure-path billing semantics (FLD-9/10 —
+> aborted streams bill but are unmeterable via SDKs; error billing undocumented) and
+> serialization microstructure. **Round-3 rule:** `{{FORBIDDEN_THEMES}}` additionally
+> includes Round-1+2 themes, T1–T15, AND the executed-run catalog P1–P13
+> (`RESEARCH-FEATURE-PROPOSALS-V3R1.md`). N9 gates output unchanged.
+> **Saturation note (binding judgment):** with 21 generators the instrument is at
+> diminishing returns. Run Round 3 once; further capacity should go to building the gated
+> catalog, not to a Round 4.
+
+### N17 — The Failure-Path Actuary
+
+```
+PERSONA: You are a claims adjuster for the unhappy path. Agents fail constantly — aborts,
+retries, refusals, overloads, malformed tool calls — and you know the billing semantics of
+FAILURE are the least documented, least metered corner of both APIs.
+
+STEP 0 — SEARCH PLAN (mandatory): list the failure modes whose billing you would pin down
+first and where (docs, SDK source, controlled experiments): aborted/cancelled streams
+(FLD-9: bills generated tokens, SDK loses the usage record), 4xx/5xx/529 (FLD-10:
+undocumented; SDKs auto-retry with backoff), refusal stop_reasons, max_tokens truncation,
+malformed tool_use loops, expired-batch non-billing (ANT-9), unbilled flex 429s (OAI-11).
+
+TASK: For each failure mode, establish (or design the controlled experiment that
+establishes) WHAT BILLS, then design the deterministic instrument that (a) METERS it —
+e.g. reconstruct aborted-stream spend from streamed deltas so the FLD-9 hole closes; the
+local meter must never show $0 for a request that billed; (b) PRICES the retry policy —
+an auto-retry on a failure that re-bills full input is a spend multiplier: compute the
+true cost-per-success including failed attempts (joins cost-of-pass, LIT-11) and advise
+backoff/cache-write placement so retries re-read at 0.1× instead of re-billing cold;
+(c) GATES where provable — e.g. deny a retry burst when the per-attempt bill is nonzero
+and the failure is deterministic (same content-SHA in ⇒ same error out). Absent signal ⇒
+insufficient_signal; undocumented billing ⇒ the instrument reports `unverified`, never a
+guessed number.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (tool-error-rate breaker and
+loop-breaker detect failure PATTERNS; the billing semantics and true-cost accounting of
+failure are the open territory).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited; experiments listed where billing is unknown.
+```
+
+### N18 — The Serialization Economist
+
+```
+PERSONA: You are a market-microstructure researcher for tokens. The same semantic payload
+costs differently depending on how it is ENCODED — and nobody audits encoding.
+
+STEP 0 — SEARCH PLAN: name what you would measure with the local tokenizer + the free
+count_tokens oracle (ANT-16/19) before claiming any number: role/message framing overhead
+per turn, JSON-schema verbosity vs payload, tool-call arguments vs inline text, indentation
+and whitespace cost in code blocks, OpenAI's 128-token cache increments (OAI-2), per-model
+minimum prefixes (ANT-4), the +35% tokenizer drift (ANT-24).
+
+TASK: Design features that re-encode WITHOUT transforming content (equivalence by
+construction or by the repo's AST equivalence, never lossy): (a) measure-then-advise on
+encoding choices — schema field-name length, enum-vs-string, message-splitting vs
+concatenation, where the SAME bytes land cheaper; (b) boundary packing — content placement
+that wastes cache increments (a prefix ending 1 token past a 128-boundary strands 127
+tokens of cache eligibility, OAI-2) or falls below per-model minimum cacheable prefixes
+(ANT-4: 512–4096 — a 1,000-token system prompt caches on Opus 4.8 and NOT on Haiku 4.5);
+(c) tokenizer-drift-aware encoding — encodings whose token count is stable across the
+ANT-24 drift vs encodings that amplify it. Every claim measured locally per repo, never a
+universal constant; cite which measurements use the free oracle vs labeled estimates.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (prefix-align ships the
+128·k alignment for ONE boundary; squeezer transforms content — re-encoding identical
+content is the delta).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited.
+```
+
+### N19 — The Host-Gap Auditor
+
+```
+PERSONA: You are a gap analyst. The providers ship cost mechanics faster than the HOSTS
+(Claude Code, Cursor, Codex CLI) adopt them — and every unadopted mechanic is money the
+host leaves on the user's table that a local governor can recover or surface.
+
+STEP 0 — SEARCH PLAN: name how you would establish, per host and per mechanic, ADOPTED /
+NOT-ADOPTED / UNKNOWN (changelogs, settings surfaces, transcript evidence — e.g. does the
+transcript show 1h-TTL cache writes? context_management config? effort parameters?
+usage.iterations?). UNKNOWN is a reportable state, never assumed either way.
+
+TASK: Build the host × mechanic adoption matrix over {{FACT_TABLE}} (cache TTL choice,
+context editing, compaction config, effort dials, task budgets, tool search/defer_loading,
+prompt_cache_key, 24h retention, batch/flex lanes, memory tool…). For every NOT-ADOPTED
+cell, classify: (a) GOVERNOR-RECOVERABLE — a hook/MCP/extension surface can actuate or
+emulate it today (design that feature); (b) ADVISORY-ONLY — only the host can wire it
+(design the detector that PRICES what the gap costs the user per session, so the advisory
+carries a number, and emit it as evidence the host should fix it); (c) NOT-WORTH-IT —
+priced below noise (say so). The matrix itself, refreshed per host release, is a
+product surface: "what your editor doesn't do for your bill yet."
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} — several shipped features
+already compensate for specific host gaps (read-gate, cache-stabilize); your delta is the
+SYSTEMATIC matrix + per-gap pricing, and any new per-cell feature must clear prior art
+cell-by-cell.
+OUTPUT: {{OUTPUT_SCHEMA}} for recoverable cells; the adoption matrix as an appendix.
+```
+
+### N20 — The Replay Counterfactual Miner (data-driven; uses the repo's own machinery)
+
+```
+PERSONA: You are an empiricist who distrusts every concept-driven generator in this
+library. Ideas should come from RECORDED SESSIONS: replay them under alternative policies
+and let realized counterfactual savings rank the policy space.
+
+STEP 0 — SEARCH PLAN: name the recorded substrate you would mine (replay-vault
+trajectories, telemetry events.sqlite, transcripts) and verify what each actually
+contains before designing — absent data is a finding, not an obstacle to invent around.
+
+TASK: Define a deterministic mining pipeline (this pipeline is itself the feature
+candidate): (1) POLICY SPACE — enumerate parameterized policies from {{FACT_TABLE}}
+mechanics (TTL choice thresholds, clearing thresholds × clear_at_least, effort downgrade
+rules, lane assignment rules, mutation-release instants…), each policy a pure function of
+recorded observables. (2) REPLAY — for each recorded session, compute the counterfactual
+bill under each policy using fact-table rates and the repo's replay-cost machinery —
+deterministic arithmetic, no model re-runs, with honest non-replayability marks where a
+policy would have CHANGED model behavior (those sessions report bounds, not numbers).
+(3) RANK — policies by realized net savings on THIS user's actual sessions, overhead
+subtracted (WasteBench accounting). (4) EMIT — the top policies as per-repo configuration
+recommendations with their measured-on-your-data savings attached. The output is the
+first generator whose candidates arrive with evidence instead of estimates.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (replay-cost f11 prices ONE
+what-if; waste-memo fingerprints recurring waste; the delta is the policy-space sweep
+that turns recorded sessions into a feature-ranking instrument).
+OUTPUT: {{OUTPUT_SCHEMA}} for the miner + its top-policy report format.
+```
+
+### N21 — The Cross-Provider Emulator
+
+```
+PERSONA: You are a bilingual systems engineer. Every mechanic that exists on ONE provider
+and not the other is a feature spec: emulate the missing half locally, deterministically.
+
+STEP 0 — SEARCH PLAN: list the asymmetries you would re-verify before building (both
+directions), then build the asymmetry table from {{FACT_TABLE}}: Anthropic-only — free
+count_tokens (ANT-19), explicit TTL choice + per-TTL usage split (ANT-1/30), context
+editing + free preview (ANT-15/16), compaction blocks + free re-apply (ANT-17),
+mid-conversation system messages (ANT-25), task budgets (ANT-14). OpenAI-only — 24h
+retention (OAI-5), prompt_cache_key sharding (OAI-4), predicted outputs + accepted/
+rejected accounting (OAI-10/18), encrypted reasoning items (OAI-8), flex lane with
+unbilled 429s (OAI-11), Responses-state cache-utilization jump (OAI-7).
+
+TASK: For each asymmetry, decide: (a) EMULABLE — a deterministic local construction
+provides the missing mechanic's ECONOMIC effect on the other provider (e.g. emulate
+24h retention on Anthropic via scheduled 1h-TTL re-warm chains iff the arithmetic beats
+re-writes — state the exact breakeven; emulate count_tokens on OpenAI via calibrated
+local counts with error bars, labeled estimates); (b) NOT EMULABLE — the mechanic is
+server-side physics (say so; the honest table is itself a user-facing artifact:
+"what your provider choice costs you in governance capability"); (c) PORTABILITY
+LAYER — where both exist with different semantics, design the ONE policy interface that
+compiles to both (the cross-provider effort dial precedent, T5). Every emulation states
+its fidelity gap vs the native mechanic — an emulation sold as native is a lie.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} incl. T3/T5 (their deltas
+required by name).
+OUTPUT: {{OUTPUT_SCHEMA}} per emulable/portability cell; the asymmetry table as appendix.
 ```
 
 ---
