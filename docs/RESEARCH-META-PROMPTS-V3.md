@@ -149,6 +149,14 @@ agent loops run ≈100:1 input:output) · cache-TTL decay & shard overflow · co
 | LIT-11 | Cost-of-pass metric; Efficient-Agents | 96.7% of perf at −28.4% cost-of-pass (arXiv 2508.02694) |
 | LIT-12 | Routing/cascades | RouteLLM −35–85% cost at 95% quality; cascade-routing +1–4% over both; conformal deferral gives coverage guarantees |
 
+### Round-2 additions (direct primary research, 2026-06-12 — no skill harness)
+
+| ID | Mechanic | Verified value | Grade | Source |
+|----|----------|----------------|-------|--------|
+| ANT-30 | Usage-object field inventory | `usage` exposes: `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, **`cache_creation.ephemeral_5m_input_tokens` / `.ephemeral_1h_input_tokens`** (per-TTL write breakdown), **`output_tokens_details.thinking_tokens`**, `service_tier` (standard/priority/batch), **`inference_geo`**, **`server_tool_use.web_search_requests` / `.web_fetch_requests`**; billing identity: total billed = input + cache_creation + cache_read + output | A | platform.claude.com/docs/en/api/messages (fetched 2026-06-12) |
+| OAI-18 | Usage-object field inventory | `usage` exposes: `input_tokens` + `input_tokens_details.cached_tokens`, `output_tokens` + `output_tokens_details.reasoning_tokens`, **`accepted_prediction_tokens` / `rejected_prediction_tokens`**, `total_tokens`; response-level `service_tier` echoes the tier actually served | B | api-reference + predicted-outputs guide (snippets) + Azure mirror |
+| OAI-19 | Server-side compaction endpoint | A `POST .../responses/compact` endpoint appears in the OpenAI API reference ("Compact a response") — OpenAI-side native compaction surfaced via API (Codex lineage) | C — RE-VERIFY | platform.openai.com/docs/api-reference/responses/compact (search result only) |
+
 ### Field (practitioner)
 
 | ID | Finding | Grade |
@@ -544,6 +552,258 @@ OUTPUT per survivor: the {{OUTPUT_SCHEMA}} record + a falsification log (which a
 survived, verbatim) + the single cheapest experiment that would kill it post-build (the
 pre-registered WasteBench/outcome-bench check). Survivors feed `packages/quality`
 non-inferiority gating and the human gate. Nothing in this pipeline auto-builds.
+```
+
+---
+
+## Part C3-R2 — Round-2 Generators (N10–N16)
+
+> **Provenance.** Produced 2026-06-12 by a direct research pass (no skill harness): live
+> primary fetch of the Messages API usage-object reference (ANT-30), snippet-verified OpenAI
+> usage fields (OAI-18), and the OpenAI compact endpoint sighting (OAI-19, RE-VERIFY).
+> **Round-2 rule (P3):** for these generators, `{{FORBIDDEN_THEMES}}` additionally includes
+> the Round-1 generator outputs and ALL of Part T3 (T1–T15). Round 2 exists to occupy
+> DIFFERENT epistemic territory: free resources, defaults, observed-signals, time structure,
+> composition, formal optimality, and demonstrated demand. N9 gates Round-2 output unchanged.
+
+### N10 — The Unpriced-Resource Prospector
+
+```
+PERSONA: You are a value engineer who reads price lists backwards. Where others see what
+things cost, you inventory what is FREE — and you know free resources are mispriced levers
+until the provider notices.
+
+STEP 0 — SEARCH PLAN. List the free surfaces you would re-confirm are still free (and
+their rate limits) before building anything on them.
+
+THE FREE LIST ({{FACT_TABLE}} — extend it if you find more): count_tokens is free, incl.
+context_management previews of clearing savings (ANT-16/19) · flex-tier capacity 429s are
+unbilled (OAI-11) · expired batch requests are unbilled (ANT-9) · web fetch has no per-use
+fee and takes max_content_tokens (ANT-23) · code execution is FREE when used with the
+*_20260209 web tools, and has 1,550 free org-hours standalone (ANT-23) · 24h cache
+retention costs nothing extra (OAI-5) · automatic caching costs nothing to enable (ANT-3,
+OAI-2) · re-applying an existing compaction block is free (ANT-17) · stored completions
+for distillation are free (OAI-17) · system-added tokens are counted but never billed
+(ANT-19).
+
+TASK: Design features that SUBSTITUTE a priced operation with a free one. For each: the
+substitution rule (what priced call/work the free resource replaces); the proof condition
+under which the free path is sufficient (never "probably"); the fragility analysis — free
+things carry rate limits (count_tokens RPM tiers) and can be repriced; state the feature's
+behavior the day the resource stops being free (fail-safe, no silent degradation); and the
+exploitation ceiling (how much spend this can actually displace, formula not vibes).
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} incl. Round-1 themes and
+T1–T15 (T2 already claims the count_tokens preview as a what-if oracle — your delta must
+go beyond previewing).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited.
+```
+
+### N11 — The Default-Settings Auditor
+
+```
+PERSONA: You are a former provider pricing-team member turned customer advocate. You know
+every API default was chosen for the GENERAL case (or the provider's margin), and that a
+governor is, at bottom, a default-overriding machine with proof obligations.
+
+STEP 0 — SEARCH PLAN. List the defaults you would re-verify per model/endpoint before
+trusting this audit (defaults drift silently across model versions).
+
+THE DEFAULTS LEDGER ({{FACT_TABLE}} — extend with any you find): service_tier defaults to
+auto (ANT-10, OAI-13) · thinking retention defaults to KEEP on Opus 4.5+/Sonnet 4.6+
+(ANT-12) · compaction trigger defaults to 150K (ANT-17) · clear_tool_uses defaults to
+100K-trigger/keep-3 (ANT-15) · cache TTL defaults to 5m, retention to in-memory (ANT-1,
+OAI-2/5) · reasoning_effort defaults vary BY MODEL (none on 5.1; medium classic) and
+verbosity defaults medium (OAI-9) · effort defaults per Anthropic model (ANT-13) ·
+predicted outputs default OFF (OAI-10) · batch/flex default OFF · prompt_cache_key
+defaults unset (OAI-4) · inference_geo defaults to global routing (ANT-27).
+
+TASK: For EVERY default in the ledger: (1) state whose interest the default serves and the
+workload classes where it is provably wrong for cost; (2) design the deterministic
+per-workload override policy — the condition under which the governor flips it, computed
+from observable session/repo signals only; (3) state the override's risk and its
+equivalence/quality obligation; (4) name the monitoring that detects when the default's
+SEMANTICS drift (a default that changes meaning under you is the failure mode). The
+aggregate deliverable concept: a per-repo "override manifest" — but propose the individual
+flips as separable features.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (price-tag F14 flips ONE
+decision under non-inferiority — your delta is the systematic parameter-space audit and
+drift monitoring, or nothing).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited.
+```
+
+### N12 — The Usage-Field Forensic
+
+```
+PERSONA: You are a forensic accountant. Your axiom: EVERY UNREAD BILLING SIGNAL IS AN
+UNBUILT FEATURE. The providers already ship, in every single response, metering data that
+no tool reads — features built on these need ZERO new instrumentation, which makes them
+the cheapest credible features in existence.
+
+STEP 0 — SEARCH PLAN. Name the API-reference pages you would re-fetch to complete the
+field inventory (streaming variants, batch result objects, error payloads included).
+
+THE FIELD INVENTORY ({{FACT_TABLE}} rows ANT-30, OAI-18, ANT-17, OAI-19): Anthropic —
+cache_creation.ephemeral_5m_input_tokens / ephemeral_1h_input_tokens (per-TTL write split),
+output_tokens_details.thinking_tokens, service_tier, inference_geo,
+server_tool_use.web_search_requests / web_fetch_requests, usage.iterations (compaction),
+cache_read_input_tokens, the billing identity (total = input + writes + reads + output).
+OpenAI — input_tokens_details.cached_tokens, output_tokens_details.reasoning_tokens,
+accepted_prediction_tokens / rejected_prediction_tokens, total_tokens, response-level
+service_tier.
+
+TASK: Build the cross-product: for EVERY field, name the shipped feature ({{FORBIDDEN_
+THEMES}}) that already reads it — and where none exists, design the cheapest feature for
+which that field is the LOAD-BEARING signal. Candidate shapes: reconciliation (predicted
+vs realized, e.g. cached_tokens vs the cache plan), calibration (thinking_tokens vs effort
+setting — the feedback loop the effort dial lacks), profitability accounting (accepted vs
+rejected prediction tokens decide whether predictions pay), fee metering (server_tool_use
+× per-call rates), drift detection (inference_geo × 1.1 multiplier; per-TTL split exposes
+whether your TTL choice matches actual reuse). EVERY candidate must work from response
+fields alone — if it needs anything a hook payload doesn't carry, it belongs to a
+different generator. State per candidate: field(s), the decision it powers, and the honest
+no-op when the field is absent (older models/providers).
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (cache-reconcile U3 and
+billing-tier-drift L4-35 are PRIOR ART for two of these fields — exact deltas or kill).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited, plus the full field→feature coverage table as
+an appendix (unread fields with no viable feature get a one-clause reason).
+```
+
+### N13 — The Session-Phase Planner
+
+```
+PERSONA: You are a process-control engineer. You believe a single static policy over a
+dynamic process is always wrong, and that an agent session is a process with PHASES whose
+optimal cost policies differ — sometimes oppositely.
+
+STEP 0 — SEARCH PLAN. State which phase boundaries are observable from local signals
+today (window fill, cache write/read mix per ANT-30, quota clock per ANT-29, TTL clocks)
+and which are not (that list is a finding).
+
+THE PHASES (derive detectors, then policies): COLD START — cache-write-dominated; every
+block placement decision is still cheap to change (ANT-1/2: write multipliers, breakeven
+arithmetic). STEADY STATE — read-dominated; stability is the asset; mutations are
+expensive (ANT-5 invalidation tiers, OAI-2 prefix zeroing). PRE-COMPACTION — window
+pressure rising (ANT-17 trigger at 150K; FLD-5); the clear-vs-compact-vs-mask decision
+window. POST-COMPACTION — caches cold at the summary boundary; re-warm economics (ANT-17
+cache_control on compaction blocks). IDLE — TTL decay clocks running (ANT-1, OAI-2/5);
+keep-alive vs let-die. QUOTA CLIFF — approaching a 5-h/weekly reset (ANT-29); spend
+deferral value spikes. HANDOFF — session ending; what's worth persisting for the NEXT
+session's cold start (memory tool ANT-18, skill/knowledge surfaces).
+
+TASK: (1) Define each phase by a deterministic detector over observable fields — no
+classifier, thresholds only, hysteresis stated. (2) For each phase, name the policies that
+INVERT vs the neighboring phase (e.g. a mutation cheap in cold start is expensive in
+steady state). (3) Design features that are phase-TRANSITION actions — the value is
+concentrated at boundaries (the moment before compaction, the minute before TTL expiry,
+the turn before a quota window closes). A feature that behaves identically in all phases
+belongs to Round 1, not here.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (context-health f6 DETECTS
+fullness/inflection — your delta is phase-structured POLICY, not detection).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited, phase machine as an appendix.
+```
+
+### N14 — The Portfolio Composer
+
+```
+PERSONA: You are a logistics planner for token freight. Single-request optimization bores
+you: your discipline is COMPOSITION — k requests, sessions, or developers arranged so that
+total cost < k × individual cost.
+
+STEP 0 — SEARCH PLAN. Name the sharing boundaries you would verify first (workspace cache
+isolation ANT-6, org sharding OAI-6, privacy constraints on cross-developer reuse).
+
+THE COMPOSITION SURFACES ({{FACT_TABLE}}): a cache write at 1.25–2× amortizes across every
+subsequent read at 0.1× — by ANYONE inside the isolation boundary (ANT-1, ANT-6) · re-
+applying a compaction block is free across requests (ANT-17) · batch assembles up to 100K
+requests under one 1-h-TTL cache regime (ANT-9) · prompt_cache_key lets a FLEET place
+requests on shards deliberately, and per-prefix throughput above ~15 rpm overflows (OAI-4)
+· 24h retention turns a prefix into a day-long shared asset (OAI-5) · TTL clocks mean
+request TIMING changes cost (idle gaps kill caches — ANT-1, FLD-6).
+
+TASK: Find effects where coordination beats isolation. Shapes to consider (go beyond
+them): bin-packing deferrable requests into an already-warm TTL window instead of
+re-warming later; sequencing a team's sessions so shared prefixes amortize one write
+(within ANT-6's workspace boundary — state the privacy line explicitly); shard-deliberate
+fleet routing under the 15-rpm constraint; assembling batches so cache writes amortize
+INSIDE the batch (ANT-9 stacking); timing-aware schedulers that treat TTL expiry as a
+deadline. For each: the coordination mechanism (who decides, on what signal), the savings
+formula vs the uncoordinated baseline, the privacy/isolation boundary respected, and the
+failure when coordination misfires (a missed window must cost no more than the
+uncoordinated baseline — prove it or kill it).
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}} (fleet-cache F7 shares
+ANSWERS; prefix-warm warms ONE session's prefix; batch-router routes ONE request — the
+delta here is multi-party/multi-request composition).
+OUTPUT: {{OUTPUT_SCHEMA}}, fact rows cited.
+```
+
+### N15 — The Optimal-Policy Theorist
+
+```
+PERSONA: You are a control theorist who suspects this entire product category is a pile of
+ad-hoc approximations to ONE optimal policy nobody has written down. Your job is to write
+it down, then harvest implementable features from its structure.
+
+STEP 0 — SEARCH PLAN. State which model parameters you can instantiate from {{FACT_TABLE}}
+today and which are unknown (unknowns become null-honest inputs, never assumptions).
+
+THE PROBLEM (pose it formally, then mine it): State = window contents (per-block content
+hashes, ages, masked/clear status) × cache entries (per-TTL clocks — observable per
+ANT-30's ephemeral_5m/1h split) × quota meters (ANT-29) × phase signals. Actions per turn
+= {read, re-read-deny, mask, clear (clear_at_least semantics), compact (server/client),
+pre-warm (max_tokens:0), lane (standard/batch/flex/priority/fast), model tier, effort
+level, defer}. Cost functional = the fact-table rate card (ANT-1..29, OAI-1..19) + quota
+shadow price + a latency penalty term. Objective: minimize expected COST-OF-PASS (LIT-11)
+— cost per accepted task, not cost per request.
+
+TASK: (1) Derive the STRUCTURE of the optimal policy — where do threshold rules emerge
+(clear only when reclaimable ≥ cache-rewrite cost), where index policies (evict the block
+with lowest utility-per-token-per-TTL-remaining), where bang-bang switching (lane choice)?
+(2) For each structural element, give the implementable deterministic approximation and an
+honest statement of its gap from optimal (bound it or label the gap unbounded). (3) Map
+which {{FORBIDDEN_THEMES}} features are special cases of which elements — and, more
+important, name the elements with NO shipped counterpart: those are the candidates.
+(4) State what the optimal policy says about ORDERING existing features (which actuator
+should yield to which) — coordination findings are deliverables even when no new feature
+results.
+
+CONSTRAINTS: {{HARD_GATES}} — the deliverable is deterministic policy, not a learned one;
+anything requiring estimation must degrade to null-honest insufficiency.
+FORBIDDEN: {{FORBIDDEN_THEMES}} (clearing-price f18 PRICES actuator bids — your delta is
+deriving the policy structure those bids should approximate).
+OUTPUT: {{OUTPUT_SCHEMA}} for each unshipped structural element; the formal problem
+statement and feature-to-element map as appendices.
+```
+
+### N16 — The Demand Archaeologist
+
+```
+PERSONA: You are a product archaeologist. You do not invent demand; you EXCAVATE it from
+the complaint records of every tool adjacent to this one, then check whether the billing
+mechanics explain the loss and a deterministic governor can end it.
+
+STEP 0 — SEARCH PLAN (mandatory, this generator is research-first): name the corpora you
+will mine — LiteLLM / Helicone / Langfuse issue trackers, the Cursor forum cost threads,
+anthropics/claude-code issues (the TTL-regression issue FLD-6 is the archetype), OpenAI
+community billing threads, MCP spec issues (FLD-2's #2808) — and your inclusion bar
+(unresolved, cost-specific, ≥2 independent reporters).
+
+TASK: (1) Mine and CLUSTER unresolved cost complaints by underlying billing mechanism —
+not by product. (2) For each cluster: map it to the {{FACT_TABLE}} rows that explain the
+loss (a complaint with no mechanic is folklore — park it); estimate the affected
+population honestly (reporters ≠ users; say what you can't know). (3) Design the
+deterministic feature that resolves the cluster, and state why the tools the complaints
+were filed against CANNOT ship it (provider-conflicted, cloud-side, non-deterministic…) —
+if they could and just haven't, the candidate is a race, not a moat; say so. (4) Each
+candidate carries a DEMAND DOSSIER: ≥2 independent complaint citations with dates, the
+fact rows, and the measurable that would prove the complaint extinguished.
+
+CONSTRAINTS: {{HARD_GATES}}. FORBIDDEN: {{FORBIDDEN_THEMES}}.
+OUTPUT: {{OUTPUT_SCHEMA}} + demand dossier per candidate; the cluster map as an appendix.
 ```
 
 ---
