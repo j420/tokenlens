@@ -1,0 +1,34 @@
+{
+  "name": "@prune/repo-proof",
+  "version": "0.1.0",
+  "description": "f20 repo-proof — evidence-gated, repo-local outcome proof. Mines SWE-bench-style task candidates from a repository's own git history (human-curated prompts, never fabricated), verifies each task with the three-state protocol (base passes clean, fails with hidden tests, reference passes), runs the @prune/outcome-bench paired naive-vs-governed matrix under an explicit budget cap, and — only on a passing, Ed25519-attested proof — promotes TokenLens feature flags shadow→general for that repository, with the attestation hash as the auditable reason. CLI: prune-proof mine|verify|prove|promote|status.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "prune-proof": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/outcome-bench": "0.1.0",
+    "@prune/repo-map": "0.1.0",
+    "@prune/shared": "0.1.0",
+    "@prune/tokenizer": "0.1.0",
+    "@prune/wastebench": "0.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

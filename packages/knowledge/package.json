@@ -1,0 +1,30 @@
+{
+  "name": "@prune/knowledge",
+  "version": "0.1.0",
+  "description": "f21+f22 — Verified Repo Memory. f21 Repository Knowledge Compiler: compiles a repo into a persistent, content-SHA-keyed asset (symbols, dependency graph, ownership, churn signals) with deterministic extraction and incremental recompilation. f22 Proof-Carrying Asset Store: a knowledge store where every entry carries provenance (source content-SHAs), optional Ed25519 signature, utility record, and a validity status re-checked on every read — entries invalidated by code change demote themselves; writes are sentinel-screened. No model calls, no regex, anywhere in decision logic.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@prune/repo-map": "0.1.0",
+    "@prune/sentinel": "0.1.0",
+    "@prune/shared": "0.1.0",
+    "@prune/wastebench": "0.1.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0"
+  }
+}

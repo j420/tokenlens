@@ -1,0 +1,20 @@
+{
+  "taskId": "ob-locate-null-pricing",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "61a7dc642a7b23899d107376ebc87f6f9c4f413b",
+  "testRefCommit": "61a7dc642a7b23899d107376ebc87f6f9c4f413b",
+  "hiddenTestPaths": [],
+  "setupCmds": [],
+  "prompt": "This codebase has a strict pricing discipline: an unknown model must never be given a fabricated price. Identify the exported function that is the by-name source of truth for this discipline — the one that returns null for an unpriced model name — and the file where it is defined. Write exactly two lines to a new file named ANSWER.txt at the repository root: line 1, the function name; line 2, the repo-relative file path.",
+  "oracleCmd": "grep -Eq 'getModelPricingStrict(ByName)?' ANSWER.txt && grep -q 'packages/shared/src/pricing.ts' ANSWER.txt",
+  "oracleCwd": ".",
+  "intentClass": "navigate",
+  "referenceCommit": "61a7dc642a7b23899d107376ebc87f6f9c4f413b",
+  "maxTurns": 25,
+  "maxBudgetUsd": 1,
+  "cutoffSafe": true,
+  "notes": "Navigate/explain task: no code change required; the workspace is HEAD as-is and the oracle greps the agent's written answer. No npm install needed.",
+  "difficulty": "<15min"
+}

@@ -42,6 +42,18 @@ const ANTHROPIC_PRICING: Record<string, ModelPricing> = {
   "claude-3-opus": { input: 15, output: 75, cached_input: 1.875, contextWindow: 200_000 },
   "claude-3-sonnet": { input: 3, output: 15, cached_input: 0.375, contextWindow: 200_000 },
   "claude-3-haiku": { input: 0.25, output: 1.25, cached_input: 0.03, contextWindow: 200_000 },
+
+  // Benchmark v2 / repo-proof model pins. Rates VERIFIED against
+  // platform.claude.com/docs/en/about-claude/pricing on 2026-06-11:
+  // Opus 4.8 $5 in / $25 out / $0.50 cache-hit; Sonnet 4.6 $3 / $15 / $0.30;
+  // Haiku 4.5 $1 / $5 / $0.10. cached_input here is the CACHE-HIT (read)
+  // rate — the 0.1× multiplier — matching how the accounting layer bills
+  // cache_read_input_tokens. 4.6+/4.8 ship the 1M context window at
+  // standard pricing.
+  "claude-opus-4-8": { input: 5, output: 25, cached_input: 0.5, contextWindow: 1_000_000 },
+  "claude-sonnet-4-6": { input: 3, output: 15, cached_input: 0.3, contextWindow: 1_000_000 },
+  "claude-haiku-4-5-20251001": { input: 1, output: 5, cached_input: 0.1, contextWindow: 200_000 },
+  "claude-haiku-4-5": { input: 1, output: 5, cached_input: 0.1, contextWindow: 200_000 },
 };
 
 const OPENAI_PRICING: Record<string, ModelPricing> = {

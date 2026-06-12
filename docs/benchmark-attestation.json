@@ -1,0 +1,44 @@
+{
+  "manifest": {
+    "version": 1,
+    "issuedAt": "2026-06-10T09:49:34.476Z",
+    "window": null,
+    "rollup": {
+      "records": 138,
+      "grossSaved": 301446,
+      "overhead": 0,
+      "netSaved": 301446,
+      "overheadRatio": 0,
+      "byFeature": {
+        "squeezer.lossless": {
+          "records": 46,
+          "grossSaved": 50895,
+          "overhead": 0,
+          "netSaved": 50895
+        },
+        "squeezer.structural": {
+          "records": 46,
+          "grossSaved": 124746,
+          "overhead": 0,
+          "netSaved": 124746
+        },
+        "squeezer.telegraphic": {
+          "records": 46,
+          "grossSaved": 125805,
+          "overhead": 0,
+          "netSaved": 125805
+        }
+      }
+    },
+    "slo": {
+      "ok": true,
+      "overheadRatio": 0,
+      "budget": 0.1,
+      "reason": "overhead 0.0% within 10.0% budget"
+    }
+  },
+  "canonical": "{\"issuedAt\":\"2026-06-10T09:49:34.476Z\",\"rollup\":{\"byFeature\":{\"squeezer.lossless\":{\"grossSaved\":50895,\"netSaved\":50895,\"overhead\":0,\"records\":46},\"squeezer.structural\":{\"grossSaved\":124746,\"netSaved\":124746,\"overhead\":0,\"records\":46},\"squeezer.telegraphic\":{\"grossSaved\":125805,\"netSaved\":125805,\"overhead\":0,\"records\":46}},\"grossSaved\":301446,\"netSaved\":301446,\"overhead\":0,\"overheadRatio\":0,\"records\":138},\"slo\":{\"budget\":0.1,\"ok\":true,\"overheadRatio\":0,\"reason\":\"overhead 0.0% within 10.0% budget\"},\"version\":1,\"window\":null}",
+  "algorithm": "ed25519",
+  "publicKeyPem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAPC4S43rMXAHcanCvW57XMVAjjzwACljBwlHmoJPcXew=\n-----END PUBLIC KEY-----\n",
+  "signature": "IXgSbthZip2D/czAjnYPZhyzg+0sc3pOGf7nH5xmoZFXWQCwd7L/KJrceyBMEAiA0bX7eiKN3rBh+41fZuhjBQ=="
+}

@@ -33,7 +33,10 @@ export type TcrpFeatureId =
   | "f16"
   | "f17"
   | "f18"
-  | "f19";
+  | "f19"
+  | "f20"
+  | "f21"
+  | "f22";
 
 export type TcrpFeatureMode =
   | "shadow" // runs in parallel, never affects user
@@ -80,6 +83,9 @@ export const TCRP_FEATURE_IDS: readonly TcrpFeatureId[] = [
   "f17",
   "f18",
   "f19",
+  "f20",
+  "f21",
+  "f22",
 ] as const;
 
 export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
@@ -106,6 +112,11 @@ export const TCRP_FEATURE_NAMES: Record<TcrpFeatureId, string> = {
   f17: "programSlice",
   f18: "clearingPrice",
   f19: "wasteBench",
+  // f20: evidence-gated, repo-local proof + flag promotion (prune-proof CLI).
+  f20: "repoProof",
+  // f21+f22: Verified Repo Memory (@prune/knowledge).
+  f21: "knowledgeCompiler",
+  f22: "assetStore",
 } as const;
 
 export const TCRP_FEATURE_BY_NAME: Record<string, TcrpFeatureId> = Object.entries(
@@ -145,6 +156,9 @@ export const DEFAULT_TCRP_FLAGS: TcrpFeatureFlags = {
     f17: { enabled: false, mode: "shadow" },
     f18: { enabled: false, mode: "shadow" },
     f19: { enabled: false, mode: "shadow" },
+    f20: { enabled: false, mode: "shadow" },
+    f21: { enabled: false, mode: "shadow" },
+    f22: { enabled: false, mode: "shadow" },
   },
   policySource: "default",
 };

@@ -21,6 +21,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: @prune/repo-proof's read-only smoke test mines task
+          # candidates from this repo's real commit history, and is
+          # depth-adaptive (it skips its strict assertion on a shallow clone).
+          # fetch-depth: 0 gives that test real teeth instead of a no-op.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:

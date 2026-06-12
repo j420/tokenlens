@@ -6,6 +6,10 @@
 >
 > Companion artifact: **`docs/RESEARCH-FEATURE-PROPOSALS.md`** — a dated, vetted batch produced by
 > running this library end-to-end.
+>
+> **SUPERSEDED for new runs:** use **`docs/RESEARCH-META-PROMPTS-V2.md`** — the evidence-grounded
+> successor (deep-research pass, June 2026, adversarially verified). This v1 file stays frozen as
+> the instrument that produced List1–List3; do not edit it.
 
 ---
 

@@ -1,0 +1,25 @@
+{
+  "taskId": "ob-speculative-cache-write-safety",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "48ec0489d3345f666bbfaf1781b74926038a3dc4",
+  "testRefCommit": "9cc8e9a67c4cf1b788e86a9b39bf8f40c050ad5e",
+  "hiddenTestPaths": [
+    "packages/intelligence/src/speculative-cache.safety.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/intelligence"
+  ],
+  "prompt": "The speculative action cache in @prune/intelligence (bash read-classifier + freshness logic) has two safety holes:\n\n1. Write-capable commands are classified as pure reads and become cacheable/servable: `find . -type f -delete` (deletes files) and `find . -type f -exec rm {} ;` (arbitrary execution) both pass the read classifier, and a newline-smuggled chain like \"cat a\\nrm b\" sneaks past the shell-metacharacter screen. Caching a destructive op and replaying its recorded output instead of executing-and-observing is the worst failure this package can have.\n2. Freshness for directory-scoped results uses a bare directory stat, which does not change when a file is edited IN PLACE (same mtime granularity, same entry count) — so a stale cached Grep/Glob result can be served after the underlying file content changed.\n\nMake the classifier reject every write-capable form (redirects, pipes to mutators, command chains, command substitution, git-mutating subcommands, sed -i, rm/mv/cp/chmod/tee, uppercase or env-prefixed variants must fail safe) while continuing to accept genuine reads (git log/diff/show/status, cat/head/tail/ls/wc/grep/rg, find without action primaries). Make dir-scoped freshness detect in-place edits (e.g. derive the token from each matched file's path+mtime+size rather than one directory stat).",
+  "oracleCmd": "npx vitest run",
+  "oracleCwd": "packages/intelligence",
+  "intentClass": "debug",
+  "referenceCommit": "9cc8e9a67c4cf1b788e86a9b39bf8f40c050ad5e",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: tcrp harden F3 (write-capable command misclassification + freshness soundness) 2026-06-01.",
+  "difficulty": "1-4hr"
+}

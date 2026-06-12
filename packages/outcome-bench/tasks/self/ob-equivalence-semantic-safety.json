@@ -1,0 +1,26 @@
+{
+  "taskId": "ob-equivalence-semantic-safety",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "2d882435e4c21efe4724dd6d2dc6f548a9e6c1b7",
+  "testRefCommit": "48ec0489d3345f666bbfaf1781b74926038a3dc4",
+  "hiddenTestPaths": [
+    "packages/equivalence/src/equivalence.test.ts",
+    "packages/equivalence/src/semantic-safety.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/equivalence"
+  ],
+  "prompt": "The AST output-equivalence relation in @prune/equivalence judges semantically DIFFERENT programs \"equivalent\". Reproducible examples:\n- `const x = 1` vs `let x = 1` vs `var x = 1` are all judged equivalent (scoping differs).\n- `/foo/g` vs `/bar/i` are judged equivalent (regex text/flags ignored).\n- `\\`hello \\${x}\\`` vs `\\`goodbye \\${x}\\`` are judged equivalent (template static text ignored).\n- `-x`, `!x`, `+x`, `~x` are judged equivalent, as are `x++` vs `x--` (unary operators conflated).\n- Alpha-renaming is applied to FREE identifiers too, so `if(c){a()}else{b()}` is judged equivalent to the version with the branch calls swapped.\n\nThis relation gates cost transforms: a false \"equivalent\" can mask a real quality regression, while a false \"different\" merely forgoes a saving. Fix the blindness cases, and make the identifier-exact (rename-intolerant) comparison the DEFAULT; keep alpha-rename tolerance available only as an explicit opt-in for scoring, never as a ship gate.",
+  "oracleCmd": "npx vitest run",
+  "oracleCwd": "packages/equivalence",
+  "intentClass": "debug",
+  "referenceCommit": "48ec0489d3345f666bbfaf1781b74926038a3dc4",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: tcrp harden AST equivalence (5 semantic-blindness bugs) 2026-06-01.",
+  "difficulty": "1-4hr"
+}

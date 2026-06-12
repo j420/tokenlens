@@ -42,6 +42,7 @@ const COMMANDS: ModeItem[] = [
   { commandId: "squeezeFile", name: "Code Squeezer", desc: "Tree-sitter compression — lossless to telegraphic.", ref: "prune.squeezeFile" },
   { commandId: "analyzeFile", name: "Token Counter", desc: "Real-time token + cost for any file or selection.", ref: "prune.analyzeFile", keybinding: { windows: "Ctrl+Alt+T", mac: "Cmd+Alt+T" } },
   { commandId: "checkCursorUsage", name: "Usage Tracking", desc: "Read the local DB for request usage. Zero keys.", ref: "prune.checkCursorUsage" },
+  { commandId: "repoProof", name: "Repo Proof (f20)", desc: "Terminal launcher for the prune-proof lifecycle: map \u00b7 mine \u00b7 verify \u00b7 prove \u00b7 promote.", ref: "prune.repoProof" },
 ];
 
 const fromCatalog = (surface: "Hook" | "MCP tool" | "Library"): ModeItem[] =>

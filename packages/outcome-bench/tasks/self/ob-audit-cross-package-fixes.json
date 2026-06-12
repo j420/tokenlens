@@ -1,0 +1,27 @@
+{
+  "taskId": "ob-audit-cross-package-fixes",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "5d4a293c07300bf13cd3d778fe1ad2b285e31c31",
+  "testRefCommit": "e3145c7cd33608785174603ac332e08607597f89",
+  "hiddenTestPaths": [
+    "packages/agent-sdk-adapter/src/invokers/openai.test.ts",
+    "packages/context-health/src/edge-cases.test.ts",
+    "packages/semantic-cache/src/edge-cases.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/agent-sdk-adapter --filter=@prune/context-health --filter=@prune/semantic-cache"
+  ],
+  "prompt": "An audit found real bugs in three packages:\n\n1. @prune/semantic-cache: on a cache hit the equivalence gate compares the cached response WITH ITSELF (always true) and then reports strategy \"byte\", overstating what was verified. The hit surface must be honest about what actually gated the serve (similarity + freshness), not claim a byte-equality proof that never ran.\n2. @prune/agent-sdk-adapter OpenAI invoker: OpenAI rejects an assistant message of the form { role: \"assistant\", content: \"\", tool_calls: [...] } — when marshaled text is empty AND tool_calls are present, content must be omitted entirely; empty content stays legal for the text-only and user paths.\n3. @prune/context-health effective-context-fullness: hostile inputs break the cache-read discount math — a negative or non-finite alpha must be sanitized BEFORE it multiplies into the product, not after, or ECF goes out of range.\n\nFix all three so each computation is honest and within contract on edge-case inputs.",
+  "oracleCmd": "(cd packages/agent-sdk-adapter && npx vitest run) && (cd packages/context-health && npx vitest run) && (cd packages/semantic-cache && npx vitest run)",
+  "oracleCwd": ".",
+  "intentClass": "refactor",
+  "referenceCommit": "e3145c7cd33608785174603ac332e08607597f89",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: audit (4 real bugs) 2026-06-02, restricted to the three packages whose implementation changed. Cross-package navigation is the point of this task.",
+  "difficulty": "1-4hr"
+}

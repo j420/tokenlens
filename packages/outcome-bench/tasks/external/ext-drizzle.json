@@ -1,0 +1,20 @@
+{
+  "taskId": "ext-drizzle",
+  "track": "external",
+  "status": "draft",
+  "repoUrl": "https://github.com/drizzle-team/drizzle-orm",
+  "baseCommit": null,
+  "testRefCommit": null,
+  "hiddenTestPaths": [],
+  "setupCmds": [],
+  "prompt": "DRAFT — to be written from the curated fix-commit's message per tasks/external/README.md.",
+  "oracleCmd": "echo draft && false",
+  "oracleCwd": ".",
+  "intentClass": "debug",
+  "referenceCommit": null,
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": false,
+  "notes": "Draft awaiting curation: pin a post-cutoff fix-commit with tests per the README procedure. The harness refuses drafts.",
+  "difficulty": null
+}

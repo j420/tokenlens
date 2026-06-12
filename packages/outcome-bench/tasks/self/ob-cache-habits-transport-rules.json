@@ -1,0 +1,27 @@
+{
+  "taskId": "ob-cache-habits-transport-rules",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "1297dd066bbaf5100b89910d16b9e04a027afd6c",
+  "testRefCommit": "885d74a17e0fff48b2d411e8e998d9503eea6939",
+  "hiddenTestPaths": [
+    "packages/cache-habits/src/rules.test.ts",
+    "packages/cache-habits/src/edge-cases.test.ts",
+    "packages/cache-habits/src/linter.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/cache-habits"
+  ],
+  "prompt": "Add two transport-economics rules to @prune/cache-habits and wire them into the linter alongside the existing CH-001..CH-012 rules:\n\nCH-013 \"transport_regression\": fires when a session that had been on a STATEFUL transport (server retains history) transitions to a STATELESS one, which silently re-sends the whole accumulated history every turn. Price the re-sent history at the model's input rate; when the history token size is unknown, the finding still fires but its cost MUST be null (never a fabricated number).\n\nCH-014 \"stateful_transport_advisor\": advises when a long-running stateless-transport session would benefit from a stateful transport. Contingent advice — it must NOT claim a dollar saving. It must not fire below a minimum turn floor, when the re-communicated history is below the minimum cacheable prefix, when history size is unknown, or when the transport isn't stateless.\n\nOn the transition turn itself the snapshot still reads 'stateful', so CH-013 fires and CH-014 must short-circuit — the two rules never double-fire on the same turn.",
+  "oracleCmd": "npx vitest run",
+  "oracleCwd": "packages/cache-habits",
+  "intentClass": "generate",
+  "referenceCommit": "885d74a17e0fff48b2d411e8e998d9503eea6939",
+  "maxTurns": 60,
+  "maxBudgetUsd": 3,
+  "cutoffSafe": true,
+  "notes": "Reference: feat(cache-habits) CH-013/CH-014 2026-06-07. Feature-against-test-spec; oracle restricted to the cache-habits package.",
+  "difficulty": "1-4hr"
+}

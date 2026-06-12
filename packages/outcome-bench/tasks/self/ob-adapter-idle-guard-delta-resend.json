@@ -1,0 +1,26 @@
+{
+  "taskId": "ob-adapter-idle-guard-delta-resend",
+  "track": "self",
+  "status": "ready",
+  "repoUrl": null,
+  "baseCommit": "9eac998d326670afec242bfa30198f4cdf9a1945",
+  "testRefCommit": "b6fee29f69e74fdcaddb5678b57076ca52cf3c1d",
+  "hiddenTestPaths": [
+    "packages/agent-sdk-adapter/src/idle-guard.test.ts",
+    "packages/agent-sdk-adapter/src/delta-resend.test.ts"
+  ],
+  "setupCmds": [
+    "npm install",
+    "npx turbo build --filter=@prune/agent-sdk-adapter"
+  ],
+  "prompt": "Add two cache-economics modules to @prune/agent-sdk-adapter, exported from the package index:\n\n1. Session-idle cache guard — `src/idle-guard.ts` exporting `evaluateIdleGuard`, `heartbeatThreshold(ttl)`, `TTL_WINDOW_MS`, and an `IdleGuardInput` type with fields { ttl: \"5m\" | \"1h\", model, cacheablePrefixTokens, idleMs, continuationProbability, maxHeartbeats, heartbeatsSoFar }. It decides whether to send a keep-alive heartbeat before the prompt-cache TTL window expires, or let the cache lapse. A heartbeat costs a cache READ of the prefix; letting it lapse costs a cache WRITE on the next real turn — so the break-even continuation probability is READ/(WRITE − READ) per Anthropic's cache pricing multipliers (read 0.1×, write 1.25× for 5m TTL, 2× for 1h), which `heartbeatThreshold` returns. Respect maxHeartbeats; an idle time already past the window means the cache is gone (nothing to guard).\n\n2. Delta cache-resend planner — `src/delta-resend.ts` exporting `analyzeDeltaResend` and a `PrefixBlock` type. Given the previous and next turn's prefix block sequences, find the surviving leading run and diagnose what a mid-prefix change does: identical prefixes → no divergence; appended blocks are a normal diverged tail (not a poison); next being a strict prefix of previous is not a rewrite; an in-place change at the top of the prompt strands everything after it (poison) unless nothing of cacheable size is stranded; a rejoined run below the provider's minimum cacheable size cannot realize savings. Report exact economics: full-bust re-write cost vs delta-resend cost and the saving, using the model's real input/cache rates and the 5m vs 1h write multipliers; below-minimum surviving runs report zero realizable saving.",
+  "oracleCmd": "npx vitest run",
+  "oracleCwd": "packages/agent-sdk-adapter",
+  "intentClass": "generate",
+  "referenceCommit": "b6fee29f69e74fdcaddb5678b57076ca52cf3c1d",
+  "maxTurns": 80,
+  "maxBudgetUsd": 5,
+  "cutoffSafe": true,
+  "notes": "Reference: agent-sdk-adapter N5+N2 2026-06-03. Two new modules (+476 impl lines) against test specs.",
+  "difficulty": "1-4hr"
+}
