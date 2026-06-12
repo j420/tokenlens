@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, dirname } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 import {
@@ -209,16 +210,46 @@ describe("mineCandidates (temp git repo)", () => {
 });
 
 describe("mineCandidates (smoke against this repository, read-only)", () => {
-  it("finds candidates in real history with the monorepo prefixes", () => {
-    const result = mineCandidates("/home/user/tokenlens", {
-      limit: 60,
+  // Resolve the monorepo root relative to THIS test file (src is three levels
+  // below root: src → repo-proof → packages → root), so the smoke runs from
+  // any checkout location — CI runner, dev box, worktree — never a hardcoded
+  // /home/user/tokenlens dev path. (The earlier hardcode broke CI, where the
+  // checkout lives under /home/runner/work.)
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
+
+  /** Total reachable commits — 1 on a shallow (fetch-depth: 1) checkout. */
+  const historyDepth = (): number => {
+    const r = spawnSync("git", ["-C", repoRoot, "rev-list", "--count", "HEAD"], {
+      encoding: "utf8",
+    });
+    return r.status === 0 ? Number(r.stdout.trim()) : 0;
+  };
+
+  it("produces schema-valid candidates from real history (depth-adaptive)", () => {
+    const result = mineCandidates(repoRoot, {
+      limit: 200,
       groupPrefixes: ["packages/", "apps/"],
     });
+    // An error here means the resolved root is not a git repo — in this
+    // monorepo's own test runs it always is, so surface it loudly rather
+    // than masking a path-resolution regression.
     if ("error" in result) throw new Error(result.error);
-    expect(result.candidates.length).toBeGreaterThan(0);
+
+    // Whatever the miner returned must be honest regardless of clone depth:
+    // every candidate validates against the schema, and an unknown test
+    // runner is never guessed.
     for (const c of result.candidates) {
       expect(CandidateCommitSchema.safeParse(c).success).toBe(true);
       expect(c.suggestedOracleCmd).toBeNull();
+    }
+    expect(Array.isArray(result.coverage)).toBe(true);
+
+    // The strict "found something" assertion only has meaning with real
+    // history. CI checks out full history (fetch-depth: 0) and dev machines
+    // have it; a shallow depth-1 clone legitimately yields zero candidates,
+    // so gate the assertion on depth instead of fabricating a pass.
+    if (historyDepth() >= 30) {
+      expect(result.candidates.length).toBeGreaterThan(0);
     }
   });
 });
