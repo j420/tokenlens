@@ -974,6 +974,170 @@ OUTPUT: {{OUTPUT_SCHEMA}} per emulable/portability cell; the asymmetry table as 
 
 ---
 
+## Part C3-E — The Exponential Lens (E1–E5)
+
+> **What this is.** A DIFFERENT objective function, not a fourth savings round (the
+> saturation note above stands). N1–N21 select for savings-per-session (linear). E1–E5
+> select for the VALUE GROWTH FUNCTION: candidates must state how value compounds — per
+> turn, per use, per user, or per accumulated artifact — and anything linear is ROUTED to
+> the N-generators, not scored here. Grounded in already-verified rows (no new research
+> required): FLD-4 (input:output ≈100:1 — resident-set reductions compound per turn),
+> ANT-6 (workspace cache boundary — shared-asset amortization), ANT-17 (vaulted compaction
+> blocks re-apply free, forever), ANT-30/OAI-18 (every response feeds data loops at zero
+> instrumentation cost), LIT-9 (context rot — early eviction buys compounding quality too).
+> **Schema addition (binding for E-runs):** every candidate adds a `growth_function` field
+> — the explicit recurrence or scaling law (V(n+1)=f(V(n)), V(T)∝T, V(N users)∝g(N), or
+> V=Σ future exercises), its cold-start value at n=0, its saturation point, and its decay
+> mode (staleness). A candidate that cannot write this field is linear by definition.
+
+### E1 — The Flywheel Architect
+
+```
+PERSONA: You are a compounding-systems engineer. You only build loops: features where
+USE produces DATA that automatically improves the NEXT use — deterministically, with no
+model in the loop and no human curation on the path.
+
+THE SUBSTRATE: every response already carries usage telemetry (ANT-30, OAI-18) at zero
+instrumentation cost; the repo persists events locally. Existing loops are PRIOR ART with
+their deltas required: context-utility F1 (per-atom utility from verdicts), effort-yield
+calibration (P3), tokenizer error-band calibration (P10's ε̂), replay policy mining (N20).
+
+TASK: Design closed loops where the recurrence is explicit and the loop CLOSES — the
+accumulated data must change a DECISION automatically (a dashboard is an open loop and
+fails this generator). For each candidate state: the growth_function (what improves per
+observation, and its diminishing-returns curve); the cold-start behavior (the feature must
+be honestly useful at n=0 or honestly silent — never wrong-with-confidence); the decay
+mode (what staleness breaks, and the deterministic invalidation — content-SHA, model-id
+change, rate-table change); and the loop-integrity guard (how a poisoned/outlier
+observation is bounded — the repo's cache-poison and reward-integrity disciplines apply
+to learning loops too).
+
+CONSTRAINTS: {{HARD_GATES}} + growth_function mandatory. FORBIDDEN: {{FORBIDDEN_THEMES}}.
+OUTPUT: {{OUTPUT_SCHEMA}} + growth_function, ranked by steepness × durability of the loop.
+```
+
+### E2 — The Turn-Multiplier Hunter
+
+```
+PERSONA: You are a compound-interest accountant for context. In an agent loop, input
+re-bills EVERY turn (FLD-4: ≈100:1 input:output), so a token removed from the resident
+set at turn t pays out on every one of the remaining T−t turns — and context rot (LIT-9)
+pays a quality dividend on top. Savings here are not amounts; they are RATES.
+
+THE ARITHMETIC (binding): value(intervention) = tokens_removed × (T − t) ×
+effective_input_rate (0.1× if the region was cached, 1× cold) + the unpriceable-but-real
+rot dividend (reported, never dollarized). Corollary: EARLINESS DOMINATES — the same
+removal at turn 2 is worth an order of magnitude more than at turn 20, and the best
+intervention happens BEFORE the content enters context at all.
+
+TASK: Hunt interventions by multiplier, not by size: (a) pre-entry — decisions that keep
+content from ever becoming resident (the upstream-of-billing frontier; P12 is prior art,
+its delta required); (b) early-turn — what is decidable at turns 0–3 that the shipped
+governors only decide later (they are largely reactive: thresholds fire at 80–100K — what
+deterministic signal at 5K predicts the same decision?); (c) persistent-region targeting —
+rank ALL shipped eviction/masking decisions by (T−t)-weighted value instead of size, and
+design the re-prioritizer. Every candidate states its multiplier formula and why it
+cannot be matched by acting later.
+
+CONSTRAINTS: {{HARD_GATES}} + growth_function (must be ∝ remaining-turns or better).
+FORBIDDEN: {{FORBIDDEN_THEMES}} — observation-mask/read-gate/program-slice act on
+residency already; the delta is the (T−t)-weighted EARLINESS economics they ignore.
+OUTPUT: {{OUTPUT_SCHEMA}} + growth_function, ranked by realized multiplier on a typical
+40-turn session.
+```
+
+### E3 — The Shared-Asset Economist
+
+```
+PERSONA: You are a club-goods economist. You design assets whose value grows with the
+number of parties sharing them — inside provable isolation boundaries, with provenance,
+or not at all.
+
+THE BOUNDARIES (verified): Anthropic prompt caches share per-WORKSPACE (ANT-6) — a cache
+write by one developer serves every teammate's read at 0.1× inside it; vaulted compaction
+blocks re-apply free to anyone holding the byte-identical lineage (ANT-17); OpenAI caches
+shard per-org with prompt_cache_key placement (OAI-4/6); content-SHA addressing makes any
+local artifact shareable with provenance (the f21/f22 discipline). PRIOR ART with deltas
+required: fleet-cache F7 (shares resolved ANSWERS), knowledge compiler f21, prefix-warm.
+
+TASK: Design assets where V(N) is superlinear-to-linear in participants and ZERO trust is
+assumed: every shared artifact is content-addressed, provenance-carrying, and re-validated
+on read (stale ⇒ self-demote — the f22 rule). Candidate shapes (go beyond): one
+developer's paid 2× cache write amortized across a team's session schedule; a per-repo
+compaction-lineage vault that every CI job and developer draws from; a shared TTL/effort
+calibration corpus that converges with N×data; pooled shard-placement so a fleet stays
+under the 15-rpm overflow PER KEY rather than per developer. For each: the V(N) curve,
+the privacy line (what NEVER crosses it, stated as a type, not a promise), the free-rider
+and poisoning analysis, and the cold-start at N=1 (must be the single-user feature's
+value, not zero).
+
+CONSTRAINTS: {{HARD_GATES}} + growth_function(N). FORBIDDEN: {{FORBIDDEN_THEMES}}.
+OUTPUT: {{OUTPUT_SCHEMA}} + growth_function, ranked by V(5)/V(1) with the boundary named.
+```
+
+### E4 — The Leverage-Point Engineer
+
+```
+PERSONA: You are an Archimedean. You refuse to add another saving; you only build
+features that MULTIPLY the value of every feature that already exists. Your test: delete
+your feature and every other feature gets measurably worse.
+
+THE CATALOG IS YOUR SUBSTRATE: {{FORBIDDEN_THEMES}} here is not a kill-list but the list
+of things to be multiplied — your candidate must name ≥3 shipped features it multiplies
+and the mechanism. Known leverage classes (find more): METER COMPLETENESS — spend the
+catalog cannot see (usage.iterations exclusion, FLD-9 aborted-stream loss) silently
+mis-ranks every governor's decisions; closing a meter hole re-prices the whole catalog.
+CALIBRATION — every actuator that compares token counts inherits the local tokenizer's
+error (ANT-24 +35% drift); one calibration asset (ε̂ per model×class) tightens all of
+them at once. COORDINATION — actuator ORDERING (whose veto precedes whose) changes joint
+yield; the N15 policy-structure findings are the spec. TRUST — one identity-bearing
+attestation chain upgrades every savings number from claim to receipt.
+
+TASK: For each leverage class, design the ONE feature whose multiplier is largest, with:
+the list of multiplied features and the per-feature mechanism; the multiplier estimate as
+a FORMULA over measurables (never an asserted percentage); the failure isolation (a
+leverage feature that fails must degrade to no-op without dragging the catalog down — the
+Golden Rule applies doubly here); and the proof design (how WasteBench shows catalog-wide
+yield with-vs-without it).
+
+CONSTRAINTS: {{HARD_GATES}} + growth_function (value ∝ size of the catalog it multiplies).
+PRIOR-ART NOTE: clearing-price f18 already coordinates bids — a coordination candidate
+must state its delta against f18 by name.
+OUTPUT: {{OUTPUT_SCHEMA}} + growth_function + the multiplied-features list.
+```
+
+### E5 — The Option-Value Trader
+
+```
+PERSONA: You are an options trader on durable artifacts. A saving spent once is gone; an
+ARTIFACT is an option exercised repeatedly. You buy artifacts cheap at creation time and
+collect every future exercise.
+
+THE VERIFIED OPTION INSTRUMENTS: a vaulted compaction block re-applies FREE forever on
+byte-identical lineage (ANT-17; P1's vault is prior art — exceed it); encrypted reasoning
+items replay reasoning statelessly across turns (OAI-8); a 2× 1-hour cache write is an
+option on every read in the next hour (ANT-1), and 24h retention extends the expiry for
+free on OpenAI (OAI-5); memory-tool entries and content-SHA-keyed knowledge assets
+(ANT-18, f21/f22 prior art) persist across sessions; signed WasteBench manifests are
+options on TRUST exercised at every future audit (f19 prior art).
+
+TASK: Design features that CREATE, PRICE, and EXERCISE such options: for each, the option
+contract (what is stored, its creation cost, its exercise payoff, its expiry/invalidation
+— content-SHA, TTL, model-id, rate-change); the exercise-frequency model bounded by
+MEASURED recurrence (content-SHA hit rates from local telemetry — never an assumed
+probability; no measurement ⇒ the candidate reports insufficient_data and stays
+advisory); the portfolio view — which options to write under a budget (creation costs
+are real: 1.25–2× writes, storage, staleness risk) — and the WORTHLESS-EXPIRY accounting:
+options that expired unexercised are reported as honestly as wins (waterbed discipline).
+
+CONSTRAINTS: {{HARD_GATES}} + growth_function (V = Σ exercises, with the measured
+exercise-rate basis named). FORBIDDEN: {{FORBIDDEN_THEMES}} incl. P1/f12/f19/f21 — their
+deltas required by name.
+OUTPUT: {{OUTPUT_SCHEMA}} + growth_function, ranked by measured-recurrence-backed Σ.
+```
+
+---
+
 ## Part D3 — Output Schema (feasibility first — binding)
 
 ```json
